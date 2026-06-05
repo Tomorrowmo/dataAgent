@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/__pycache__
+**/.venv
+**/data/db
+**/data/uploads
+**/.git
+**/.idea
+**/.vscode
+**/tmp
+**/dist
+**/build
+.git
+backend/.venv
+backend/data
+web/node_modules
+web/.next/cache

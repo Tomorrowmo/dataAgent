@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+
+# Data — real conversations / uploads, NEVER publish (anchored anywhere, incl. backend/)
+*.db
+*.sqlite
+*.sqlite*
+data/db/*.db
+data/db/*.sqlite*
+data/uploads/*
+!data/uploads/.gitkeep
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+data/cache/
+backend/data/cache/
+
+# Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Scratch / throwaway (real conversation data, aerospace paths) — keep local
+tmp/
