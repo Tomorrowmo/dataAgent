@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square } from 'lucide-react';
+import Markdown from '@/components/Markdown';
 import { api, streamChat, type ChatMessage, type Dataset, type UploadResp } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
@@ -380,11 +379,11 @@ export default function ChatView({
         />
       )}
       <div className="flex-1 min-w-0 flex flex-col h-full">
-      <div className="border-b border-ink-200 px-5 py-3 bg-white flex items-center gap-3">
-        <Bot className="w-5 h-5 text-brand-600" />
-        <div className="font-medium">{t('chat.title')}</div>
-        <div className="ml-auto flex items-center gap-2 text-sm">
-          <span className="text-ink-500">{t('chat.dataset')}</span>
+      <div className="border-b border-ink-200 px-3 md:px-5 py-3 bg-white flex items-center gap-3">
+        <Bot className="w-5 h-5 text-brand-600 shrink-0" />
+        <div className="font-medium max-md:hidden">{t('chat.title')}</div>
+        <div className="ml-auto flex items-center gap-2 text-sm min-w-0">
+          <span className="text-ink-500 max-md:hidden">{t('chat.dataset')}</span>
           <DatasetPicker datasets={pickerDatasets} activeIds={activeDatasets} primaryId={primaryId} onToggle={toggleDataset} />
           {!workbenchOpen && (
             <button
@@ -403,7 +402,7 @@ export default function ChatView({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto scroll-hide px-5 py-6 space-y-5 relative"
+        className="flex-1 overflow-y-auto scroll-hide px-3 md:px-5 py-4 md:py-6 space-y-5 relative"
         onDragOver={(e) => { if (isFreshSession) { e.preventDefault(); setDragOver(true); } }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
@@ -625,99 +624,64 @@ function Welcome({
 }) {
   return (
     <div className="max-w-3xl mx-auto pt-4">
-      <h2 className="text-2xl font-semibold mb-6">👋 {t('welcome.hi')}</h2>
+      <h2 className="text-2xl font-semibold mb-1">👋 {t('welcome.hi')}</h2>
 
-      {/* One-click starters — bring their own sample data, run on click */}
-      <div className="mb-7">
-        <h3 className="text-base font-semibold mb-1">{lang === 'zh' ? '不知道从哪开始？点一个直接试 👇' : 'New here? Tap one to try it 👇'}</h3>
-        <p className="text-xs text-ink-500 mb-3">{lang === 'zh' ? '用内置示例数据，你不用懂算法 —— Numetrix 自己挑方法、跑出来、还能复查每一步。' : 'Uses built-in sample data — no algorithm knowledge needed; Numetrix picks the method, runs it, and shows its work.'}</p>
-        <div className="grid grid-cols-2 gap-3">
-          {STARTERS.map((s) => {
-            const x = lang === 'zh' ? s.zh : s.en;
-            return (
-              <button key={s.datasetName} onClick={() => onStarter(s)}
-                className="text-left rounded-xl p-3.5 ring-1 ring-ink-200 bg-white hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition">
-                <div className="text-xl mb-1">{s.emoji}</div>
-                <div className="font-medium text-sm">{x.t}</div>
-                <div className="text-xs text-ink-500 mt-1 leading-snug line-clamp-2">{x.q}</div>
-                <div className="text-[10px] text-brand-500 mt-1.5 inline-flex items-center gap-1"><Database className="w-3 h-3" /> 自带示例数据 · {s.datasetName}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <p className="text-sm text-ink-500 mb-4">{lang === 'zh' ? '把你要分析的数据放进来 —— 连没见过的格式，AI 也能帮你自动读懂。' : 'Bring in the data you want to analyze — even formats it has never seen, AI reads them for you.'}</p>
 
-      {/* Drop zone — always visible, but compact once data exists */}
+      {/* Drop zone — always here; the primary "get your data in" action */}
       <button
         onClick={onClickUpload}
-        className={`w-full rounded-2xl border-2 border-dashed transition flex flex-col items-center gap-2 ${
-          dragOver
-            ? 'border-brand-500 bg-brand-50'
-            : 'border-ink-200 bg-white hover:border-brand-400 hover:bg-brand-50/40'
-        } ${hasData ? 'py-5' : 'py-12'}`}
+        className={`w-full rounded-2xl border-2 border-dashed transition flex flex-col items-center gap-2 py-10 ${
+          dragOver ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white hover:border-brand-400 hover:bg-brand-50/40'
+        }`}
       >
-        {uploading ? <Loader2 className="w-8 h-8 text-brand-600 animate-spin" /> : <Upload className={`text-brand-600 ${hasData ? 'w-5 h-5' : 'w-8 h-8'}`} />}
-        <div className={`font-medium ${hasData ? 'text-sm' : 'text-base'}`}>
-          {uploading ? t('welcome.uploading') : t('welcome.dropTitle')}
-        </div>
-        {!hasData && <div className="text-xs text-ink-500">{t('welcome.dropSub')}</div>}
+        {uploading ? <Loader2 className="w-8 h-8 text-brand-600 animate-spin" /> : <Upload className="text-brand-600 w-8 h-8" />}
+        <div className="font-medium text-base">{uploading ? t('welcome.uploading') : (lang === 'zh' ? '把你要分析的数据拖进来' : 'Drop in the data you want to analyze')}</div>
+        <div className="text-xs text-ink-500">{lang === 'zh' ? 'CSV、Excel，甚至没见过的格式 —— AI 都能自动读出来' : 'CSV, Excel, even unknown formats — AI parses them automatically'}</div>
       </button>
 
-      {hasData && (
-        <div className="mt-4 flex items-center gap-3 flex-wrap">
-          <span className="text-sm text-ink-500">{t('welcome.orPick')}:</span>
-          {datasets.filter((d) => d.kind !== 'derived').slice(0, 8).map((d) => (
-            <button
-              key={d.id}
-              onClick={() => onToggleDataset(d.id)}
-              className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition ${
-                activeIds.includes(d.id)
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white ring-1 ring-ink-200 hover:bg-ink-50'
-              }`}
-            >
-              <Database className="w-3 h-3" />
-              {d.name}
-            </button>
-          ))}
+      {!hasData ? (
+        /* No data yet → offer one-click samples below the drop zone */
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold mb-2 text-ink-600">{lang === 'zh' ? '或点一个示例直接试（自带数据）' : 'Or tap a sample (data included)'}</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {STARTERS.map((s) => {
+              const x = lang === 'zh' ? s.zh : s.en;
+              return (
+                <button key={s.datasetName} onClick={() => onStarter(s)}
+                  className="text-left rounded-xl p-3.5 ring-1 ring-ink-200 bg-white hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition">
+                  <div className="text-xl mb-1">{s.emoji}</div>
+                  <div className="font-medium text-sm">{x.t}</div>
+                  <div className="text-xs text-ink-500 mt-1 leading-snug line-clamp-2">{x.q}</div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
-
-      {activeIds.length > 0 && (
-        <div className="mt-3 text-xs text-ink-500">
-          ✓ 已选 <span className="font-medium text-ink-700">{activeIds.length}</span> 个数据集
-          {activeDs && <>(主:<span className="font-medium text-ink-700">{activeDs.name}</span>)</>}
-          {activeIds.length > 1 && '  —— 可对比分析'}
-        </div>
-      )}
-
-      <div className="mt-8">
-        <h3 className="text-base font-semibold mb-1">{t('welcome.recipes')}</h3>
-        <p className="text-xs text-ink-500 mb-4">
-          {hasData ? t('welcome.customQ') : t('welcome.recipesNeedData')}
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {RECIPES.map((r) => {
-            const disabled = !hasData && r.id !== 'custom';
-            return (
+      ) : (
+        /* Has data → what to do with the current dataset */
+        <div className="mt-6">
+          <p className="text-sm text-ink-500 mb-3">
+            {lang === 'zh' ? '已有数据集 ' : 'Dataset '}
+            <span className="font-medium text-ink-700">{activeDs?.name}</span>
+            {activeIds.length > 1 && `  +${activeIds.length - 1}${lang === 'zh' ? '（可对比）' : ''}`}
+            {lang === 'zh' ? ' —— 点一个分析，或在下面直接问。' : ' — tap one, or just ask below.'}
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {RECIPES.map((r) => (
               <button
                 key={r.id}
-                disabled={disabled}
                 onClick={() => onRecipeClick(r.id)}
-                className={`text-left rounded-xl p-4 ring-1 transition ${
-                  disabled
-                    ? 'bg-ink-50 ring-ink-200 opacity-50 cursor-not-allowed'
-                    : 'bg-white ring-ink-200 hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5'
-                }`}
+                className="text-left rounded-xl p-4 ring-1 bg-white ring-ink-200 hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition"
               >
                 <div className="text-2xl mb-1.5">{r.emoji}</div>
                 <div className="font-medium text-sm">{t(r.titleKey)}</div>
                 <div className="text-xs text-ink-500 mt-1 leading-snug">{t(r.bodyKey)}</div>
               </button>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -770,7 +734,7 @@ function Typewriter({ text }: { text: string }) {
     const id = setTimeout(() => setShown((s) => Math.min(text.length, s + 2)), 16);
     return () => clearTimeout(id);
   });
-  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text.slice(0, shown)}</ReactMarkdown>;
+  return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
 function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number }) {
@@ -784,7 +748,7 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: Displ
               <Database className="w-3 h-3" /> {msg.datasetLabel}
             </div>
           )}
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+          <Markdown>{msg.content}</Markdown>
         </div>
       </div>
     );
@@ -826,7 +790,7 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: Displ
         {msg.pending && <ThinkingIndicator startedAt={turnStartedAt} events={events} t={t} />}
         {msg.content && (msg.pending
           ? <Typewriter text={msg.content} />
-          : <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>)}
+          : <Markdown>{msg.content}</Markdown>)}
       </div>
     </div>
   );
@@ -837,9 +801,11 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: Displ
  *  the bubble; process is collapsed — full detail is in the 工作台. */
 function isOutputEvent(e: Event): boolean {
   if (e.kind !== 'tool_result') return false;
-  const r = (e.payload as { result?: { kind?: string; chart?: unknown; meta?: unknown; error?: unknown } }).result;
+  const r = (e.payload as { result?: { kind?: string; chart?: unknown; meta?: unknown; error?: unknown; derived_dataset?: unknown } }).result;
   if (!r) return false;
-  return (r.kind === 'chart' && !!r.chart) || r.kind === 'chart_batch' || !!r.meta || !!r.error;
+  // A new derived dataset (a new column the user may want) is an OUTPUT, not
+  // process noise — keep its "已存为「X」, 数据集→中间结果可看" hint visible.
+  return (r.kind === 'chart' && !!r.chart) || r.kind === 'chart_batch' || !!r.meta || !!r.error || !!r.derived_dataset;
 }
 
 /** Collapsed process trace inside the chat bubble — keeps the conversation

@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, Database, Loader2, AlertTriangle, GitBranch, Bookmark, ChevronRight, Pin, PinOff, Recycle, BarChart3, Box, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import Markdown from '@/components/Markdown';
 import { api, type Dataset, type UploadResp } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParserModal from '@/components/ParserModal';
@@ -317,7 +316,7 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved }: {
         <div className="mb-5 rounded-2xl bg-violet-50/60 ring-1 ring-violet-100 p-4 text-sm text-ink-700">
           <div className="flex items-center gap-1.5 text-violet-700 font-medium mb-1.5"><Sparkles className="w-4 h-4" /> AI 解释</div>
           {explaining ? <div className="text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> 正在解读…</div>
-            : <div className="prose-tight leading-relaxed"><ReactMarkdown remarkPlugins={[remarkGfm]}>{explanation}</ReactMarkdown></div>}
+            : <div className="prose-tight leading-relaxed"><Markdown>{explanation}</Markdown></div>}
         </div>
       )}
       {showMesh && isMesh && (
