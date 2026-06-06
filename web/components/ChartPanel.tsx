@@ -6,7 +6,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ZAxis,
 } from 'recharts';
 import { LineChart as LineIcon, ScatterChart as ScatterIcon, BarChart3 } from 'lucide-react';
-import PlotlyPanel from '@/components/PlotlyPanel';
+import dynamic from 'next/dynamic';
+// plotly.js-dist-min is a browser build that references `self` at module top,
+// so it must never be evaluated during SSR — load it client-only.
+const PlotlyPanel = dynamic(() => import('@/components/PlotlyPanel'), { ssr: false });
 
 /**
  * Interactive, agent-generated chart. The backend `visualize` action ships a

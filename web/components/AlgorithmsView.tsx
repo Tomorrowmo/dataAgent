@@ -2,40 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Sparkles, Wrench, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
-import FlowCanvas from '@/components/FlowCanvas';
+import dynamic from 'next/dynamic';
+// @xyflow/react is browser-only — client-only load to keep it out of SSR.
+const FlowCanvas = dynamic(() => import('@/components/FlowCanvas'), { ssr: false });
 import SaveToolModal from '@/components/SaveToolModal';
 import RunApp from '@/components/RunApp';
 import DatasetChart from '@/components/DatasetChart';
 import { SOURCE_ZH, RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent, intentIcon } from '@/lib/algoMeta';
 
-type Tab = 'library' | 'templates' | 'upload' | 'ai';
-
+// The 算法库 view: a single left list (two pinned entries 上传/AI + the
+// intent-grouped algorithms) and a right area that shows the selected thing.
+// 流程模板 is now its own top-level view (see TemplatesView, used by page.tsx).
 export default function AlgorithmsView() {
   const t = useT();
-  const [tab, setTab] = useState<Tab>('library');
-  return (
-    <div className="flex flex-col h-full">
-      <div className="border-b border-ink-200 bg-white px-5 py-2 flex items-center gap-2">
-        <TabBtn active={tab === 'library'} onClick={() => setTab('library')} icon={<BookOpen className="w-4 h-4" />} label={t('algo.tab.library')} />
-        <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<Workflow className="w-4 h-4" />} label="流程模板" />
-        <TabBtn active={tab === 'upload'} onClick={() => setTab('upload')} icon={<Wrench className="w-4 h-4" />} label={t('algo.tab.upload')} />
-        <TabBtn active={tab === 'ai'} onClick={() => setTab('ai')} icon={<Sparkles className="w-4 h-4" />} label={t('algo.tab.ai')} />
-      </div>
-      <div className="flex-1 overflow-y-auto scroll-hide">
-        {tab === 'library' && <LibraryView t={t} />}
-        {tab === 'templates' && <TemplatesView />}
-        {tab === 'upload' && <UploadView t={t} />}
-        {tab === 'ai' && <GenerateView t={t} />}
-      </div>
-    </div>
-  );
+  return <LibraryView t={t} />;
 }
 
-function TemplatesView() {
+export function TemplatesView() {
   const [tpls, setTpls] = useState<FlowTemplate[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [algos, setAlgos] = useState<Algorithm[]>([]);
@@ -67,8 +54,8 @@ function TemplatesView() {
 
   return (
     <div className="flex h-full">
-      {/* master list */}
-      <div className="w-[240px] shrink-0 border-r border-ink-200 bg-ink-50/40 flex flex-col">
+      {/* master list — full-width on mobile (hidden once a template is picked) */}
+      <div className={`w-full md:w-[240px] shrink-0 border-r border-ink-200 bg-ink-50/40 flex flex-col ${selId ? 'max-md:hidden' : ''}`}>
         <div className="p-3 border-b border-ink-200">
           <button onClick={createBlank} disabled={creating}
             className="w-full flex items-center justify-center gap-1.5 bg-brand-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50">
@@ -88,10 +75,16 @@ function TemplatesView() {
           ))}
         </div>
       </div>
-      {/* detail: free-form canvas (edit) or mini-program (run) */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      {/* detail: free-form canvas (edit) or mini-program (run). On mobile hidden
+          until a template is picked, then full-screen with a back button. */}
+      <div className={`flex-1 min-w-0 flex flex-col ${selId ? '' : 'max-md:hidden'}`}>
         {selected ? (
           <>
+            {/* mobile back to list */}
+            <button onClick={() => setSelId(null)}
+              className="md:hidden w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
+              ← 返回流程列表
+            </button>
             <div className="border-b border-ink-200 bg-white px-3 py-1.5 flex items-center gap-2">
               <div className="inline-flex rounded-lg ring-1 ring-ink-200 overflow-hidden text-xs">
                 <button onClick={() => setMode('edit')} className={mode === 'edit' ? 'bg-brand-600 text-white px-2.5 py-1' : 'px-2.5 py-1 text-ink-600 hover:bg-ink-50'}>编辑画布</button>
@@ -118,34 +111,35 @@ function TemplatesView() {
   );
 }
 
-function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink-700 hover:bg-ink-100'}`}
-    >{icon}{label}</button>
-  );
-}
+type Sel = Algorithm | 'upload' | 'ai' | null;
+const isAlgoSel = (s: Sel): s is Algorithm => !!s && typeof s === 'object';
 
 function LibraryView({ t }: { t: (k: string) => string }) {
   const [algos, setAlgos] = useState<Algorithm[]>([]);
   const [q, setQ] = useState('');
-  const [selected, setSelected] = useState<Algorithm | null>(null);
+  const [selected, setSelected] = useState<Sel>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());   // collapsed intent groups
   const toggleGroup = (k: string) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   useEffect(() => { api.listAlgorithms().then(setAlgos).catch(() => {}); }, []);
-  const isSel = (a: Algorithm) => selected?.slug === a.slug && selected?.id === a.id;
+  const isSel = (a: Algorithm) => isAlgoSel(selected) && selected.slug === a.slug && selected.id === a.id;
 
   const searching = q.trim().length > 0;
   const hits = searching ? algos.filter((a) => matchAlgo(a, q)) : [];
   const groups = searching ? [] : groupByIntent(algos);   // 改法 A + D
 
+  const showDetail = selected !== null;
   return (
     <div className="flex h-full">
-      {/* Left: search (改法 B) + intent-grouped list (改法 A/D) */}
-      <div className="w-[300px] shrink-0 border-r border-ink-200 flex flex-col bg-ink-50/40">
-        <div className="p-3 border-b border-ink-200">
+      {/* Left list: full-width on mobile (hidden once something is picked);
+          fixed column on desktop. */}
+      <div className={`w-full md:w-[300px] shrink-0 border-r border-ink-200 flex flex-col bg-ink-50/40 ${showDetail ? 'max-md:hidden' : ''}`}>
+        <div className="p-3 border-b border-ink-200 space-y-2">
+          {/* two prominent capability cards, side by side — extend the library */}
+          <div className="grid grid-cols-2 gap-2">
+            <EntryCard icon={<Upload className="w-4 h-4" />} label="上传自由算法" hint="贴代码即用" tone="emerald" sel={selected === 'upload'} onClick={() => setSelected('upload')} />
+            <EntryCard icon={<Sparkles className="w-4 h-4" />} label="用 AI 生成" hint="描述就生成" tone="violet" sel={selected === 'ai'} onClick={() => setSelected('ai')} />
+          </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="想做什么？例：去掉温度尖峰…"
@@ -182,17 +176,49 @@ function LibraryView({ t }: { t: (k: string) => string }) {
         </div>
       </div>
 
-      {/* Right: run panel */}
-      <div className="flex-1 overflow-y-auto scroll-hide">
-        {selected ? (
-          <RunPanel key={selected.slug + (selected.id ?? '')} algo={selected} t={t} />
-        ) : (
+      {/* Right: upload & AI forms stay MOUNTED (just hidden) so switching between
+          them doesn't lose typed code / the AI description. Algo run panel and
+          the empty hint render conditionally. On mobile this is hidden until
+          something is picked (then full-screen with a back button). */}
+      <div className={`flex-1 overflow-y-auto scroll-hide ${showDetail ? '' : 'max-md:hidden'}`}>
+        {showDetail && (
+          <button onClick={() => setSelected(null)}
+            className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
+            ← 返回列表
+          </button>
+        )}
+        <div className={selected === 'upload' ? 'h-full' : 'hidden'}><UploadView t={t} /></div>
+        <div className={selected === 'ai' ? 'h-full' : 'hidden'}><GenerateView t={t} /></div>
+        {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '')} algo={selected} t={t} />}
+        {selected === null && (
           <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
-            ← 从左侧按「想做什么」选一个算法,或上面搜你想做的事;在这里填参数、选数据集、直接运行(不依赖 AI)
+            ← 从左侧选一个算法（或上面的「上传自由算法 / 用 AI 生成」）;在这里填参数、选数据、直接运行
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** A prominent capability card above the algorithm list (上传自由算法 / 用 AI 生成)
+ *  — these EXTEND the library, so they get emphasis (colored chip + gradient +
+ *  hover-lift) to stand out from the plain algorithm rows. Selected like an
+ *  algorithm; the right area then shows its form. */
+function EntryCard({ icon, label, hint, tone, sel, onClick }: {
+  icon: React.ReactNode; label: string; hint: string; tone: 'emerald' | 'violet'; sel: boolean; onClick: () => void;
+}) {
+  const a = tone === 'emerald'
+    ? { grad: 'from-emerald-50', chip: 'bg-emerald-100 text-emerald-700', ring: 'ring-emerald-200', selRing: 'ring-emerald-400' }
+    : { grad: 'from-violet-50', chip: 'bg-violet-100 text-violet-700', ring: 'ring-violet-200', selRing: 'ring-violet-400' };
+  return (
+    <button onClick={onClick}
+      className={`rounded-xl p-2.5 transition text-left flex flex-col gap-1.5 hover:-translate-y-0.5 hover:shadow-sm bg-gradient-to-br ${a.grad} to-white ${
+        sel ? `ring-2 ${a.selRing}` : `ring-1 ${a.ring} hover:ring-2`
+      }`}>
+      <span className={`w-8 h-8 rounded-lg grid place-items-center ${a.chip}`}>{icon}</span>
+      <span className="font-semibold text-[13px] leading-tight text-ink-800">{label}</span>
+      <span className="text-[10.5px] text-ink-400 leading-tight">{hint}</span>
+    </button>
   );
 }
 

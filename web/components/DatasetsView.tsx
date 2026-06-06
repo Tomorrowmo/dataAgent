@@ -10,7 +10,9 @@ import { useT } from '@/lib/i18n';
 import ParserModal from '@/components/ParserModal';
 import DatasetChart from '@/components/DatasetChart';
 import DataTable from '@/components/DataTable';
-import MeshViewer3D from '@/components/MeshViewer3D';
+import dynamic from 'next/dynamic';
+// three / @react-three are browser-only (reference window/self) — client-only load.
+const MeshViewer3D = dynamic(() => import('@/components/MeshViewer3D'), { ssr: false });
 
 type NeedsParser = NonNullable<UploadResp['needs_parser']>;
 
@@ -144,7 +146,7 @@ export default function DatasetsView() {
         />
       )}
       <div
-        className={`w-80 border-r bg-white flex flex-col transition-colors ${dragOver ? 'border-brand-400 bg-brand-50/40' : 'border-ink-200'}`}
+        className={`w-full md:w-80 border-r bg-white flex flex-col transition-colors ${selected ? 'max-md:hidden' : ''} ${dragOver ? 'border-brand-400 bg-brand-50/40' : 'border-ink-200'}`}
         onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
         onDrop={onDrop}
@@ -187,7 +189,13 @@ export default function DatasetsView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scroll-hide">
+      <div className={`flex-1 overflow-y-auto scroll-hide ${selected ? '' : 'max-md:hidden'}`}>
+        {selected && (
+          <button onClick={() => setSelected(null)}
+            className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
+            ← 返回数据集列表
+          </button>
+        )}
         {error && (
           <div className="m-5 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-sm flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" /> {error}

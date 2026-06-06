@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { Database, Wrench, BarChart3, Sparkles, List, Info, MessageSquare, CheckCircle2, AlertTriangle, ChevronDown, Save, Loader2, Pencil, X } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate } from '@/lib/api';
 import type { Event } from '@/components/WorkbenchPanel';
-import FlowCanvas from '@/components/FlowCanvas';
+import dynamic from 'next/dynamic';
+const FlowCanvas = dynamic(() => import('@/components/FlowCanvas'), { ssr: false });
 
 /**
  * Dify/Coze-style flow view of a single conversation's tool-call chain.
