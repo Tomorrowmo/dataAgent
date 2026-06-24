@@ -1,4 +1,4 @@
-# Build a FULLY SELF-CONTAINED Windows bundle of RLab Cortex — the customer installs
+﻿# Build a FULLY SELF-CONTAINED Windows bundle of RLab Cortex — the customer installs
 # NOTHING (no Python, no Node, no pip/npm). They unzip and double-click start.bat.
 #
 # What goes in the bundle:
