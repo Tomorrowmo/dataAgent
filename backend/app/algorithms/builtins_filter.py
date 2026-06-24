@@ -325,3 +325,67 @@ register_builtin(
     ),
     _find_peaks,
 )
+
+
+# ---------------------------------------------------------------- mark peaks (极值图)
+def _mark_peaks(
+    df: pd.DataFrame,
+    *,
+    column: str,
+    prominence: Optional[float] = None,
+    distance: Optional[int] = None,
+    height: Optional[float] = None,
+    troughs: bool = False,
+) -> pd.DataFrame:
+    """Annotate the signal IN PLACE for an 极值图: keep every original row/column
+    and ADD `<column>_peak` = the signal value at each detected peak, NaN
+    elsewhere. Unlike `find_peaks` (which returns a peaks-only table and discards
+    the signal), this preserves the curve so it can be overlaid with its extrema
+    on one chart. With `troughs=True`, also add `<column>_trough` for the minima."""
+    from scipy.signal import find_peaks
+
+    if column not in df.columns:
+        raise ValueError(f"column not found: {column}. available: {list(df.columns)}")
+    y = df[column].astype(float).to_numpy()
+    kw = {}
+    if prominence is not None:
+        kw["prominence"] = prominence
+    if distance is not None:
+        kw["distance"] = max(1, int(distance))
+    if height is not None:
+        kw["height"] = height
+
+    out = df.copy()
+    peak_idx, _ = find_peaks(y, **kw)
+    peak_col = np.full(len(y), np.nan)
+    if len(peak_idx):
+        peak_col[peak_idx] = y[peak_idx]
+    out[f"{column}_peak"] = peak_col
+    if troughs:
+        trough_idx, _ = find_peaks(-y, **kw)
+        trough_col = np.full(len(y), np.nan)
+        if len(trough_idx):
+            trough_col[trough_idx] = y[trough_idx]
+        out[f"{column}_trough"] = trough_col
+    return out
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="mark_peaks",
+        name="Mark peaks (极值标注)",
+        category="filter",
+        description="Use to draw an 极值图 / mark the extrema ON the signal curve: keeps the original signal and adds a `<col>_peak` column (value at each peak, blank elsewhere) so you can plot the curve and its peaks together. Set troughs=true to also mark the minima. (To just COUNT peaks or get a peaks-only table, use find_peaks instead.)",
+        params_schema={
+            "column": {"type": "string", "required": True},
+            "prominence": {"type": "number", "required": False, "description": "Min peak prominence — raise it to ignore small bumps"},
+            "distance": {"type": "integer", "required": False, "description": "Min samples between adjacent peaks"},
+            "height": {"type": "number", "required": False, "description": "Min peak height"},
+            "troughs": {"type": "boolean", "default": False, "description": "Also mark the local minima (谷值)"},
+        },
+        returns="dataframe",
+        tags=["filter", "signal", "peaks", "极值", "极值图"],
+        aliases=["mark_extrema", "annotate_peaks", "peak_overlay", "极值图", "极值标注"],
+    ),
+    _mark_peaks,
+)

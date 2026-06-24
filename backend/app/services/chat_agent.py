@@ -35,7 +35,7 @@ from .codegen import generate_algorithm, parse_meta
 from .datasets import _persist_dataset, load_dataset_df
 from .llm import LLMClient
 
-SYSTEM_PROMPT = """You are Numetrix, a verifiable data-analysis agent for engineers and scientists. You help users explore, clean, and analyze tabular / time-series data by invoking curated algorithms (preferred) or, when no suitable one exists, generating a new one for the user to approve.
+SYSTEM_PROMPT = """You are RLab Cortex, a verifiable data-analysis agent for engineers and scientists. You help users explore, clean, and analyze tabular / time-series data by invoking curated algorithms (preferred) or, when no suitable one exists, generating a new one for the user to approve.
 
 You ALWAYS respond with a single JSON object — nothing outside it. Schema:
 {
@@ -63,15 +63,20 @@ Guidance:
 - When `visualize` CAN'T express the chart you need, use `generate_viz` with a precise description — it WRITES the chart on demand and can render ESSENTIALLY ANY chart type: radar / polar, heatmap, contour, 3D surface/scatter, box, violin, histogram, parallel-coordinates, pie, error bars, raw-points-plus-fitted-curve, custom transforms, anything bespoke. So NEVER tell the user a chart type is "unsupported" or that the system "only supports line/scatter/bar" — if `visualize` can't do it, call `generate_viz`. It's slower than `visualize`, so use `visualize` for plain line/scatter/bar and `generate_viz` for everything else.
 - When the user uploads or selects a dataset, the schema and head are in the system context. Reference exact column names.
 - COLUMN HONESTY: only use column names that actually appear in the selected dataset's schema. If the user asks about a column or quantity that is NOT in the data (e.g. they ask to plot/fit `voltage_v` but the dataset only has `a1, b2, c2`, or they ask for `SoC` / `内阻` / a cycle that the data doesn't contain), NEVER silently substitute a different column as a stand-in and proceed — that fabricates a result. Instead say plainly the requested column/quantity is not in this dataset, list what IS available, and ask the user to confirm a real column or switch datasets. Same rule for `generate_viz` descriptions: do not name a column the data doesn't have.
+- 极值图 / PEAK-OVERLAY: to draw the extrema ON the signal curve (极值图, 标出峰值/极值), run `mark_peaks` (column=the signal) — it keeps the signal and adds a `<col>_peak` column — then `visualize` with y=[the signal, `<col>_peak`] (or `generate_viz` for line+markers). Use `find_peaks` only when the user just wants to COUNT peaks or a peaks-only table; never try to plot the raw signal FROM a find_peaks result (it has no signal column).
+- RESHAPED-DATA RECOVERY: if a prior pipeline step reshaped the data (find_peaks → peak_index/…, group_aggregate → value2_mean/…), the original columns (signal, value2, …) are NOT in that result. For PLOTTING this is handled automatically (visualize falls back to the original data and the result's `plotted_from` says which data was used — mention it). For a TOOL that needs an original column, set `dataset` to the original dataset by name, or tell the user to click 重置流水线 — do NOT loop re-asking.
 - ACT, don't pre-narrate. When the user asks for a concrete action (画热力图/生成某图, 计算, 检测异常, 运行某算法…), emit that action (visualize / generate_viz / run_tool) IMMEDIATELY. Do NOT first send an `answer` that explains the concept or announces "我将为你生成…" — just do it. Pre-explaining a concept the user already asked for wastes a whole slow LLM round-trip and reads as stalling; the result plus a SHORT interpretation afterward IS the answer.
 - After `run_tool`, you'll receive a tool-result message. ALWAYS interpret the result for the user with a final `answer` action — never leave them hanging on raw numbers.
 - PIPELINES compose automatically: when a tool outputs a transformed table (filter/normalize/fill_missing/etc. that adds or changes columns), the NEXT `run_tool` in this same turn operates on that transformed result — NOT the original. So for a multi-step request (e.g. 去噪→检测异常→插值→归一化) just call the tools in order; the new columns from step N (e.g. `voltage_v_gauss`) ARE available to step N+1. Read each tool-result's summary for the exact new column names.
 - Each transforming step is auto-saved as an inspectable DERIVED dataset (the tool-result includes `derived_dataset`). In your final answer you MAY tell the user that each stage (去噪后/检测后/…) is viewable in 数据集 → 中间结果.
-- Keep `thought` to ONE sentence. Write `answer.text` as detailed and well-structured as the question deserves — give real interpretation, the relevant numbers, and useful next steps; do NOT artificially truncate an analysis. The reply streams out to the user token-by-token, so a longer answer is fine — they watch it being written. The only thing to cut is EMPTY boilerplate: don't open a simple greeting with a self-introduction or feature tour ("你好,我是 Numetrix…") — get straight to the content. Reference numbers from results explicitly.
+- Keep `thought` to ONE sentence. Write `answer.text` as detailed and well-structured as the question deserves — give real interpretation, the relevant numbers, and useful next steps; do NOT artificially truncate an analysis. The reply streams out to the user token-by-token, so a longer answer is fine — they watch it being written. The only thing to cut is EMPTY boilerplate: don't open a simple greeting with a self-introduction or feature tour ("你好,我是 RLab Cortex…") — get straight to the content. Reference numbers from results explicitly.
 - LANGUAGE: Write `answer.text` ENTIRELY in the same language as the user's most recent message — all Chinese if they wrote Chinese, all English if they wrote English. NEVER mix two languages within one answer. (Technical tokens like column names, slugs, and numbers stay verbatim.)
 - If parameters are unclear, ask the user via `answer` rather than guessing."""
 
 
+# 流式事件单元:run_turn 不"返回结果",而是持续 yield 一串 AgentStep,
+# 前端据此实时渲染。kind 决定事件类型,payload 是其数据。
+# 这是"没有静默步骤"原则的载体 —— 每个 LLM 调用/工具执行/错误都对应一个事件。
 @dataclass
 class AgentStep:
     # "progress" | "thought" | "tool_call" | "tool_result" | "final"
@@ -80,6 +85,8 @@ class AgentStep:
     payload: Dict[str, Any] = field(default_factory=dict)
 
 
+# ── 流式半成品解析:对"还没收完"的字符串做正则,边流边显示 ──
+# 关键技巧:实时显示用宽松正则抠半成品,最终动作判定用严格 JSON 解析,两套并行。
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 # Captures the (possibly still-streaming) value of the "thought" field — used to
 # show the agent's reasoning live, token by token, instead of a blank spinner.
@@ -224,6 +231,67 @@ def _load_df(ds: Optional[Dataset], working: Dict[int, Any]):
     return load_dataset_df(ds)
 
 
+def _read_frame_for_viz(
+    ds: Dataset,
+    datasets: List[Dataset],
+    working: Dict[int, Any],
+    *,
+    x: Optional[str],
+    y: Optional[Any],
+):
+    """Pick the dataframe a PLOT should read from, so a reshaping step can't hide
+    the column the user actually asked for.
+
+    A cross-turn pipeline head SHADOWS a dataset's original columns: after a
+    reshaping step (find_peaks → peak_index/…; group_aggregate → value2_mean/…)
+    the working copy no longer carries `signal`/`value2`, so a plain plot of the
+    raw column looked 'missing' even though the data is right there on disk —
+    and every later turn re-seeded that head, so the agent could never recover.
+
+    For a READ this is unambiguous (no substitution risk): plot from whichever
+    frame genuinely has the requested columns. Preference order:
+      1) the working/head copy of the target ds (so 去噪后画 signal_gauss works),
+      2) the target ds's ORIGINAL on-disk data (un-shadow it),
+      3) any OTHER loaded dataset that has them.
+    Returns (df, source_note). `source_note` is set only when we had to leave the
+    target's working copy, so the caller can tell the user which data was used."""
+    needed: List[str] = []
+    yy = [y] if isinstance(y, str) else list(y or [])
+    for c in yy + ([x] if x else []):
+        if c and c not in needed:
+            needed.append(c)
+    head = _load_df(ds, working)
+    # No explicit columns, or the head already has them → keep current behavior.
+    if head is None or not needed or all(c in head.columns for c in needed):
+        return head, None
+    # Head (a pipeline stage) lacks the requested columns — find the real source.
+    # 1) the target dataset's ORIGINAL data (only meaningful if the head differs).
+    if ds.id in working:
+        try:
+            orig = load_dataset_df(ds)
+            if all(c in orig.columns for c in needed):
+                return orig, f"「{ds.name}」原始数据(当前流水线结果里没有该列)"
+        except Exception:
+            pass
+    # 2) any OTHER loaded dataset that has every requested column.
+    for other in datasets:
+        if other.id == ds.id:
+            continue
+        try:
+            odf = load_dataset_df(other)
+        except Exception:
+            continue
+        if all(c in odf.columns for c in needed):
+            return odf, f"「{other.name}」(目标数据集里没有该列)"
+    # Nothing has them → return head so the honesty guard fires with its column list.
+    return head, None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 动作分发中枢:把 LLM 返回的 action 字符串路由到具体实现。
+# 这是一个大 if/elif 分发器,本身不流式 —— 一次执行完返回 dict 结果。
+# run_turn 的主循环每收到一个非 answer 动作,就调用它一次。
+# ═══════════════════════════════════════════════════════════════════════════
 async def _execute_action(
     *,
     session: AsyncSession,
@@ -231,13 +299,14 @@ async def _execute_action(
     owner_id: int,
     datasets: List[Dataset],
     parsed: Dict[str, Any],
-    working: Dict[int, Any],
-    lineage_state: Dict[int, Any],
-    pipeline_state: Dict[str, Any],
+    working: Dict[int, Any],          # 本轮各数据集的"已变换副本"(流水线接力用)
+    lineage_state: Dict[int, Any],    # 各数据集的血缘链头部(原始→去噪→…)
+    pipeline_state: Dict[str, Any],   # 跨轮流水线状态(由调用方持久化)
 ) -> Dict[str, Any]:
     action = parsed.get("action", "answer")
     args = parsed.get("args", {}) or {}
 
+    # ── 动作①:列出工具(可按 category 过滤)。内置 + 用户/公开算法 ──
     if action == "list_tools":
         result = await session.execute(
             select(Algorithm).where(
@@ -251,6 +320,7 @@ async def _execute_action(
             index = [t for t in index if t["category"] == cat]
         return {"tools": index, "count": len(index)}
 
+    # ── 动作②:查某个工具的完整参数 schema(供 LLM 调用前确认参数) ──
     if action == "describe_tool":
         slug = args.get("slug")
         spec = registry.get_builtin(slug)
@@ -269,23 +339,29 @@ async def _execute_action(
             "returns": row.returns, "source": row.source, "verified": bool(row.is_verified),
         }
 
+    # ── 动作③:执行算法(核心)。先内置注册表,再用户/AI 生成的算法表 ──
     if action == "run_tool":
         slug = args.get("slug")
         params = args.get("params", {}) or {}
-        ds = _resolve_dataset(datasets, args)
-        df = _load_df(ds, working)
+        ds = _resolve_dataset(datasets, args)   # 选数据集:args.dataset 名/id,默认第一个
+        df = _load_df(ds, working)              # 优先取本轮已变换副本 → 流水线自动接力
 
         spec = registry.get_builtin(slug)
         if spec:
             result = registry.execute_builtin(slug, df, params)
             label = spec.name
         else:
+            # 不是内置 → 查用户/AI 生成的算法,沙箱里跑它的源码
             row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
             if row is None:
                 return {"status": "error", "error": f"tool not found: {slug}"}
             result = registry.execute_code(row.code, df, params)
             label = row.name
 
+        # ★流水线三件事(去噪→检测→插值→归一化能自动接力的关键):
+        #   1) 把输出写进 working[ds.id] → 同轮下一个 run_tool 自动读到它(轮内组合)
+        #   2) 物化成一个 derived dataset 并记血缘 → 用户能在「中间结果」里逐阶段检查
+        #   3) 推进 pipeline_state 头部 → 下一轮("再插值一下")继续在此结果上接力(跨轮)
         # A DataFrame output → thread into the working copy (pipeline composition)
         # AND materialize it as a derived dataset, so the user can inspect every
         # stage (e.g. "去噪后的数据") in 数据集 → 中间结果.
@@ -316,6 +392,7 @@ async def _execute_action(
                 pass
         return result
 
+    # ── 动作④:画图(line/scatter/bar)。支持多数据集叠加对比 ──
     if action == "visualize":
         # Overlay: args.datasets = [names] → plot the same column(s) from each
         # dataset on ONE chart for comparison (e.g. cell A vs B voltage).
@@ -341,15 +418,20 @@ async def _execute_action(
         ds = _resolve_dataset(datasets, args)
         if ds is None:
             return {"status": "error", "error": "no dataset selected — ask the user to pick one before plotting."}
-        df = _load_df(ds, working)
-        return _build_chart(
+        df, src_note = _read_frame_for_viz(ds, datasets, working, x=args.get("x"), y=args.get("y"))
+        res = _build_chart(
             df,
             chart_type=args.get("chart_type", "line"),
             x=args.get("x"),
             y=args.get("y"),
             title=args.get("title", ""),
         )
+        # Tell the user (via the LLM summary) when we plotted from un-shadowed data.
+        if src_note and isinstance(res, dict) and res.get("status") == "ok":
+            res.setdefault("summary", {})["plotted_from"] = src_note
+        return res
 
+    # ── 动作⑤:批量出图 —— 一次动作产出多张图(每数据集/每列一张) ──
     if action == "visualize_batch":
         # Produce MANY charts in ONE action (批量出图) — far more reliable than
         # asking a weak model to loop `visualize` (which it often skips, then
@@ -388,7 +470,7 @@ async def _execute_action(
         if per == "column":
             # One chart per y-column on the first target dataset.
             ds = targets[0]
-            df = _load_df(ds, working)
+            df, _ = _read_frame_for_viz(ds, datasets, working, x=x, y=y)
             if df is None:
                 return {"status": "error", "error": f"could not load dataset '{ds.name}'."}
             ycols = [c for c in (y or []) if c in df.columns]
@@ -401,7 +483,7 @@ async def _execute_action(
                     chart_labels.append(f"{ds.name}:{col}")
         else:  # per dataset
             for ds in targets:
-                df = _load_df(ds, working)
+                df, _ = _read_frame_for_viz(ds, datasets, working, x=x, y=y)
                 if df is None:
                     continue
                 r = _build_chart(df, chart_type=chart_type, x=x, y=y, title=_pfx(ds.name))
@@ -418,6 +500,7 @@ async def _execute_action(
                         "labels": chart_labels},
         }
 
+    # ── 动作⑥:AI 现写图表代码 —— visualize 表达不了的图(雷达/热力/3D…) ──
     if action == "generate_viz":
         ds = _resolve_dataset(datasets, args)
         if ds is None:
@@ -427,6 +510,8 @@ async def _execute_action(
             return {"status": "error", "error": "generate_viz requires a 'description' of the chart to build."}
         return await _generate_viz(description, _load_df(ds, working), ds, llm)
 
+    # ── 动作⑦:自扩展 —— LLM 写一个新算法 + 自测,通过即注册、本轮可用 ──
+    #    这是 RLab Cortex「自扩展可验证 agent」的核心:缺工具就现造,造完即用。
     if action == "generate_tool":
         description = args.get("description", "")
         if not description.strip():
@@ -588,7 +673,11 @@ async def _generate_viz(description: str, df: pd.DataFrame, ds: Dataset, llm: LL
             return {"status": "error", "error": f"viz codegen LLM failed: {type(e).__name__}: {e}"}
 
         code = _extract_code_block(raw)
-        res = sandbox_executor.execute(code, {}, input_df=df, save_result=False, mode="algorithm")
+        # mode="viz": run the chart code WITHOUT requiring a META dict (the viz
+        # prompt produces a chart builder, not a library algorithm). Validating
+        # it as an algorithm rejected any attempt where the LLM omitted META —
+        # the intermittent "missing top-level META dict" failure on box/violin/…
+        res = sandbox_executor.execute(code, {}, input_df=df, save_result=False, mode="viz")
         if res.status != "ok":
             prev_err = res.error
             continue
@@ -787,6 +876,8 @@ def _format_tools_brief(tools: List[Dict[str, Any]]) -> str:
     return "\n".join(out)
 
 
+# "双视图"模式:前端拿完整结果(含上千个点),LLM 只拿瘦身后的 summary。
+# 避免大数组浪费 context、且被 8000 字符上限截断成坏 JSON 喂给模型。
 def _llm_result_view(result: Dict[str, Any]) -> Dict[str, Any]:
     """Slim a tool result before feeding it back to the LLM. Chart results carry
     big inline point-data arrays that (a) waste context and (b) get truncated
@@ -832,6 +923,7 @@ async def run_turn(
     this turn SEEDS its working copy from that derived dataset so a multi-turn
     pipeline keeps composing instead of resetting. It is mutated in place as new
     stages are produced, so the caller persists continuity automatically."""
+    # ── 三级流水线状态:轮内(working)/ 血缘(lineage)/ 跨轮(pipeline_state)──
     datasets = list(datasets or [])
     pipeline_state = pipeline_state if isinstance(pipeline_state, dict) else {}
     # Per-turn working copy of each dataset: a tool that outputs a transformed
@@ -886,6 +978,8 @@ async def run_turn(
     tools_index = _registry_index(list(user_algo_rows))
     tools_brief = _format_tools_brief(tools_index)
 
+    # ── 拼 system prompt:协议规则 + 数据集上下文 + 真实工具清单 ──
+    #    把真实 slug 灌进 prompt 是抑制弱模型「幻觉出不存在工具」的关键手段。
     system_msg = (
         SYSTEM_PROMPT
         + "\n\n## Dataset context\n" + _format_dataset_context(datasets)
@@ -919,9 +1013,15 @@ async def run_turn(
     # "hit step limit with no answer" was the agent re-calling a broken tool.
     fail_counts: Dict[str, int] = {}
 
+    # ╔══════════════════════════════════════════════════════════════════════╗
+    # ║ 主循环(ReAct):最多 max_steps 步,每步 = 想→做→观察。            ║
+    # ║   阶段1 心跳   → 阶段2 流式收 LLM → 阶段3 解析 JSON                  ║
+    # ║   阶段4 若 answer 则收尾返回 → 阶段5 否则执行动作 → 阶段6 回灌结果   ║
+    # ║ LLM 只要不输出 answer,循环就把工具结果喂回去继续 —— 这就是自主性。 ║
+    # ╚══════════════════════════════════════════════════════════════════════╝
     for step_no in range(max_steps):
-        # Heartbeat BEFORE the LLM call so the UI immediately shows "calling X"
-        # even when the model takes 5-30s to return the first token.
+        # 阶段1 ── 心跳:在调用 LLM 之前就发,UI 立刻显示"正在调用",
+        #          即使模型要 5-30s 才吐第一个 token 也不会是死寂的转圈。
         yield AgentStep(kind="progress", payload={
             "phase": "llm_call", "step": step_no + 1, "model": model_label,
             "msg": f"calling {model_label} (step {step_no + 1})",
@@ -931,6 +1031,8 @@ async def run_turn(
         last_thought = ""
         last_answer = ""
         try:
+            # 阶段2 ── 流式收取:边收边用正则抠出半成品 thought / answer.text,
+            #          实时推给前端做打字机效果;同时累积完整文本待会儿严格解析。
             # Stream tokens so the agent's reasoning shows up live (no blank
             # "思考中" spinner). We still accumulate the full text and parse the
             # JSON action exactly as before once the stream completes.
@@ -965,6 +1067,7 @@ async def run_turn(
             "msg": f"{model_label} returned {len(raw or '')} chars in {dt:.1f}s",
         })
 
+        # 阶段3 ── 解析 JSON。失败时进入「自愈第①②层」(纯散文 / 半结构化)。
         try:
             parsed = _safe_parse_json(raw)
         except Exception:
@@ -978,6 +1081,8 @@ async def run_turn(
             ):
                 yield AgentStep(kind="final", payload={"text": raw.strip()})
                 return
+            # 自愈第②层:看起来像坏掉的结构化输出 —— 只催一次重发 JSON,
+            #   还坏就把散文原样给用户(reformat_attempted 保证最多自愈一次,不死循环)。
             # Otherwise it looks half-structured — self-heal:
             #   1st offence → nudge it once to resend as JSON (a visible llm_call step).
             #   still broken → present the prose verbatim rather than an error.
@@ -1003,6 +1108,7 @@ async def run_turn(
         if thought:
             yield AgentStep(kind="thought", payload={"text": thought, "step": step_no + 1})
 
+        # 阶段4 ── 终止条件:LLM 给出 answer 就收尾。空答案进入「自愈第③层」。
         if action == "answer":
             answer_text = (parsed.get("args", {}) or {}).get("text", "") or ""
             if not answer_text.strip():
@@ -1030,6 +1136,9 @@ async def run_turn(
             yield AgentStep(kind="final", payload={"text": answer_text})
             return
 
+        # 阶段5 ── 执行动作:非 answer 的动作都交给 _execute_action 分发器。
+        #          全程发 tool_call / tool_start / tool_done / tool_result 事件,
+        #          对应记忆里的铁律「没有静默步骤」。
         yield AgentStep(kind="tool_call", payload={"action": action, "args": parsed.get("args", {})})
         yield AgentStep(kind="progress", payload={
             "phase": "tool_start", "step": step_no + 1, "action": action,
@@ -1058,6 +1167,9 @@ async def run_turn(
             })
         yield AgentStep(kind="tool_result", payload={"action": action, "result": tool_result})
 
+        # 断路器:按 (action, slug) 统计"同一种失败"的次数 —— 第2次给 LLM
+        # 警告别用同参数重试,第3次直接停。防止 agent 反复调坏工具空转把步数耗光
+        # (这正是过去"达到步数上限却没答案"的头号原因)。
         # Circuit-breaker on repeated identical failures: escalate a warning at 2,
         # stop at 3 — so the agent can't burn the whole step budget re-calling a
         # tool that keeps erroring the same way.
@@ -1082,6 +1194,9 @@ async def run_turn(
                     "换个工具、大改参数,或直接基于已有结果作答。"
                 )
 
+        # 阶段6 ── 回灌:把(瘦身后的)工具结果作为 user 消息塞回对话,
+        #          _llm_result_view 把图表的大数组裁成 summary,避免撑爆/截断 context;
+        #          截断到 8000 字符 + 可能附带断路器警告 nudge,然后进入下一步循环。
         messages.append({"role": "assistant", "content": raw})
         messages.append({
             "role": "user",
@@ -1089,6 +1204,7 @@ async def run_turn(
                        + nudge + "\n\nNow respond with the next JSON action.",
         })
 
+    # 循环跑满 max_steps 仍没拿到 answer → 兜底收尾(通常是某工具反复失败)。
     yield AgentStep(kind="final", payload={
         "text": (
             "我执行了多步但还没给出最终结论(达到步数上限)。这通常说明某个工具反复"
