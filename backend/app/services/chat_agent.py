@@ -288,6 +288,46 @@ def _read_frame_for_viz(
     return head, None
 
 
+def _viz_frame(ds: Dataset, working: Dict[int, Any]):
+    """Choose the dataframe `generate_viz` should draw from. Unlike `visualize`
+    it gets a free-text description (no explicit column list), so we can't match
+    columns — but we can still avoid the shadowing trap: if the pipeline head
+    merely REDUCED/reshaped the data (find_peaks → peak_index/…; group_aggregate
+    → value*_mean/…) the head lost the raw columns, so prefer the ORIGINAL. If
+    the head ADDED columns (a transform like 去噪 → +signal_gauss, a superset),
+    keep the head so 画去噪后的图 still works."""
+    head = _load_df(ds, working)
+    if head is None or ds.id not in working:
+        return head if head is not None else load_dataset_df(ds)
+    try:
+        orig = load_dataset_df(ds)
+    except Exception:
+        return head
+    # Head is a strict superset of the original columns → a column-adding
+    # transform; use it. Otherwise it dropped/renamed columns → use the original.
+    if set(orig.columns).issubset(set(head.columns)):
+        return head
+    return orig
+
+
+def _format_df_schema(name: str, df: pd.DataFrame) -> str:
+    """Schema/head block built from a LIVE dataframe (not ds.schema_json), so the
+    context shown to the viz codegen ALWAYS matches the data it actually gets —
+    the mismatch (original schema vs a reshaped working copy) is what made
+    generate_viz write code referencing a column that wasn't there."""
+    col_lines = [
+        f"  - {c} ({df[c].dtype}, n_unique={int(df[c].nunique(dropna=True))}, "
+        f"n_missing={int(df[c].isna().sum())})"
+        for c in df.columns
+    ]
+    head = json.loads(df.head(5).to_json(orient="records"))
+    return (
+        f"Dataset '{name}' (rows={len(df)}, columns={df.shape[1]})\n"
+        f"Schema:\n" + "\n".join(col_lines) + "\n"
+        f"First rows: {json.dumps(head, default=str)}"
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 动作分发中枢:把 LLM 返回的 action 字符串路由到具体实现。
 # 这是一个大 if/elif 分发器,本身不流式 —— 一次执行完返回 dict 结果。
@@ -509,7 +549,7 @@ async def _execute_action(
         description = args.get("description", "")
         if not description.strip():
             return {"status": "error", "error": "generate_viz requires a 'description' of the chart to build."}
-        return await _generate_viz(description, _load_df(ds, working), ds, llm)
+        return await _generate_viz(description, _viz_frame(ds, working), ds, llm)
 
     # ── 动作⑦:自扩展 —— LLM 写一个新算法 + 自测,通过即注册、本轮可用 ──
     #    这是 RLab Cortex「自扩展可验证 agent」的核心:缺工具就现造,造完即用。
@@ -655,7 +695,10 @@ async def _generate_viz(description: str, df: pd.DataFrame, ds: Dataset, llm: LL
     """AI-written visualization: the model writes `run(df) -> chart-spec`, we run
     it in the sandbox and hand the spec to the same interactive ChartPanel. Lets
     the agent build charts the fixed `visualize` tool can't express."""
-    schema_ctx = _format_one_dataset(ds, primary=True)
+    # Build the schema block from the ACTUAL df, not ds.schema_json — otherwise a
+    # reshaped working copy gets described by the original schema and the codegen
+    # references columns that aren't in the data it's handed.
+    schema_ctx = _format_df_schema(ds.name, df) if df is not None else _format_one_dataset(ds, primary=True)
     prev_err = ""
     for attempt in range(2):
         user = (
