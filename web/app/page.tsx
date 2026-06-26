@@ -13,7 +13,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold">
             <div className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">N</div>
-            <span>Numetrix</span>
+            <span>RLab Cortex</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-ink-100 text-ink-700 ml-2">{t('nav.beta')}</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-ink-700">
@@ -141,7 +141,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t border-ink-200 py-10 text-center text-xs text-ink-500">
-        © {new Date().getFullYear()} Numetrix. {t('footer.tagline')}
+        © {new Date().getFullYear()} RLab Cortex. {t('footer.tagline')}
       </footer>
     </main>
   );
@@ -159,7 +159,7 @@ function HeroDemo() {
           <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
           <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
-          <span className="ml-2 text-[11px] text-ink-400 font-medium">Numetrix</span>
+          <span className="ml-2 text-[11px] text-ink-400 font-medium">RLab Cortex</span>
         </div>
         <div className="p-4 space-y-3">
           <div className="flex justify-end">

@@ -1,6 +1,6 @@
-# Numetrix — Business Plan & GTM
+# RLab Cortex — Business Plan & GTM
 
-> Status: founding doc, May 2026. This is the playbook to take Numetrix from the MVP we just built to $1M ARR in 12 months and a $15M+ post seed round.
+> Status: founding doc, May 2026. This is the playbook to take RLab Cortex from the MVP we just built to $1M ARR in 12 months and a $15M+ post seed round.
 
 ## 1. The bet
 

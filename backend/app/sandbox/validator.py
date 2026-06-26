@@ -70,8 +70,11 @@ class ValidationResult:
 def validate_algorithm_code(source: str, *, mode: str = "algorithm") -> ValidationResult:
     """Validate user-supplied code.
 
-    mode='algorithm' — expects a top-level `run(df, **params)` function.
-                      `open` is forbidden (algorithms operate on DataFrames).
+    mode='algorithm' — expects a top-level `run(df, **params)` function AND a
+                      top-level `META` dict. `open` is forbidden.
+    mode='viz'       — AI-written chart code: expects `run(df, **params)` that
+                      returns a chart-spec dict. NO `META` required (it's not a
+                      library algorithm, just a one-off chart builder).
     mode='parser'    — expects a top-level `parse(path, **kwargs)` function.
                       `open` is allowed (parsers read binary files).
     """
@@ -138,7 +141,7 @@ def validate_algorithm_code(source: str, *, mode: str = "algorithm") -> Validati
     # the upload UI can show a precise conformance checklist instead of letting
     # the user discover it only when save → parse_meta fails.
     res.has_meta = found_meta
-    if mode != "parser" and not found_meta:
+    if mode == "algorithm" and not found_meta:
         res.errors.append("missing top-level META dict (须定义顶级 META 字典)")
 
     res.ok = len(res.errors) == 0

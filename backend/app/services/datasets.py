@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
-from ..db.models import Conversation, Dataset
+from ..db.models import Conversation, Dataset, FlowTemplate
 
 
 def _read_any(src_path: Path) -> Tuple[pd.DataFrame, str]:
@@ -37,6 +38,116 @@ def _read_any(src_path: Path) -> Tuple[pd.DataFrame, str]:
 def _safe_name(s: str) -> str:
     out = "".join(c if (c.isalnum() or c in "._- ") else "_" for c in str(s)).strip()
     return out.replace(" ", "_") or "data"
+
+
+async def seed_examples_for_user(session: AsyncSession, owner_id: int) -> int:
+    """Give a user a standard set of example datasets + flow templates so EVERY
+    account, on every environment, starts with characteristic 算例 to explore.
+
+    Two layers, both idempotent (skip anything whose name the user already has):
+      1. A code-defined baseline (services/seed_content) — generated
+         deterministically, so it can never be lost to a missing bundle / a
+         swapped snapshot. This is the guaranteed minimum every account gets.
+      2. The richer data/seed_examples bundle if it happens to be present
+         (shipped on the deployed server) — extra, not required.
+
+    Does NOT commit; the caller commits."""
+    created = await _seed_code_baseline(session, owner_id)
+    created += await _seed_from_manifest(session, owner_id)
+    return created
+
+
+async def _seed_code_baseline(session: AsyncSession, owner_id: int) -> int:
+    """Layer 1: the in-code, always-available curated set (datasets + templates)."""
+    from .seed_content import SEED_DATASETS, SEED_TEMPLATES
+
+    existing_d = set(
+        (await session.execute(select(Dataset.name).where(Dataset.owner_id == owner_id))).scalars().all()
+    )
+    existing_t = set(
+        (await session.execute(select(FlowTemplate.name).where(FlowTemplate.owner_id == owner_id))).scalars().all()
+    )
+    created = 0
+    for name, description, fmt, builder in SEED_DATASETS:
+        if name in existing_d:
+            continue
+        try:
+            df = builder()
+        except Exception:
+            continue
+        await _persist_dataset(
+            session, owner_id=owner_id, df=df, name=name,
+            filename=f"{name}.{fmt}", file_format=fmt, description=description,
+        )
+        created += 1
+    for t in SEED_TEMPLATES:
+        if t["name"] in existing_t:
+            continue
+        session.add(FlowTemplate(
+            owner_id=owner_id, name=t["name"], description=t.get("description", ""),
+            steps=t.get("steps") or [], graph=t.get("graph") or {},
+        ))
+        created += 1
+    return created
+
+
+async def _seed_from_manifest(session: AsyncSession, owner_id: int) -> int:
+    """Layer 2: the optional shipped bundle under data/seed_examples (server)."""
+    settings = get_settings()
+    seed_dir = settings.upload_path.parent / "seed_examples"
+    manifest_path = seed_dir / "manifest.json"
+    if not manifest_path.exists():
+        return 0
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    existing = set(
+        (await session.execute(select(Dataset.name).where(Dataset.owner_id == owner_id))).scalars().all()
+    )
+    created = 0
+    for m in manifest:
+        name = m.get("name")
+        if not name or name in existing:
+            continue
+        fp = seed_dir / m.get("file", "")
+        if not fp.exists():
+            continue
+        try:
+            df = pd.read_parquet(fp)
+        except Exception:
+            continue
+        await _persist_dataset(
+            session,
+            owner_id=owner_id,
+            df=df,
+            name=name,
+            filename=m.get("orig_filename") or f"{name}.csv",
+            file_format=m.get("file_format") or "csv",
+            description=m.get("description") or "示例数据",
+        )
+        created += 1
+
+    # Also seed a few example flow templates (steps/graph are JSON — no files).
+    tmpl_path = seed_dir / "templates.json"
+    if tmpl_path.exists():
+        try:
+            templates = json.loads(tmpl_path.read_text(encoding="utf-8"))
+        except Exception:
+            templates = []
+        existing_t = set(
+            (await session.execute(select(FlowTemplate.name).where(FlowTemplate.owner_id == owner_id))).scalars().all()
+        )
+        for t in templates:
+            tname = t.get("name")
+            if not tname or tname in existing_t:
+                continue
+            session.add(FlowTemplate(
+                owner_id=owner_id, name=tname, description=t.get("description", ""),
+                steps=t.get("steps") or [], graph=t.get("graph") or {},
+            ))
+            created += 1
+    return created
 
 
 async def _persist_dataset(
@@ -233,11 +344,318 @@ async def ingest_mesh_upload(
     return out
 
 
+# ── Tecplot ASCII (.dat) — a common CFD/CAE export the generic AI parser can't
+#    reliably handle (BLOCK packing stores values variable-by-variable, and a
+#    file can carry hundreds of zones / probe channels). We read it natively.
+
+def looks_like_tecplot(data: bytes) -> bool:
+    """Sniff the first few KB: a Tecplot ASCII file declares VARIABLES and ZONE
+    (and usually DATAPACKING). Content-based so it works regardless of the
+    extension (.dat / .tec / .plt-ascii / no extension)."""
+    try:
+        head = data[:4096].decode("utf-8", "ignore").upper()
+    except Exception:
+        return False
+    return "ZONE" in head and ("VARIABLES" in head or "DATAPACKING" in head)
+
+
+def read_tecplot_ascii(src_path: Path) -> pd.DataFrame:
+    """Parse a Tecplot ASCII file into ONE tidy long table: every zone (probe /
+    channel) stacked, with a leading `zone` column, then the file's variables as
+    columns. Handles BLOCK (variable-major) and POINT (row-major) packing and
+    line-wrapped values."""
+    import re
+    import numpy as np
+
+    lines = src_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    n = len(lines)
+
+    # Variable names: collected from the VARIABLES line through any continuation
+    # lines (one quoted name per line is common) up to the first ZONE.
+    variables: List[str] = []
+    i = 0
+    while i < n:
+        if lines[i].strip().upper().startswith("VARIABLES"):
+            buf, j = [], i
+            while j < n and not lines[j].strip().upper().startswith("ZONE"):
+                buf.append(lines[j])
+                j += 1
+            variables = re.findall(r'"([^"]*)"', " ".join(buf))
+            i = j
+            break
+        i += 1
+    if not variables:
+        raise ValueError("未找到 Tecplot 的 VARIABLES 定义,可能不是 Tecplot ASCII 文件")
+    nvars = len(variables)
+
+    def _all_floats(toks: List[str]) -> bool:
+        if not toks:
+            return False
+        for tk in toks:
+            try:
+                float(tk)
+            except ValueError:
+                return False
+        return True
+
+    frames: List[pd.DataFrame] = []
+    while i < n:
+        if not lines[i].strip().upper().startswith("ZONE"):
+            i += 1
+            continue
+        m = re.search(r'T\s*=\s*"([^"]*)"', lines[i])
+        zone_name = m.group(1) if m else f"zone{len(frames) + 1}"
+
+        # Read the zone header (I/J/K, DATAPACKING…) until the first numeric line.
+        i += 1
+        header: List[str] = []
+        while i < n:
+            s = lines[i].strip()
+            if s and _all_floats(s.split()):
+                break  # data starts; leave i pointing at it
+            if s:
+                header.append(s)
+            i += 1
+        h = " ".join(header).upper()
+        def _dim(letter: str) -> int:
+            mm = re.search(rf"\b{letter}\s*=\s*(\d+)", h)
+            return int(mm.group(1)) if mm else 1
+        npoints = max(1, _dim("I") * _dim("J") * _dim("K"))
+        block = "BLOCK" in h
+        need = npoints * nvars
+
+        # Collect numeric tokens until the next ZONE / non-numeric line / EOF.
+        vals: List[float] = []
+        while i < n:
+            s = lines[i].strip()
+            if not s:
+                i += 1
+                continue
+            if s.upper().startswith("ZONE"):
+                break
+            toks = s.split()
+            if not _all_floats(toks):
+                break
+            vals.extend(float(t) for t in toks)
+            i += 1
+
+        arr = np.asarray(vals[:need] if len(vals) >= need else vals, dtype=float)
+        if arr.size < nvars:
+            continue  # not even one full point — skip this zone
+        npoints = arr.size // nvars
+        arr = arr[: npoints * nvars]
+        data = arr.reshape(nvars, npoints).T if block else arr.reshape(npoints, nvars)
+        df = pd.DataFrame(data, columns=variables)
+        df.insert(0, "zone", zone_name)
+        frames.append(df)
+
+    if not frames:
+        raise ValueError("没有从这个 Tecplot 文件解析出任何 zone 数据")
+    return pd.concat(frames, ignore_index=True)
+
+
+async def ingest_tecplot_upload(
+    session: AsyncSession,
+    *,
+    owner_id: int,
+    src_path: Path,
+    original_filename: str,
+    display_name: Optional[str] = None,
+    description: str = "",
+) -> List[Dataset]:
+    """Ingest a Tecplot ASCII .dat as ONE tidy dataset (all zones stacked, with a
+    `zone` column) so the probe/channel data becomes analyzable / chartable."""
+    stem = display_name or Path(original_filename).stem
+    df = read_tecplot_ascii(src_path)
+    nzones = int(df["zone"].nunique()) if "zone" in df.columns else 1
+    value_cols = [c for c in df.columns if c != "zone"]
+    ds = await _persist_dataset(
+        session, owner_id=owner_id, df=df, name=stem,
+        filename=original_filename, file_format="dat",
+        description=description or (
+            f"Tecplot ASCII 数据:{nzones} 个 zone(测点/通道)堆叠成一张长表,共 {len(df):,} 行;"
+            f"变量 {', '.join(value_cols)}(用 zone 列筛选某个通道)"
+        ),
+    )
+    await session.commit()
+    await session.refresh(ds)
+    try:
+        src_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return [ds]
+
+
 def load_dataset_df(ds: Dataset) -> pd.DataFrame:
     path = Path(ds.storage_path)
     if not path.exists():
         raise FileNotFoundError(f"dataset file missing: {path}")
     return pd.read_parquet(path)
+
+
+# Column-name hints that strongly suggest a time / ordering axis (any language).
+_TIME_NAME_HINTS = ("time", "timestamp", "date", "datetime", "t_s", "time_s", "step", "时间", "日期", "时刻")
+
+
+def _classify_column(s: pd.Series, name: str) -> str:
+    """Best-effort semantic ROLE of a column (not just its dtype) so suggestions
+    can be tailored. Pure/deterministic — no LLM, no guessing values."""
+    lname = name.strip().lower()
+    if lname in ("x", "y", "z"):
+        return "coord"
+    if pd.api.types.is_bool_dtype(s):
+        return "bool"
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return "datetime"
+    if pd.api.types.is_numeric_dtype(s):
+        # A numeric column whose NAME says time and whose values rise monotonically
+        # is really the time axis, not a measurement.
+        if any(h in lname for h in _TIME_NAME_HINTS):
+            vals = s.dropna()
+            if len(vals) >= 3 and vals.is_monotonic_increasing:
+                return "datetime"
+        return "numeric"
+    # object / category / string
+    n = max(1, int(s.shape[0]))
+    n_unique = int(s.nunique(dropna=True))
+    # Low-cardinality strings read as categories you can group by; otherwise free text.
+    if n_unique <= max(20, int(0.05 * n)):
+        return "categorical"
+    return "text"
+
+
+def build_profile(df: pd.DataFrame, ds: Dataset) -> Dict[str, Any]:
+    """Deterministic, instant, FREE first-read of a dataset: what it roughly is,
+    a few grounded facts, and concrete next actions mapped to real recipes/tools.
+
+    No LLM — every fact is computed from the actual frame, so it can't
+    hallucinate columns or numbers (the paid `/explain` stays the deep read)."""
+    n_rows, n_cols = int(df.shape[0]), int(df.shape[1])
+    roles: Dict[str, List[str]] = {
+        "numeric": [], "datetime": [], "categorical": [], "text": [], "coord": [], "bool": [],
+    }
+    missing_hot: List[Dict[str, Any]] = []
+    constant_cols: List[str] = []
+    for c in df.columns:
+        s = df[c]
+        name = str(c)
+        role = _classify_column(s, name)
+        roles[role].append(name)
+        n_missing = int(s.isna().sum())
+        if n_missing and n_rows:
+            missing_hot.append({"name": name, "pct": round(100.0 * n_missing / n_rows, 1)})
+        if int(s.nunique(dropna=True)) <= 1:
+            constant_cols.append(name)
+    missing_hot.sort(key=lambda d: d["pct"], reverse=True)
+
+    has_coord = {x.lower() for x in roles["coord"]} >= {"x", "y", "z"}
+    n_numeric = len(roles["numeric"])
+    has_time = bool(roles["datetime"])
+    has_cat = bool(roles["categorical"])
+
+    # ── shape "kind" — the headline cognition ──────────────────────────────
+    if has_coord:
+        kind = "mesh"
+        headline = f"这是一份网格/点云数据:每行一个空间点,带 X/Y/Z 坐标和 {n_numeric} 个物理场。"
+    elif has_time and n_numeric >= 1:
+        kind = "timeseries"
+        headline = f"这看起来是一份时间序列:有时间轴(列 {roles['datetime'][0]}),随时间记录了 {n_numeric} 个数值量。"
+    elif n_numeric >= 4 and n_rows <= max(2000, n_numeric * 50) and not has_time:
+        kind = "wide_numeric"
+        headline = f"这是一份多变量数值表:{n_rows} 条记录 × {n_numeric} 个数值变量,适合找规律/找主因。"
+    elif has_cat and n_numeric >= 1:
+        kind = "grouped"
+        headline = f"这是一份带分类的数据:有 {len(roles['categorical'])} 个分类列和 {n_numeric} 个数值列,可以按组对比。"
+    else:
+        kind = "tabular"
+        headline = f"这是一份表格数据:{n_rows} 行 × {n_cols} 列。"
+
+    # ── grounded facts — concrete per-column, not just type counts ──────────
+    def _fmt_num(v: float) -> str:
+        if v != v:  # NaN
+            return "—"
+        av = abs(v)
+        if av != 0 and (av >= 1e5 or av < 1e-3):
+            return f"{v:.2e}"
+        return str(int(v)) if float(v).is_integer() else f"{v:.3g}"
+
+    const_set = set(constant_cols)
+    facts: List[str] = [f"{n_rows:,} 行 × {n_cols} 列"]
+
+    # Numeric columns → their actual value range (the most useful "what's in it").
+    for c in [c for c in roles["numeric"] if c not in const_set][:4]:
+        s = df[c].dropna()
+        if len(s):
+            facts.append(f"{c} ∈ {_fmt_num(float(s.min()))} ~ {_fmt_num(float(s.max()))}")
+
+    # Categorical columns → their actual levels (a few examples + total count).
+    for c in [c for c in roles["categorical"] if c not in const_set][:3]:
+        s = df[c].dropna()
+        k = int(s.nunique())
+        vals = [str(v) for v in pd.unique(s)[:4]]
+        facts.append(f"{c}:{'/'.join(vals)}{'…' if k > len(vals) else ''}({k} 类)")
+
+    # Constant columns → show the single value they hold (not just "is constant").
+    for c in constant_cols[:4]:
+        s = df[c].dropna()
+        facts.append(f"{c} 恒为 {str(s.iloc[0]) if len(s) else '空'}")
+
+    if missing_hot and missing_hot[0]["pct"] > 0:
+        worst = "、".join(f"{m['name']}({m['pct']}%)" for m in missing_hot[:3])
+        facts.append(f"有缺失:{worst}")
+    elif not missing_hot:
+        facts.append("没有缺失值")
+    facts = [f for f in facts if f]
+
+    # ── suggestions — each maps to a real recipe (→ chat) or in-view action ─
+    sugg: List[Dict[str, str]] = []
+    def add(slug: str, why: str):
+        sugg.append({"slug": slug, "why": why})
+
+    if kind == "mesh":
+        add("mesh3d", "在 3D 里看网格的形状和场分布")
+        add("chart", "把某个物理场画成分布图")
+    elif kind == "timeseries":
+        add("chart", "先把随时间的变化画出来看看趋势")
+        add("smooth", "信号有毛刺的话,平滑降噪但保留波形")
+        add("outliers", "找出突变/跳变这种异常点")
+    elif kind == "wide_numeric":
+        add("drivers", "看看哪个变量对结果影响最大、哪些没用")
+        add("corr", "找出变量两两之间的相关关系")
+        if n_numeric >= 5:
+            add("pca", "变量太多看不过来,压到 2-3 个主维度看结构")
+        add("chart", "挑两个变量画散点/趋势")
+    elif kind == "grouped":
+        add("chart", "按分类分组,对比各组的数值")
+        add("corr", "看看数值列之间有没有关联")
+    else:
+        add("chart", "可视化看看数据长什么样")
+        if n_numeric == 2:
+            add("fit", "两个量之间拟合一条关系")
+
+    if n_numeric == 2 and kind not in ("tabular",):
+        add("fit", "在两个数值量之间拟合一条关系")
+    if missing_hot and missing_hot[0]["pct"] >= 5:
+        add("clean", f"缺失有点多(最高 {missing_hot[0]['pct']}%),先清洗一下")
+    add("explain", "让 AI 用大白话详细讲讲这份数据")
+
+    # de-dup by slug, keep first (richest) why
+    seen: set[str] = set()
+    suggestions = []
+    for s in sugg:
+        if s["slug"] in seen:
+            continue
+        seen.add(s["slug"])
+        suggestions.append(s)
+
+    return {
+        "kind": kind,
+        "headline": headline,
+        "facts": facts,
+        "roles": {k: v for k, v in roles.items() if v},
+        "missing": missing_hot[:8],
+        "suggestions": suggestions,
+    }
 
 
 def _safe_head(df: pd.DataFrame, n: int) -> Any:

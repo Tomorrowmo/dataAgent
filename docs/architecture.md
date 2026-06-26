@@ -1,4 +1,4 @@
-# Numetrix — Technical Architecture
+# RLab Cortex — Technical Architecture
 
 ## Stack at a glance
 

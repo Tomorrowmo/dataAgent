@@ -66,7 +66,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .core.config import get_settings
-from .db.base import init_db
+from .db.base import bootstrap_admin, init_db
+from .version import APP_VERSION, about_payload
 
 logger.info("light imports done in %.2fs", time.monotonic() - _boot_t0)
 
@@ -94,6 +95,8 @@ def _warmup(app: "FastAPI") -> None:
         from .api import auth as auth_api
         from .api import chat as chat_api
         from .api import datasets as datasets_api
+        from .api import feedback as feedback_api
+        from .api import mappings as mappings_api
         from .api import templates as templates_api
 
         app.include_router(auth_api.router, prefix="/api")
@@ -101,6 +104,8 @@ def _warmup(app: "FastAPI") -> None:
         app.include_router(algorithms_api.router, prefix="/api")
         app.include_router(chat_api.router, prefix="/api")
         app.include_router(templates_api.router, prefix="/api")
+        app.include_router(feedback_api.router, prefix="/api")
+        app.include_router(mappings_api.router, prefix="/api")
         app.openapi_schema = None  # invalidate cache so the new routes appear in /openapi.json
 
         # Touch sklearn/scipy too while we're paying the cold-scan cost, so the
@@ -129,11 +134,18 @@ async def lifespan(app: FastAPI):
     # a daemon thread that does pure imports + sync include_router (no loop use),
     # so there's no cross-loop hazard.
     await init_db()
+    # First-run admin seed (no-op when unconfigured or already present). On the
+    # event loop because it touches the loop-bound sqlite engine, like init_db.
+    # Never let a bootstrap failure brick startup — degrade to manual signup.
+    try:
+        await bootstrap_admin()
+    except Exception:  # noqa: BLE001
+        logger.exception("bootstrap_admin failed; starting without a seeded admin")
     threading.Thread(target=_warmup, args=(app,), daemon=True, name="warmup").start()
     yield
 
 
-app = FastAPI(title="Numetrix Data Agent API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="RLab Cortex Data Agent API", version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -144,7 +156,7 @@ app.add_middleware(
 )
 
 # Paths that must work before warmup finishes (no heavy deps needed).
-_ALWAYS_OPEN = ("/api/health", "/api/ready", "/openapi.json", "/docs", "/redoc")
+_ALWAYS_OPEN = ("/api/health", "/api/ready", "/api/about", "/openapi.json", "/docs", "/redoc")
 
 
 @app.middleware("http")
@@ -164,7 +176,14 @@ async def _warm_gate(request: Request, call_next):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "service": "numetrix-api", "version": "0.1.0", "ready": _WARM["ready"]}
+    return {"ok": True, "service": "numetrix-api", "version": APP_VERSION, "ready": _WARM["ready"]}
+
+
+@app.get("/api/about")
+async def about():
+    """Version, changelog and linked documents for the in-app「关于」panel.
+    Stays open before warmup (static data, no DB / heavy deps)."""
+    return about_payload()
 
 
 @app.get("/api/ready")

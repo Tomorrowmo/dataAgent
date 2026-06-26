@@ -79,6 +79,56 @@ async def init_db() -> None:
             if "graph" not in tpl_cols:
                 await conn.execute(text("ALTER TABLE flow_templates ADD COLUMN graph JSON DEFAULT '{}'"))
 
+            # Screenshot path on feedback (added after the feedback table shipped).
+            def _table_exists(sync_conn, table: str) -> bool:
+                return bool(sync_conn.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='table' AND name=:t"), {"t": table}
+                ).fetchone())
+            if await conn.run_sync(_table_exists, "feedback"):
+                fb_cols = await conn.run_sync(_existing_cols, "feedback")
+                if "screenshot" not in fb_cols:
+                    await conn.execute(text("ALTER TABLE feedback ADD COLUMN screenshot VARCHAR(1024)"))
+
             # format_adapters / flow_templates tables — created via create_all
             # above; no inline migration needed beyond that. (Kept the hook here
             # in case future columns are added.)
+
+
+async def bootstrap_admin() -> None:
+    """Create the configured admin account on first run (idempotent).
+
+    A packaged build ships with an EMPTY database (the packaging script excludes
+    backend/data/), so without this there is no way to log in until someone
+    registers a plain user and hand-edits is_admin. When BOOTSTRAP_ADMIN_EMAIL /
+    BOOTSTRAP_ADMIN_PASSWORD are set (via the shipped .env), this seeds a ready
+    admin. Runs every startup but only inserts when the account is missing.
+    """
+    email = (_settings.bootstrap_admin_email or "").strip().lower()
+    password = _settings.bootstrap_admin_password or ""
+    if not email or not password:
+        return
+
+    from sqlalchemy import select
+    from .models import User
+    from ..core.security import hash_password
+    from ..services.datasets import seed_examples_for_user
+
+    async with SessionLocal() as session:
+        existing = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        if existing is not None:
+            return
+        user = User(
+            email=email,
+            name=(_settings.bootstrap_admin_name or "Admin").strip(),
+            password_hash=hash_password(password),
+            is_admin=True,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        # Mirror signup: a fresh admin shouldn't land in an empty workspace.
+        try:
+            await seed_examples_for_user(session, user.id)
+            await session.commit()
+        except Exception:
+            await session.rollback()

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.security import create_access_token, hash_password, verify_password
 from ..db.models import User
+from ..services.datasets import seed_examples_for_user
 from .deps import current_user, get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -54,6 +55,12 @@ async def signup(body: SignupReq, session: AsyncSession = Depends(get_db)):
     session.add(user)
     await session.commit()
     await session.refresh(user)
+    # Seed a standard set of example datasets so a brand-new account isn't empty.
+    try:
+        await seed_examples_for_user(session, user.id)
+        await session.commit()
+    except Exception:
+        await session.rollback()
     token = create_access_token(str(user.id))
     return TokenResp(access_token=token, user_id=user.id, email=user.email, name=user.name)
 

@@ -1,8 +1,8 @@
-# Numetrix — Verifiable Data Analysis Agent
+# RLab Cortex — Verifiable Data Analysis Agent
 
 > **The data-analysis agent for people who need to trust the number.**
 >
-> Numetrix runs your data through a curated library of *vetted classical algorithms* instead of guessing with LLM-generated pandas. Drop in your own algorithm code, or let the agent write a new one — but only after a sandboxed test passes and you approve it.
+> RLab Cortex runs your data through a curated library of *vetted classical algorithms* instead of guessing with LLM-generated pandas. Drop in your own algorithm code, or let the agent write a new one — but only after a sandboxed test passes and you approve it.
 
 ---
 
@@ -28,7 +28,7 @@ We surveyed the data-analysis AI space in May 2026 (see [docs/positioning.md](do
 - **The #1 user complaint is "looks confident, wrong number."** Generic LLM tools hallucinate the math. 38% of executives (Deloitte 2024) admit acting on wrong AI numbers.
 - **Engineers and scientists are underserved.** Battery test, CAE/CFD, NVH, instrument-data, and other workflows need *domain-specific* algorithms (Savgol, Butterworth, Dixon, sensitivity analysis, dV/dQ peak tracking…) that no generic tool provides.
 
-Numetrix is the answer: **curated, citable, classical algorithms first; sandboxed user code second; LLM-generated code only as a last-resort fallback — and only after a test passes and the human approves.**
+RLab Cortex is the answer: **curated, citable, classical algorithms first; sandboxed user code second; LLM-generated code only as a last-resort fallback — and only after a test passes and the human approves.**
 
 V1 wedge market: **battery test engineers** (fastest-growing TAM, no entrenched incumbent, structural multi-vendor binary-data fragmentation moat). Follow-on verticals: CAE post-processing, NVH labs.
 
@@ -154,7 +154,7 @@ See [docs/architecture.md](docs/architecture.md) for the full diagram, request l
 
 ## Adding your own algorithm
 
-Any file with a top-level `META` dict and a `run(df, **params)` function is a valid Numetrix tool:
+Any file with a top-level `META` dict and a `run(df, **params)` function is a valid RLab Cortex tool:
 
 ```python
 import pandas as pd
@@ -185,7 +185,7 @@ def run(df, *, columns=None):
 test_cases = [{"df": pd.DataFrame({"x": [1.0, 2.0, 3.0]}), "params": {}}]
 ```
 
-Paste it into **Algorithm library → Upload your algorithm**. Numetrix will:
+Paste it into **Algorithm library → Upload your algorithm**. RLab Cortex will:
 
 1. AST-validate (reject `import os`, `eval`, `__import__`, etc.)
 2. Run it in the sandbox against your test cases (and optionally a real dataset)
@@ -256,4 +256,4 @@ Frontend `web/.env.local`:
 
 ---
 
-© 2026 Numetrix. Built fast, built right.
+© 2026 RLab Cortex. Built fast, built right.

@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Numetrix — Verifiable data analysis agent',
+  title: 'RLab Cortex — Verifiable data analysis agent',
   description:
-    'Numetrix is a verifiable analysis agent for engineers and scientists. Curated algorithms, sandboxed custom code, and LLM-generated tools — all with auditable provenance.',
+    'RLab Cortex is a verifiable analysis agent for engineers and scientists. Curated algorithms, sandboxed custom code, and LLM-generated tools — all with auditable provenance.',
 };
 
 export const viewport: Viewport = {

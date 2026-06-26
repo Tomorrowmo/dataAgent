@@ -13,13 +13,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
 from ..db.models import Dataset, FormatAdapter, User
-from ..services.datasets import MESH_EXTS, _persist_dataset, gc_derived_datasets, ingest_mesh_upload, ingest_upload, load_dataset_df, save_temp_upload
+from ..services.datasets import MESH_EXTS, _persist_dataset, build_profile, gc_derived_datasets, ingest_mesh_upload, ingest_tecplot_upload, ingest_upload, load_dataset_df, looks_like_tecplot, save_temp_upload
 from ..services.format_adapter import (
     generate_cleaner_stream, generate_parser_stream, save_adapter, stage_upload, try_saved_adapter,
 )
 from .deps import current_user, get_db, llm_for
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+# Keep SSE flowing token-by-token through reverse proxies / CDNs (see chat.py).
+SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
 NATIVE_EXTS = {".csv", ".tsv", ".xlsx", ".xls", ".parquet", ".json"}
 
@@ -95,6 +102,25 @@ async def upload(
             except Exception: pass
             raise HTTPException(400, f"网格文件解析失败({type(e).__name__}): {e}")
 
+    # Path 0.5 — a Tecplot ASCII export (CFD/CAE probe data). Detected by content
+    # (VARIABLES + ZONE), so it works for .dat / .tec / no-extension. Parsed
+    # natively into one tidy table; the generic AI parser can't reliably handle
+    # BLOCK packing + many zones. On any parse failure we fall through to the AI
+    # parser path as a backstop.
+    if looks_like_tecplot(data):
+        tmp = save_temp_upload(data, file.filename)
+        try:
+            dss = await ingest_tecplot_upload(
+                session, owner_id=user.id, src_path=tmp,
+                original_filename=file.filename, display_name=name, description=description,
+            )
+            resp = [DatasetResp.from_orm_(d) for d in dss]
+            return UploadResp(status="ok", dataset=resp[0], datasets=resp)
+        except Exception:
+            try: tmp.unlink(missing_ok=True)
+            except Exception: pass
+            # fall through — let the native/adapter/AI paths try.
+
     # Path 1 — extension we know natively. Try the usual pandas readers.
     if extension in NATIVE_EXTS:
         tmp = save_temp_upload(data, file.filename)
@@ -168,6 +194,7 @@ async def generate_parser_endpoint(
     staged = _validate_staged_path(body.staging_path, user.id)
 
     async def event_stream():
+        yield ": numetrix-stream-open\n\n"  # prime the proxy pipe (see chat.py)
         try:
             async for ev in generate_parser_stream(
                 file_path=staged, extension=body.extension, llm=llm, max_attempts=3,
@@ -178,7 +205,7 @@ async def generate_parser_endpoint(
             # event so the UI un-sticks instead of hanging on a dead stream.
             yield f"data: {json.dumps({'event': 'fatal', 'error': f'{type(e).__name__}: {e}'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 class ApproveParserReq(BaseModel):
@@ -263,13 +290,14 @@ async def clean_dataset_stream(
     df = load_dataset_df(ds)
 
     async def event_stream():
+        yield ": numetrix-stream-open\n\n"  # prime the proxy pipe (see chat.py)
         try:
             async for ev in generate_cleaner_stream(df=df, llm=llm, max_attempts=2):
                 yield f"data: {json.dumps(ev, default=str)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'event': 'fatal', 'error': f'{type(e).__name__}: {e}'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 class CleanApproveReq(BaseModel):
@@ -757,6 +785,47 @@ async def save_subset(
     await session.commit()
     await session.refresh(d)
     return DatasetResp.from_orm_(d)
+
+
+@router.get("/{dataset_id}/profile")
+async def profile_dataset_endpoint(
+    dataset_id: int,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Instant, FREE first-read of a dataset (no LLM): what it roughly is, a few
+    grounded facts, and concrete next actions. Shown automatically right after
+    import so a user immediately knows what they can do. Every fact is computed
+    from the real frame, so it can't hallucinate."""
+    ds = (await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
+    )).scalar_one_or_none()
+    if ds is None:
+        raise HTTPException(404, "dataset not found")
+    df = load_dataset_df(ds)
+    profile = build_profile(df, ds)
+
+    # CONSULT the sedimented expert judgment: apply column-meaning rules the user
+    # can see (own + public) to this dataset's columns. Each hit is the expert's
+    # meaning handed to whoever opens the data — the read-back half of the loop.
+    from ..db.models import MappingRule
+    from ..services.mappings import apply_rules
+    from sqlalchemy import or_
+    rules = (await session.execute(
+        select(MappingRule)
+        .where(or_(MappingRule.owner_id == user.id, MappingRule.is_public.is_(True)))
+        .order_by((MappingRule.owner_id == user.id).desc(), MappingRule.id.desc())
+    )).scalars().all()
+    matches = apply_rules([str(c) for c in df.columns], list(rules))
+    if matches:
+        by_id = {r.id: r for r in rules}
+        for m in matches:
+            r = by_id.get(m["rule_id"])
+            if r is not None:
+                r.hit_count += 1
+        await session.commit()
+    profile["semantic"] = matches
+    return profile
 
 
 @router.post("/{dataset_id}/explain")

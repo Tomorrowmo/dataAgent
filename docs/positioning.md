@@ -1,10 +1,10 @@
-# Numetrix — Product Positioning & Market Research
+# RLab Cortex — Product Positioning & Market Research
 
 > Status: founding doc, May 2026. Sources are cited inline. Update after each pricing experiment or design partner closes.
 
 ## TL;DR
 
-Numetrix is the **verifiable data-analysis agent for engineers and scientists who need to trust the number** — starting with battery test engineers, then expanding to CAE post-processing and NVH/test labs. The wedge isn't "another chat-with-CSV"; it's "the AI-native MATLAB toolbox with a sandboxed plug-in marketplace".
+RLab Cortex is the **verifiable data-analysis agent for engineers and scientists who need to trust the number** — starting with battery test engineers, then expanding to CAE post-processing and NVH/test labs. The wedge isn't "another chat-with-CSV"; it's "the AI-native MATLAB toolbox with a sandboxed plug-in marketplace".
 
 ## 1. Why generic AI data tools don't win this segment
 
@@ -41,8 +41,8 @@ No incumbent serves all three. ChatGPT/Julius/Hex serve generic analysts. Tablea
 ## 4. Buyer's journey we design for
 
 1. **Trigger:** engineer is wrestling with multi-vendor cycler exports for a new chemistry run.
-2. **Search:** they Google "Maccor + Arbin + Neware unify Python", find a Numetrix blog post.
-3. **Free trial:** drag-and-drop their .res / .mims / .ndax files. Numetrix unifies + computes dV/dQ + ICA + capacity-fade fit out of the box. Takes 90 seconds.
+2. **Search:** they Google "Maccor + Arbin + Neware unify Python", find a RLab Cortex blog post.
+3. **Free trial:** drag-and-drop their .res / .mims / .ndax files. RLab Cortex unifies + computes dV/dQ + ICA + capacity-fade fit out of the box. Takes 90 seconds.
 4. **Aha moment:** "this is what our PhD's MATLAB script does, except shareable and versioned."
 5. **Upgrade:** team plan — they drop in their *internal* dV/dQ peak-tracker, sandbox-tested, now a team-wide callable tool. They stop emailing Jupyter notebooks.
 6. **Land+expand:** lab → R&D dept → battery analytics platform team. Enterprise contract for VPC + custom algorithm pack.
@@ -51,7 +51,7 @@ No incumbent serves all three. ChatGPT/Julius/Hex serve generic analysts. Tablea
 
 1. **Curated algorithm library** — domain-vetted, citable, with explicit assumptions, units, and uncertainty surfacing. Hard to clone without our SME team.
 2. **User-uploaded algorithm graveyard turned alive** — every team's tribal MATLAB script becomes a reusable, sandboxed, versioned tool with one upload. Switching cost = N years of internal IP that now only runs on us.
-3. **Vertical algorithm packs** — premium-priced bundles ("Numetrix Battery Pack", "Numetrix CAE Pack") — vetted by domain SMEs we hire later.
+3. **Vertical algorithm packs** — premium-priced bundles ("RLab Cortex Battery Pack", "RLab Cortex CAE Pack") — vetted by domain SMEs we hire later.
 4. **Feedback loop** — every approved algorithm + every user correction trains our prompt library; the AI-codegen success rate compounds for *this* vertical, which generic chatbots can't match.
 
 ## 6. Roadmap

@@ -16,6 +16,18 @@ from .deps import current_user, get_db, llm_for
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+# Headers that keep Server-Sent-Events flowing token-by-token instead of being
+# buffered into one lump by a reverse proxy / CDN. `X-Accel-Buffering: no` is the
+# one nginx honours PER-RESPONSE — so streaming works even if the server's nginx
+# location lacks `proxy_buffering off`. `no-transform` stops proxies/CDNs from
+# compressing (which would re-buffer). Without these, the agent's reply appeared
+# only after the whole turn finished — the "不是流式输出" symptom.
+SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
+
 
 class CreateConvReq(BaseModel):
     title: Optional[str] = None
@@ -226,6 +238,12 @@ async def send_message(
         got_final = False
         cancelled = False
 
+        # Prime the connection: an SSE comment line flushed before any slow work
+        # forces the proxy to open the pipe to the client immediately, so the
+        # first real token isn't held back behind a buffering threshold. The
+        # frontend parser ignores any block that doesn't start with "data:".
+        yield ": numetrix-stream-open\n\n"
+
         async def _yield(event: Dict[str, Any]):
             # Yielding can itself fail if the client has already disconnected.
             # We still want the event recorded in `events` so the DB row carries
@@ -317,7 +335,7 @@ async def send_message(
             except Exception:
                 logger.exception("auto-GC failed for owner=%s", user.id)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 def _diagnostic_hint(exc: Exception) -> str:

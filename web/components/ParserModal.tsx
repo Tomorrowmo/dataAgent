@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2, Sparkles, X, RefreshCw, ChevronRight } from 'lucide-react';
 import { api, streamParserGenerate, type Dataset, type ParserEvent, type UploadResp } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { humanizeError } from '@/lib/errors';
 
 type Attempt = {
   n: number;
@@ -25,10 +26,14 @@ export default function ParserModal({
   pending,
   onClose,
   onIngested,
+  onGoSettings,
 }: {
   pending: NonNullable<UploadResp['needs_parser']>;
   onClose: () => void;
   onIngested: (ds: Dataset) => void;
+  // Optional shortcut to the Settings tab — shown when an error is fixable there
+  // (e.g. no LLM key configured).
+  onGoSettings?: () => void;
 }) {
   const t = useT();
   const [status, setStatus] = useState<Status>({ kind: 'streaming' });
@@ -242,7 +247,7 @@ export default function ParserModal({
 
               {saveError && (
                 <div className="text-sm text-red-600 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" /> {saveError}
+                  <AlertTriangle className="w-4 h-4 shrink-0" /> {humanizeError(saveError).message}
                 </div>
               )}
 
@@ -283,25 +288,31 @@ export default function ParserModal({
             </div>
           )}
 
-          {/* Fatal error */}
-          {status.kind === 'fatal' && (
-            <div className="rounded-xl bg-red-50 ring-1 ring-red-100 px-4 py-3 text-sm text-red-700 space-y-2">
-              <div className="font-medium flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" /> {t('common.error')}
+          {/* Fatal error — shown in plain language, never the raw HTTP/JSON. */}
+          {status.kind === 'fatal' && (() => {
+            const fe = humanizeError(status.error);
+            return (
+              <div className="rounded-xl bg-red-50 ring-1 ring-red-100 px-4 py-3 text-sm text-red-700 space-y-2">
+                <div className="font-medium flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" /> {fe.message}
+                </div>
+                {fe.hint && <p className="text-[13px] text-red-600/90 leading-relaxed pl-6">{fe.hint}</p>}
+                <div className="flex gap-2 pl-6">
+                  {fe.action === 'settings' && onGoSettings && (
+                    <button onClick={onGoSettings} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700">
+                      去设置
+                    </button>
+                  )}
+                  <button onClick={run} className="px-3 py-1.5 rounded-lg border border-ink-200 text-ink-700 text-sm flex items-center gap-1.5 hover:bg-ink-50">
+                    <RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}
+                  </button>
+                  <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ink-200 text-ink-700 text-sm hover:bg-ink-50">
+                    {t('common.cancel')}
+                  </button>
+                </div>
               </div>
-              <pre className="text-xs whitespace-pre-wrap font-mono bg-white/60 rounded p-2 max-h-40 overflow-y-auto">
-                {status.error}
-              </pre>
-              <div className="flex gap-2">
-                <button onClick={run} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm flex items-center gap-1.5 hover:bg-brand-700">
-                  <RefreshCw className="w-3.5 h-3.5" /> {t('common.retry')}
-                </button>
-                <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ink-200 text-sm hover:bg-ink-50">
-                  {t('common.cancel')}
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </div>

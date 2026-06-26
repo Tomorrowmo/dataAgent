@@ -51,3 +51,10 @@ logs/
 
 # Scratch / throwaway (real conversation data, aerospace paths) — keep local
 tmp/
+
+# DB backups (contain real data)
+*.db.bak*
+*.bak.[0-9]*
+
+# MS Office temp lock files
+~$*

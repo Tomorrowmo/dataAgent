@@ -99,29 +99,19 @@ export const STARTERS: Starter[] = [
   },
 ];
 
-function numericColumns(ds: Dataset): string[] {
-  const cols = ds.schema.columns ?? [];
-  return cols
-    .filter((c) => /float|int|double|long|short|num/i.test(c.dtype))
-    .map((c) => c.name);
-}
-
-export function buildPrompt(id: RecipeId, ds: Dataset | null, lang: 'en' | 'zh'): string {
-  const nums = ds ? numericColumns(ds) : [];
-  const first = nums[0] ?? (lang === 'zh' ? '第一个数值列' : 'the first numeric column');
-  const last = nums[nums.length - 1] ?? first;
-  const others = nums.slice(0, -1);
-
-  // NOTE: these are deliberately ALGORITHM-FREE. The user describes intent in
-  // plain language; the agent picks the method. That's the whole pitch — so a
-  // sample question must never name an algorithm (no "Savitzky-Golay", "PCA"…).
+export function buildPrompt(id: RecipeId, _ds: Dataset | null, lang: 'en' | 'zh'): string {
+  // Deliberately column-AGNOSTIC and ALGORITHM-FREE: the user states intent in
+  // plain language; the agent inspects the data to pick the right columns
+  // (inputs vs output) AND the method. That's the whole pitch — so a sample
+  // question must never hard-code a column name (positional guesses misfire)
+  // nor name an algorithm (no "Savitzky-Golay", "PCA"…).
   const en: Record<RecipeId, string> = {
     smooth:
-      `"${first}" looks noisy / jittery. Smooth it for me, but keep the original shape and peaks — don't flatten them. Show me before-vs-after and tell me how strong the noise was.`,
+      `Some columns here look noisy / jittery. Smooth the noisy ones but keep the original shape and peaks — don't flatten them. Show me before-vs-after and tell me how strong the noise was.`,
     drivers:
-      `In this data, which columns most affect "${last}", and which ones barely matter? Rank them and point out the 2 most important factors.`,
+      `In this data, which input most affects the main output, and which inputs barely matter? Work out which columns are inputs vs the output, rank them, and point out the 2 most important factors.`,
     fit:
-      `Is there a pattern between "${last}" and "${nums[0] ?? 'another variable'}"? Fit a relationship so I could estimate one from the other, and tell me how good (or shaky) the fit is.`,
+      `Is there a relationship between two of the variables here? Fit one so I could estimate one from another, and tell me how good (or shaky) the fit is.`,
     outliers:
       `Are there any abnormal or suspicious points in this data (sensor glitches, recording errors)? Find them, and tell me how many per column and which rows they're in.`,
     corr:
@@ -133,11 +123,11 @@ export function buildPrompt(id: RecipeId, ds: Dataset | null, lang: 'en' | 'zh')
 
   const zh: Record<RecipeId, string> = {
     smooth:
-      `"${first}" 这一列看起来有不少噪声毛刺，帮我平滑一下，但要尽量保留原本的波形和峰值，别抹平了。给我看看平滑前后的对比，顺便说说噪声大不大。`,
+      `这份数据里有的列看起来有噪声毛刺，帮我把噪声大的列平滑一下，但要尽量保留原本的波形和峰值，别抹平了。给我看看平滑前后的对比，顺便说说噪声大不大。`,
     drivers:
-      `在这份数据里，到底哪几列对 "${last}" 影响最大、哪些其实没什么用？帮我排个序，并指出最关键的 2 个因素。`,
+      `在这份数据里，哪个输入对主要的输出影响最大、哪些其实没什么用？你先判断哪些列是输入、哪列是输出，再帮我排个序，并指出最关键的 2 个因素。`,
     fit:
-      `"${last}" 和 "${nums[0] ?? '另一个变量'}" 之间有没有什么规律？能不能拟合出一条关系，让我可以用一个去估另一个？顺便告诉我拟合得准不准。`,
+      `这份数据里两个量之间有没有什么规律？能不能拟合出一条关系，让我可以用一个去估另一个？顺便告诉我拟合得准不准。`,
     outliers:
       `这份数据里有没有异常的、不正常的点（比如传感器跳变、记录出错）？帮我找出来，告诉我每列有几个可疑点、分别在哪几行。`,
     corr:

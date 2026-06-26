@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./data/db/app.db"
     upload_dir: str = "./data/uploads"
 
+    # First-run admin bootstrap. When both are set and no user with this email
+    # exists yet, an is_admin=True account is created on startup. Lets a packaged
+    # build ship with a ready admin (the package's DB is otherwise empty). Empty
+    # values (the default) disable bootstrap entirely.
+    bootstrap_admin_email: str = ""
+    bootstrap_admin_password: str = ""
+    bootstrap_admin_name: str = "Admin"
+
     llm_provider: str = "deepseek"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"

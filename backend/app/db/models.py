@@ -123,7 +123,7 @@ class Run(Base):
 class FormatAdapter(Base):
     """An LLM-generated (or user-uploaded) parser for a file format the
     built-in pandas readers don't understand. Looked up by file extension
-    on subsequent uploads so the user only has to teach Numetrix a format
+    on subsequent uploads so the user only has to teach RLab Cortex a format
     once."""
 
     __tablename__ = "format_adapters"
@@ -183,6 +183,87 @@ class Conversation(Base):
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan", order_by="Message.id"
     )
+
+
+class Feedback(Base):
+    """An in-the-moment note dropped by a user while using the product — the
+    seed of the knowledge flywheel. The whole point is to capture the THOUGHT
+    together with the CONTEXT it happened in (which view / conversation /
+    dataset / run the user was looking at), so a vague "this was wrong somewhere"
+    becomes an actionable, replayable record.
+
+    `kind` splits feedback into the three buckets that route to different fixes
+    (don't pour them into one box — they go to different places):
+      - "cannot"   能力缺口:想做但做不到      → 需要新工件
+      - "wrong"    正确性:它做错了我得手动改  → 真值 / 纠正
+      - "distrust" 信任:结果对但我不敢信      → 解释 / 验证 UX
+      - "idea"     想法 / 其它
+
+    `status` lets you triage later (new → triaged → done). When this fills up
+    with real usage it grows into the 渊-style candidate→review→promote loop.
+    """
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="idea", index=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+
+    # Context the note was dropped in. The ids are stored WITHOUT FK constraints
+    # on purpose: a referenced conversation/dataset/run may later be deleted, but
+    # the feedback (and the fact it pointed at id N) must survive regardless.
+    view: Mapped[str] = mapped_column(String(32), default="")  # chat|datasets|algorithms|...
+    conversation_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    dataset_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)  # url, ua, anything extra
+
+    # An optional screenshot of exactly what the user was looking at — for "this
+    # part, what does it mean?" the picture pins the referent far better than
+    # words. Stored as a file under <upload>/feedback/; this holds its path.
+    screenshot: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new|triaged|done
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class MappingRule(Base):
+    """Sedimented EXPERT JUDGMENT about what a column MEANS — the first carrier
+    of the "judgment layer" of domain knowledge.
+
+    A correction the expert makes ("this `U(V)` column is voltage") is promoted
+    into one of these rules. Thereafter the system CONSULTS these rules at
+    decision time (dataset profiling / column picking) and applies the expert's
+    meaning automatically — so the next (non-expert) user gets it for free. That
+    consult-before-decide step is the whole point: a rule that's stored but never
+    read back changes nothing.
+
+    `is_public` defaults True because inheritance across users IS the value:
+    one expert correction → everyone benefits.
+    """
+
+    __tablename__ = "mapping_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    # What to match a column name against, and how.
+    pattern: Mapped[str] = mapped_column(String(255), index=True)  # e.g. "U(V)"
+    match_type: Mapped[str] = mapped_column(String(16), default="normalized")  # normalized|exact|contains|regex
+
+    # The meaning to assign when it matches.
+    role: Mapped[str] = mapped_column(String(64))                  # e.g. "voltage" (machine key)
+    label: Mapped[str] = mapped_column(String(120), default="")    # e.g. "电压 Voltage" (display)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    # Provenance + sharing.
+    source: Mapped[str] = mapped_column(String(16), default="manual")  # feedback|manual
+    feedback_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Message(Base):

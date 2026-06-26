@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem  Numetrix full-stack launcher (double-click me) — backend :8077 + frontend :3000
+rem  RLab Cortex full-stack launcher (double-click me) — backend :8077 + frontend :3000
 rem
 rem  Same reliable bits as start-backend.bat:
 rem   * kill by PORT (venv is a conda-delegating stub; only the listener pid is reliable)
@@ -9,7 +9,7 @@ rem   * if the first import after a reboot/Defender update takes minutes, exclud
 rem     (elevated):  Add-MpPreference -ExclusionPath 'd:\Git\Personal\DataAgent\backend\.venv'
 rem ============================================================================
 setlocal
-title Numetrix start-all
+title RLab Cortex start-all
 set "REPO=%~dp0"
 set "PY=%REPO%backend\.venv\Scripts\python.exe"
 set "BPORT=8077"
@@ -33,10 +33,10 @@ powershell -NoProfile -Command "Start-Sleep -Seconds 2"
 echo == starting backend ==
 set "BACKEND_LOG_FILE=%LOG%"
 set "PYTHONUNBUFFERED=1"
-start "Numetrix Backend :%BPORT%" /min /D "%REPO%backend" "%PY%" -u -m uvicorn app.main:app --host 127.0.0.1 --port %BPORT% --log-level info
+start "RLab Cortex Backend :%BPORT%" /min /D "%REPO%backend" "%PY%" -u -m uvicorn app.main:app --host 127.0.0.1 --port %BPORT% --log-level info
 
 echo == starting frontend ==
-start "Numetrix Frontend :%FPORT%" /min /D "%REPO%web" cmd /c "npm run dev"
+start "RLab Cortex Frontend :%FPORT%" /min /D "%REPO%web" cmd /c "npm run dev"
 
 echo == waiting for backend health (cold import can take a moment) ==
 powershell -NoProfile -Command "$ok=$false; for($i=0;$i -lt 300;$i++){ try{ if((Invoke-WebRequest 'http://127.0.0.1:%BPORT%/api/health' -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200){$ok=$true;break} }catch{}; Start-Sleep -Seconds 1 }; if($ok){ Write-Host ('   backend HEALTHY after '+$i+'s') -Foreground Green } else { Write-Host '   backend NOT healthy in 300s - see tmp\backend.log' -Foreground Red }"
@@ -45,8 +45,8 @@ echo == waiting for frontend (:%FPORT% - first compile can take ~30s) ==
 powershell -NoProfile -Command "$ok=$false; for($i=0;$i -lt 180;$i++){ if(Get-NetTCPConnection -LocalPort %FPORT% -State Listen -EA SilentlyContinue){$ok=$true;break}; Start-Sleep -Seconds 1 }; if($ok){ Write-Host ('   frontend listening after '+$i+'s') -Foreground Green } else { Write-Host '   frontend not up in 180s - check the Frontend window' -Foreground Yellow }"
 
 echo.
-echo   Backend : http://127.0.0.1:%BPORT%   (window "Numetrix Backend", log tmp\backend.log)
-echo   Frontend: http://localhost:%FPORT%       (window "Numetrix Frontend")  ^<- open this in your browser
+echo   Backend : http://127.0.0.1:%BPORT%   (window "RLab Cortex Backend", log tmp\backend.log)
+echo   Frontend: http://localhost:%FPORT%       (window "RLab Cortex Frontend")  ^<- open this in your browser
 echo   Stop both: stop-all.bat
 echo.
 pause

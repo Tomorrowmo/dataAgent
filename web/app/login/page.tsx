@@ -36,7 +36,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm ring-1 ring-ink-200 p-7">
         <Link href="/" className="flex items-center gap-2 font-semibold mb-6">
           <div className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">N</div>
-          Numetrix
+          RLab Cortex
         </Link>
         <h1 className="text-xl font-semibold mb-1">{t('auth.signin.title')}</h1>
         <p className="text-sm text-ink-500 mb-5">{t('auth.welcomeBack')}</p>

@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================================
-rem  Numetrix backend launcher (double-click me)
+rem  RLab Cortex backend launcher (double-click me)
 rem
 rem  Kills whatever holds :8077, then starts uvicorn from the venv. Reliable
 rem  bits learned the hard way:
@@ -15,7 +15,7 @@ rem     venv isn't excluded from Defender. Run ONCE in an elevated PowerShell:
 rem       Add-MpPreference -ExclusionPath 'd:\Git\Personal\DataAgent\backend\.venv'
 rem ============================================================================
 setlocal
-title Numetrix backend launcher
+title RLab Cortex backend launcher
 set "REPO=%~dp0"
 set "PY=%REPO%backend\.venv\Scripts\python.exe"
 set "PORT=8077"
@@ -39,13 +39,13 @@ echo == starting backend ==
 set "BACKEND_LOG_FILE=%LOG%"
 set "PYTHONUNBUFFERED=1"
 cd /d "%REPO%backend"
-start "Numetrix Backend :%PORT%" /min "%PY%" -u -m uvicorn app.main:app --host 127.0.0.1 --port %PORT% --log-level info
+start "RLab Cortex Backend :%PORT%" /min "%PY%" -u -m uvicorn app.main:app --host 127.0.0.1 --port %PORT% --log-level info
 
 echo == waiting for health (cold import can take a moment) ==
 powershell -NoProfile -Command "$ok=$false; for($i=0;$i -lt 300;$i++){ try{ if((Invoke-WebRequest 'http://127.0.0.1:%PORT%/api/health' -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200){$ok=$true;break} }catch{}; Start-Sleep -Seconds 1 }; if($ok){ Write-Host ('   HEALTHY after '+$i+'s  ->  http://127.0.0.1:%PORT%') -Foreground Green } else { Write-Host '   NOT healthy in 300s - see tmp\backend.log' -Foreground Red }"
 
 echo.
-echo Backend runs in the minimized "Numetrix Backend" window. Log: %LOG%
+echo Backend runs in the minimized "RLab Cortex Backend" window. Log: %LOG%
 echo To stop it, run stop-backend.bat (closing the window may leave an orphan).
 echo.
 pause

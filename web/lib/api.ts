@@ -4,16 +4,27 @@
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 const TOKEN_KEY = 'numetrix.token';
+// In-memory fallback when localStorage is unavailable / throws (e.g. Safari
+// private mode, or storage blocked) — keeps auth working without crashing.
+let memToken: string | null = null;
 
 export function setToken(token: string | null) {
+  memToken = token;
   if (typeof window === 'undefined') return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* localStorage unavailable — memToken covers this session */ }
 }
 
 export function getToken(): string | null {
+  if (memToken) return memToken;
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 class ApiError extends Error {
@@ -67,6 +78,8 @@ export const api = {
   saveLLMConfig: (api_key: string, base_url: string, model: string) =>
     request<{ ok: boolean; has_llm_key: boolean; llm_base_url: string; llm_model: string }>(
       'PUT', '/auth/llm-key', { api_key, base_url, model }),
+  /** Version, changelog and linked documents for the「关于」panel. Public + warmup-open. */
+  about: () => request<AboutInfo>('GET', '/about'),
 
   listDatasets: () => request<Dataset[]>('GET', '/datasets'),
   getDataset: (id: number) => request<Dataset>('GET', `/datasets/${id}`),
@@ -82,6 +95,9 @@ export const api = {
   promoteDataset: (id: number) => request<Dataset>('POST', `/datasets/${id}/promote`),
   /** Pin/unpin a derived dataset in place so auto-GC won't reclaim it. */
   keepDataset: (id: number, kept = true) => request<Dataset>('POST', `/datasets/${id}/keep`, { kept }),
+  /** Instant, FREE deterministic first-read of a dataset (no LLM): what it is,
+   *  grounded facts, and suggested next actions. Shown right after import. */
+  profileDataset: (id: number) => request<DatasetProfile>('GET', `/datasets/${id}/profile`),
   /** Plain-language AI explanation of a dataset / analysis result. */
   explainDataset: (id: number) => request<{ explanation: string }>('POST', `/datasets/${id}/explain`),
   /** Reclaim un-kept intermediate datasets. dry_run previews the count. */
@@ -213,7 +229,102 @@ export const api = {
       'GET', `/chat/conversations/${id}/pipeline`),
   /** Clear cross-turn pipeline state → next message starts from original data. */
   resetPipeline: (id: number) => request<{ ok: boolean }>('POST', `/chat/conversations/${id}/reset-pipeline`),
+
+  /** Drop an in-the-moment feedback note with the context it happened in. */
+  submitFeedback: (body: {
+    text: string;
+    kind: FeedbackKind;
+    view?: string;
+    conversation_id?: number | null;
+    dataset_id?: number | null;
+    run_id?: number | null;
+    context?: Record<string, unknown>;
+    screenshot_b64?: string | null;
+  }) => request<Feedback>('POST', '/feedback', {
+    text: body.text,
+    kind: body.kind,
+    view: body.view ?? '',
+    conversation_id: body.conversation_id ?? null,
+    dataset_id: body.dataset_id ?? null,
+    run_id: body.run_id ?? null,
+    context: body.context ?? {},
+    screenshot_b64: body.screenshot_b64 ?? null,
+  }),
+  listFeedback: () => request<Feedback[]>('GET', '/feedback'),
+  /** Triage a note: new → triaged → done, or re-bucket its kind. */
+  updateFeedback: (id: number, body: { status?: string; kind?: FeedbackKind }) =>
+    request<Feedback>('PATCH', `/feedback/${id}`, body),
+
+  /** Promote a correction into a reusable column-meaning rule (expert knowledge
+   *  sedimentation). Pass feedback_id to auto-close that note. */
+  createMapping: (body: { pattern: string; role: string; label?: string; note?: string; match_type?: string; is_public?: boolean; feedback_id?: number }) =>
+    request<MappingRule>('POST', '/mappings', body),
+  listMappings: () => request<MappingRule[]>('GET', '/mappings'),
+  deleteMapping: (id: number) => request<{ ok: boolean }>('DELETE', `/mappings/${id}`),
+  /** Consult: what do the visible rules say about these column names. */
+  applyMappings: (columns: string[]) =>
+    request<{ matches: MappingMatch[] }>('POST', '/mappings/apply', { columns }),
 };
+
+export type ChangelogEntry = {
+  version: string;
+  date: string;
+  title: string;
+  summary?: string;
+  /** bucket name (新增 / 优化 / 修复 …) → list of change descriptions */
+  changes: Record<string, string[]>;
+};
+export type AboutDoc = { key: string; title: string; subtitle: string; view: string; download: string; filename: string };
+export type AboutInfo = {
+  version: string;
+  product: string;
+  product_note: string;
+  changelog: ChangelogEntry[];
+  documents: AboutDoc[];
+};
+
+export type MappingRule = {
+  id: number;
+  pattern: string;
+  match_type: string;
+  role: string;
+  label: string;
+  note: string;
+  source: string;
+  feedback_id: number | null;
+  is_public: boolean;
+  hit_count: number;
+  created_at: string;
+};
+export type MappingMatch = { column: string; role: string; label: string; rule_id: number; source: string; match_type: string };
+
+export type FeedbackKind = 'cannot' | 'wrong' | 'distrust' | 'idea';
+export type Feedback = {
+  id: number;
+  kind: FeedbackKind;
+  text: string;
+  view: string;
+  conversation_id: number | null;
+  dataset_id: number | null;
+  run_id: number | null;
+  context: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  has_screenshot: boolean;
+};
+
+/** Authenticated fetch of a feedback screenshot → object URL for an <img src>.
+ *  (An <img> tag can't send the bearer header, so we fetch the blob ourselves.)
+ *  Caller should URL.revokeObjectURL when done. */
+export async function fetchFeedbackScreenshot(id: number): Promise<string> {
+  const token = getToken();
+  const r = await fetch(`/api/feedback/${id}/screenshot`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!r.ok) throw new Error(`screenshot HTTP ${r.status}`);
+  const blob = await r.blob();
+  return URL.createObjectURL(blob);
+}
 
 export type Dataset = {
   id: number;
@@ -232,6 +343,21 @@ export type Dataset = {
   derived_from?: number | null;
   lineage?: { from?: number; from_name?: string; op?: { slug?: string; label?: string; params?: Record<string, unknown> } };
   kept?: boolean;
+};
+
+/** A suggested next action; `slug` maps to a recipe (→ chat) or in-view action. */
+export type ProfileSuggestion = { slug: string; why: string };
+
+/** Deterministic first-read of a dataset (see /datasets/{id}/profile). */
+export type DatasetProfile = {
+  kind: 'mesh' | 'timeseries' | 'wide_numeric' | 'grouped' | 'tabular';
+  headline: string;
+  facts: string[];
+  roles: Partial<Record<'numeric' | 'datetime' | 'categorical' | 'text' | 'coord' | 'bool', string[]>>;
+  missing: { name: string; pct: number }[];
+  suggestions: ProfileSuggestion[];
+  /** Expert column-meaning rules that fired on this dataset (the consult result). */
+  semantic?: { column: string; role: string; label: string; rule_id: number; source: string; match_type: string }[];
 };
 
 export type Algorithm = {

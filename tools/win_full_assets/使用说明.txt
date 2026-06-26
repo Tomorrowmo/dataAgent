@@ -1,0 +1,33 @@
+﻿RLab Cortex 免安装完整包（Windows 64 位）
+=======================================
+
+★ 客户无需安装任何东西（Python / Node / 依赖都已打包在内）。
+
+使用：
+  1. 把整个文件夹解压到一个【可写】的位置（比如桌面、D盘某目录；不要放 C:\Program Files 里，那是只读的）。
+  2. 双击  start.bat  —— 自动启动并打开浏览器到 http://localhost:3000
+     （首次启动后端冷启动约 10~30 秒，请稍等出现 HEALTHY）
+  3. 停止：双击 stop.bat
+
+AI 功能（解析未知格式 / AI 解释 / 对话分析）：
+  - 需要大模型。进去注册账号后，到「设置」里填一个模型 API Key（DeepSeek 或任意 OpenAI 兼容）。
+  - 不填也能用：导入数据、自动“认识这份数据”、内置算法、数据表预览/排序/筛选、示例数据与流程。
+
+数据：
+  - 全部在本机 backend\data\ 下（SQLite + 上传文件）。备份/迁移直接拷该目录。
+  - 全新干净实例；新注册账号自动带几个示例数据集与示例流程。
+
+通过公网域名访问（可选）：
+  前提：本机有公网IP且 80/443 对外开放；域名 A 记录已指向本机公网IP。
+  步骤：先 start.bat；再右键 serve-domain.bat →“以管理员身份运行”，输入域名。
+       Caddy 会自动申请并续期 HTTPS 证书。浏览器开 https://你的域名。
+  若本机在内网/NAT 后无公网IP：需做 80/443 端口映射，或用内网穿透(Cloudflare Tunnel / frp)。
+
+网格/CFD 文件（可选，未打包）：
+  - 上传 .cgns/.vtk/.stl 这类 3D 网格需要 pyvista(含VTK，很大)，本包未含。
+  - 需要时联网执行：  runtime\python\python.exe -m pip install pyvista
+  - 只用 CSV/Excel/Parquet/Tecplot(.dat) 不需要它。
+
+首次启动很慢？
+  - 多半是 Windows Defender 在扫 runtime\python。管理员 PowerShell 跑一次即可永久解决：
+      Add-MpPreference -ExclusionPath "解压路径\runtime"

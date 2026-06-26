@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<meta name="ext-resource-dependency" content="assets/favicon.png">
+<meta name="ext-resource-dependency" content="assets/qr-navy.png">
+<meta name="ext-resource-dependency" content="assets/shot-mirror-crop.png">
+<meta name="ext-resource-dependency" content="assets/shot-rsight-crop.png">
+<meta name="ext-resource-dependency" content="assets/shot-verity-crop.png">
+<link rel="preconnect" href="https://fonts.loli.net">
+<link rel="preconnect" href="https://gstatic.loli.net" crossorigin>
+<link rel="stylesheet" href="https://fonts.loli.net/css2?family=Fira+Code:wght@500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.loli.net/css2?family=Fira+Code:wght@500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap"></noscript>
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  img{ display:block; }
+  @keyframes rk-pulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(22,163,74,0); } 50%{ box-shadow:0 0 0 4px rgba(22,163,74,.18); } }
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#14224f"/>
+  <g stroke="#5e74c8" stroke-width="1.6"><line x1="50" y1="50" x2="35" y2="37"/><line x1="50" y1="50" x2="66" y2="39"/><line x1="50" y1="50" x2="50" y2="67"/></g>
+  <circle cx="50" cy="50" r="6.5" fill="#fff"/>
+  <circle cx="35" cy="37" r="4.5" fill="#2b50d8"/>
+  <circle cx="66" cy="39" r="4.5" fill="#0e8074"/>
+  <circle cx="50" cy="67" r="4.5" fill="#6d3aed"/>
+</svg>
+</template>
+
+<div style="font-family:'Fira Sans',-apple-system,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif; color:#1a2233; background:#f5f6f9; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; min-height:100vh; line-height:1.5;">
+
+  <!-- ░░ HEADER ░░ -->
+  <header style="position:sticky; top:0; z-index:20; background:rgba(245,246,249,.82); backdrop-filter:saturate(160%) blur(12px); border-bottom:1px solid #e7eaf1;">
+    <div style="max-width:1200px; margin:0 auto; padding:15px 28px; display:flex; align-items:center; gap:14px;">
+      <a href="#top" style="display:flex; align-items:center; gap:11px; text-decoration:none;">
+        <img src="assets/romtek-logo.png" alt="Romtek" style="height:26px; width:auto;">
+        <span style="width:1px; height:18px; background:#d3d8e4;"></span>
+        <span style="font-size:18px; font-weight:600; letter-spacing:.2px; color:#1b2a63; white-space:nowrap;">MClink-Cortex</span>
+      </a>
+      <span style="flex:1;"></span>
+      <nav style="display:flex; align-items:center; gap:26px;">
+        <a href="#workflow" style="text-decoration:none; color:#5a6478; font-size:14px; font-weight:500;" style-hover="color:#1b2a63;">工作流</a>
+        <a href="#products" style="text-decoration:none; color:#5a6478; font-size:14px; font-weight:500;" style-hover="color:#1b2a63;">产品</a>
+        <a href="https://www.romtekcae.com" target="_blank" rel="noopener" style="text-decoration:none; color:#fff; background:#1b2a63; font-size:13.5px; font-weight:600; padding:9px 16px; border-radius:9px;" style-hover="background:#14224f;">联系我们</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ░░ HERO ░░ -->
+    <section style="max-width:1200px; margin:0 auto; padding:92px 28px 72px; display:flex; gap:60px; align-items:center; flex-wrap:wrap;">
+      <div style="flex:1 1 420px; min-width:300px;">
+        <p style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; font-weight:600; letter-spacing:.18em; color:#2b50d8; margin:0 0 20px;">AI AGENT SUITE · CFD / CAE</p>
+        <h1 style="margin:0; font-size:clamp(30px,3.4vw,46px); line-height:1.16; font-weight:700; letter-spacing:-.01em; max-width:13em; text-wrap:balance;">仿真工程的每一步，<span style="color:#1b2a63;">都交给会思考的智能体</span></h1>
+        <p style="margin:24px 0 0; color:#5a6478; font-size:clamp(15.5px,1.4vw,17.5px); line-height:1.8; max-width:52ch; font-weight:400;">Romtek Cortex 将繁复的 CFD / CAE 流程拆解为三个各司其职的智能体——从<strong style="color:#1a2233; font-weight:600;">对话式执行</strong>，到<strong style="color:#1a2233; font-weight:600;">跨算例洞察</strong>，再到<strong style="color:#1a2233; font-weight:600;">可验证的分析</strong>。工程师只需表达意图，落地交给 Cortex。</p>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:34px;">
+          <a href="#products" style="text-decoration:none; color:#fff; background:#1b2a63; font-size:15px; font-weight:600; padding:13px 24px; border-radius:11px; display:inline-flex; align-items:center; gap:9px; white-space:nowrap;" style-hover="background:#14224f;">浏览产品
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+          </a>
+          <a href="#workflow" style="text-decoration:none; color:#1b2a63; background:#fff; border:1px solid #d8dde9; font-size:15px; font-weight:600; padding:13px 24px; border-radius:11px; white-space:nowrap;" style-hover="border-color:#1b2a63;">了解工作流</a>
+        </div>
+        <div style="display:flex; gap:22px; flex-wrap:wrap; margin-top:34px; align-items:center;">
+          <span style="display:inline-flex; align-items:center; gap:9px; font-size:13.5px; color:#5a6478; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:#16a34a; animation:rk-pulse 2.6s ease-in-out infinite;"></span>3 款已上线</span>
+          <span style="width:1px; height:14px; background:#d8dde9;"></span>
+          <span style="display:inline-flex; align-items:center; gap:9px; font-size:13.5px; color:#97a0b3; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:#c2cad9;"></span>产品线持续累加</span>
+        </div>
+      </div>
+      <!-- featured screenshot -->
+      <div style="flex:1 1 460px; min-width:300px;">
+        <div style="border-radius:16px; overflow:hidden; border:1px solid #e2e6ef; background:#fff; box-shadow:0 50px 100px -34px rgba(43,80,216,.40), 0 18px 40px -22px rgba(26,34,51,.22);">
+          <div style="display:flex; align-items:center; gap:7px; padding:0 15px; height:40px; background:#f1f3f8; border-bottom:1px solid #e7eaf1;">
+            <span style="width:9px; height:9px; border-radius:50%; background:#f0b6b0;"></span><span style="width:9px; height:9px; border-radius:50%; background:#f3d79a;"></span><span style="width:9px; height:9px; border-radius:50%; background:#bfe3b8;"></span>
+            <span style="flex:1; text-align:center; font-family:'Fira Code',ui-monospace,monospace; font-size:11px; color:#9aa4b8; letter-spacing:.02em;">mirror.romtekcae.com · 飞机模型 Ma 0.8 求解</span>
+          </div>
+          <img src="assets/shot-mirror-crop.png" alt="Mirror Cortex 工作界面" style="width:100%; height:auto;">
+        </div>
+      </div>
+    </section>
+
+    <!-- ░░ WORKFLOW / STORY ░░ -->
+    <section id="workflow" style="scroll-margin-top:80px; border-top:1px solid #e7eaf1; border-bottom:1px solid #e7eaf1; background:#fff;">
+      <div style="max-width:1200px; margin:0 auto; padding:84px 28px;">
+        <p style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; font-weight:600; letter-spacing:.18em; color:#97a0b3; margin:0 0 16px;">工作流闭环 · WORKFLOW</p>
+        <h2 style="margin:0; font-size:clamp(26px,3.2vw,36px); line-height:1.3; font-weight:700; max-width:15em; text-wrap:balance;">一条贯穿执行、洞察与验证的智能体流水线</h2>
+        <p style="margin:18px 0 0; color:#5a6478; font-size:16px; line-height:1.8; max-width:58ch;">三个智能体各司其职，又彼此衔接，覆盖仿真工程从「跑起来」到「信得过」的完整链路。</p>
+
+        <div style="display:flex; align-items:stretch; gap:18px; flex-wrap:wrap; margin-top:46px;">
+          <!-- stage 1 -->
+          <div style="flex:1 1 240px; background:#f7f8fb; border:1px solid #e7eaf1; border-top:3px solid #2b50d8; border-radius:14px; padding:26px 24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+              <span style="width:40px; height:40px; border-radius:10px; background:rgba(43,80,216,.10); color:#2b50d8; display:grid; place-items:center;"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 17 10 12 5 7"/><line x1="12" y1="19" x2="19" y2="19"/></svg></span>
+              <sc-if value="{{ showStageNumbers }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Fira Code',ui-monospace,monospace; font-size:13px; font-weight:600; color:#c2cad9;">01</span></sc-if>
+            </div>
+            <div style="font-size:20px; font-weight:700;">执行</div>
+            <div style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; color:#97a0b3; margin-top:4px;">Mirror Cortex</div>
+            <p style="margin:13px 0 0; color:#5a6478; font-size:14.5px; line-height:1.7;">用自然语言把仿真跑起来——网格、求解、后处理一气呵成。</p>
+          </div>
+          <div style="flex:0 0 auto; display:flex; align-items:center; color:#cdd4e2;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+          <!-- stage 2 -->
+          <div style="flex:1 1 240px; background:#f7f8fb; border:1px solid #e7eaf1; border-top:3px solid #0e8074; border-radius:14px; padding:26px 24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+              <span style="width:40px; height:40px; border-radius:10px; background:rgba(14,128,116,.10); color:#0e8074; display:grid; place-items:center;"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+              <sc-if value="{{ showStageNumbers }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Fira Code',ui-monospace,monospace; font-size:13px; font-weight:600; color:#c2cad9;">02</span></sc-if>
+            </div>
+            <div style="font-size:20px; font-weight:700;">洞察</div>
+            <div style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; color:#97a0b3; margin-top:4px;">Rsight Cortex</div>
+            <p style="margin:13px 0 0; color:#5a6478; font-size:14.5px; line-height:1.7;">在算例之间发现规律——汇集、对比、检索，让结果一眼看懂。</p>
+          </div>
+          <div style="flex:0 0 auto; display:flex; align-items:center; color:#cdd4e2;"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg></div>
+          <!-- stage 3 -->
+          <div style="flex:1 1 240px; background:#f7f8fb; border:1px solid #e7eaf1; border-top:3px solid #6d3aed; border-radius:14px; padding:26px 24px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+              <span style="width:40px; height:40px; border-radius:10px; background:rgba(109,58,237,.10); color:#6d3aed; display:grid; place-items:center;"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V7l7-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
+              <sc-if value="{{ showStageNumbers }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Fira Code',ui-monospace,monospace; font-size:13px; font-weight:600; color:#c2cad9;">03</span></sc-if>
+            </div>
+            <div style="font-size:20px; font-weight:700;">验证</div>
+            <div style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; color:#97a0b3; margin-top:4px;">RLab Cortex</div>
+            <p style="margin:13px 0 0; color:#5a6478; font-size:14.5px; line-height:1.7;">让每个结论都可复算——每一步解析、算法与图表都可追溯。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ░░ PRODUCTS INTRO ░░ -->
+    <section id="products" style="scroll-margin-top:80px; max-width:1200px; margin:0 auto; padding:84px 28px 8px;">
+      <p style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; font-weight:600; letter-spacing:.18em; color:#97a0b3; margin:0 0 16px;">已上线产品 · LIVE</p>
+      <h2 style="margin:0 0 10px; font-size:clamp(26px,3.2vw,36px); line-height:1.2; font-weight:700;">三款各司其职的智能体</h2>
+      <p style="margin:0; color:#5a6478; font-size:16px; line-height:1.8; max-width:52ch;">点击任意产品即可进入。下面是它们真实的工作界面。</p>
+    </section>
+
+    <!-- ░░ PRODUCTS (data-driven; add a product = add one entry in renderVals) ░░ -->
+    <sc-for list="{{ products }}" as="p" hint-placeholder-count="3">
+      <section style="position:relative; {{ p.bandStyle }}">
+        <div style="box-sizing:border-box; {{ p.rowStyle }}">
+          <div style="flex:1 1 360px; min-width:300px;">
+            <div style="font-family:'Fira Code',ui-monospace,monospace; font-size:12px; font-weight:600; letter-spacing:.12em; color:{{ p.accent }};">{{ p.stageLabel }}</div>
+            <div style="display:flex; align-items:baseline; gap:11px; flex-wrap:wrap; margin-top:14px;">
+              <h3 style="margin:0; font-size:28px; font-weight:700;">{{ p.name }}</h3>
+              <span style="display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; color:#15803d; background:#effaf2; border:1px solid #cdeed8; padding:3px 10px; border-radius:999px;"><span style="width:6px; height:6px; border-radius:50%; background:#16a34a;"></span>已上线</span>
+            </div>
+            <p style="margin:18px 0 0; color:#5a6478; font-size:15.5px; line-height:1.8; max-width:46ch;">{{ p.desc }}</p>
+            <ul style="list-style:none; margin:22px 0 0; padding:0; display:flex; flex-direction:column; gap:11px;">
+              <sc-for list="{{ p.features }}" as="f" hint-placeholder-count="3">
+                <li style="display:flex; align-items:flex-start; gap:11px; font-size:14.5px; color:#3a4456;"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="{{ f.accent }}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto; margin-top:1px;"><path d="M20 6L9 17l-5-5"/></svg>{{ f.text }}</li>
+              </sc-for>
+            </ul>
+            <a href="{{ p.href }}" target="_blank" rel="noopener" style="margin-top:26px; text-decoration:none; color:{{ p.accent }}; font-weight:600; font-size:15px; display:inline-flex; align-items:center; gap:8px;" style-hover="gap:12px;">{{ p.enterLabel }}
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+            </a>
+          </div>
+          <a href="{{ p.href }}" target="_blank" rel="noopener" style="cursor:pointer; {{ p.shotStyle }}" style-hover="cursor:pointer; {{ p.shotHover }}">
+            <sc-if value="{{ frameChrome }}" hint-placeholder-val="{{ true }}"><div style="display:flex; align-items:center; gap:7px; padding:0 14px; height:38px; background:#f1f3f8; border-bottom:1px solid #e7eaf1;">
+              <span style="width:9px; height:9px; border-radius:50%; background:#f0b6b0;"></span><span style="width:9px; height:9px; border-radius:50%; background:#f3d79a;"></span><span style="width:9px; height:9px; border-radius:50%; background:#bfe3b8;"></span>
+              <span style="flex:1; text-align:center; font-family:'Fira Code',ui-monospace,monospace; font-size:11px; color:#9aa4b8;">{{ p.urlLabel }}</span>
+            </div></sc-if>
+            <img src="{{ p.shot }}" alt="{{ p.shotAlt }}" style="width:100%; height:auto;">
+          </a>
+        </div>
+      </section>
+    </sc-for>
+
+    <!-- ░░ CLOSING CTA (navy) ░░ -->
+    <section style="background:#1b2a63;">
+      <div style="max-width:1200px; margin:0 auto; padding:76px 28px; display:flex; gap:40px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+        <div style="flex:1 1 420px; min-width:280px;">
+          <h2 style="margin:0; color:#fff; font-size:clamp(24px,3vw,34px); line-height:1.3; font-weight:700; max-width:20ch;">准备好让智能体接管仿真工作流了吗？</h2>
+          <p style="margin:16px 0 0; color:#b9c2e0; font-size:16px; line-height:1.8; max-width:46ch;">三款产品已上线，更多智能体持续累加。告诉我们你的场景，一起把流程跑通、把结论坐实。</p>
+          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:32px;">
+            <a href="https://www.romtekcae.com" target="_blank" rel="noopener" style="text-decoration:none; color:#1b2a63; background:#fff; font-size:15px; font-weight:600; padding:13px 26px; border-radius:11px; white-space:nowrap;" style-hover="background:#eef0f6;">联系我们</a>
+            <a href="#products" style="text-decoration:none; color:#fff; background:transparent; border:1px solid rgba(255,255,255,.4); font-size:15px; font-weight:600; padding:13px 26px; border-radius:11px; white-space:nowrap;" style-hover="border-color:#fff;">浏览产品</a>
+          </div>
+        </div>
+        <div style="flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:12px; background:#fff; border-radius:18px; padding:20px;">
+          <img src="assets/qr-navy.png" alt="微信二维码" style="width:160px; height:160px; display:block;">
+          <div style="display:flex; align-items:center; gap:7px; font-size:13px; color:#5a6478; font-weight:500;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="#1b2a63"><path d="M8.7 7.4c-3.3 0-6 2.2-6 4.9 0 1.5.9 2.9 2.4 3.8l-.6 1.8 2.1-1.1c.7.2 1.4.3 2.1.3.2 0 .4 0 .6-.1-.1-.4-.2-.9-.2-1.3 0-2.6 2.5-4.7 5.6-4.7h.4c-.5-2.6-3.2-4.6-6.4-4.6Zm-2 2.6c.5 0 .8.3.8.8s-.3.8-.8.8-.9-.4-.9-.8.4-.8.9-.8Zm4.1 0c.5 0 .8.3.8.8s-.3.8-.8.8-.9-.4-.9-.8.4-.8.9-.8Z"/><path d="M21.3 14.9c0-2.3-2.3-4.1-5-4.1s-5 1.8-5 4.1 2.3 4.1 5 4.1c.6 0 1.2-.1 1.7-.3l1.7.9-.5-1.5c1.2-.7 2.1-1.9 2.1-3.2Zm-6.6-.9c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7Zm3.2 0c-.4 0-.7-.3-.7-.7s.3-.7.7-.7.7.3.7.7-.3.7-.7.7Z"/></svg>
+            扫码添加微信，与我们联系
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ░░ FOOTER ░░ -->
+  <footer style="background:#14224f;">
+    <div style="max-width:1200px; margin:0 auto; padding:26px 28px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; color:#8e99c4; font-size:13px;">
+      <img src="assets/romtek-logo.png" alt="Romtek" style="height:20px; width:auto;">
+      <span>© 2026 Romtek · Cortex Suite</span>
+      <span style="flex:1;"></span>
+      <a href="#products" style="text-decoration:none; color:#aeb7da;" style-hover="color:#fff;">产品</a>
+      <a href="#workflow" style="text-decoration:none; color:#aeb7da;" style-hover="color:#fff;">工作流</a>
+      <a href="https://www.romtekcae.com" target="_blank" rel="noopener" style="text-decoration:none; color:#aeb7da;" style-hover="color:#fff;">romtekcae.com</a>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;showStageNumbers&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; },
+  &quot;frameChrome&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; }
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const showStageNumbers = this.props.showStageNumbers ?? true;
+    const frameChrome = this.props.frameChrome ?? true;
+
+    // helper: hex -> rgba string
+    const hexA = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+    };
+
+    // ▸▸ 产品清单 —— 以后加新产品，只在这里加一条即可。 ◂◂
+    //    stageZh/stageEn 阶段名 · accent 主色 · features 三条卖点 · shot 截图路径
+    const base = [
+      {
+        stageZh: '执行', stageEn: 'EXECUTE', name: 'Mirror Cortex', accent: '#2b50d8',
+        desc: '对话式仿真执行引擎。用自然语言驱动网格划分、求解与后处理；作业排队、文件管理与结果云图全流程托管——工程师只说意图，Mirror 负责跑通。',
+        features: ['自然语言驱动网格、求解与后处理', '作业与文件全流程托管、可追溯', '实时回传求解进度与结果云图'],
+        href: 'https://mirror.romtekcae.com:5000', urlLabel: 'mirror.romtekcae.com', shot: 'assets/shot-mirror-crop.png',
+      },
+      {
+        stageZh: '洞察', stageEn: 'INSIGHT', name: 'Rsight Cortex', accent: '#0e8074',
+        desc: '仿真洞察与算例知识图谱平台。汇集分散的算例目录，自动抽取参数、关联工程师与项目，跨算例对比检索，让海量结果一眼看懂。',
+        features: ['自动抽取参数，构建算例知识图谱', '跨算例对比检索与统计分析', '一键可视化切面、流线与云图'],
+        href: 'https://rsight.romtekcae.com:5000/', urlLabel: 'rsight.romtekcae.com', shot: 'assets/shot-rsight-crop.png',
+      },
+      {
+        stageZh: '验证', stageEn: 'VERIFY', name: 'RLab Cortex', accent: '#6d3aed',
+        desc: '可验证数据分析智能体。把分析拆成可编排的流水线，每一步解析、算法与图表都可追溯、可复算——面向非专家，也让结论站得住脚。',
+        features: ['每一步解析、算法、图表均可追溯', '结果可复算，结论经得起复核', '面向非专家的可视化流程编排'],
+        href: 'https://numetrix.romtekcae.com', urlLabel: 'numetrix.romtekcae.com', shot: 'assets/shot-verity-crop.png',
+      },
+    ];
+
+    const products = base.map((p, i) => {
+      const odd = i % 2 === 1; // 奇数行图文左右对调
+      return {
+        accent: p.accent,
+        stageLabel: p.stageZh + ' · ' + p.stageEn,
+        name: p.name,
+        desc: p.desc,
+        features: p.features.map((t) => ({ text: t, accent: p.accent })),
+        href: p.href,
+        urlLabel: p.urlLabel,
+        shot: p.shot,
+        shotAlt: p.name + ' 工作界面',
+        enterLabel: '进入 ' + p.name,
+        bandStyle: 'background:' + (odd ? '#fff' : '#f5f6f9') + ';' + (odd ? ' border-top:1px solid #e7eaf1; border-bottom:1px solid #e7eaf1;' : ''),
+        rowStyle: 'max-width:1200px; margin:0 auto; padding:60px 28px; display:flex; gap:60px; align-items:center; flex-wrap:wrap; flex-direction:' + (odd ? 'row-reverse' : 'row') + ';',
+        shotStyle: 'flex:1 1 500px; min-width:300px; text-decoration:none; border-radius:14px; overflow:hidden; border:1px solid #e2e6ef; background:#fff; box-shadow:0 40px 80px -32px ' + hexA(p.accent, 0.42) + ', 0 14px 30px -20px rgba(26,34,51,0.18); display:block; transition:box-shadow .25s ease;',
+        shotHover: 'box-shadow:0 52px 100px -32px ' + hexA(p.accent, 0.52) + ', 0 16px 34px -20px rgba(26,34,51,0.22);',
+      };
+    });
+
+    return { showStageNumbers, frameChrome, products };
+  }
+}
+</script>
+</body>
+</html>

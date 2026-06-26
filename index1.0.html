@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RLab Cortex · AI Agent Suite</title>
+<meta name="description" content="RLab Cortex —— 面向 CFD / CAE 的 AI 智能体矩阵。">
+<link rel="preconnect" href="https://fonts.loli.net">
+<link rel="preconnect" href="https://gstatic.loli.net" crossorigin>
+<link href="https://fonts.loli.net/css2?family=Fira+Code:wght@500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f9fc;
+    --card:#ffffff;
+    --text:#0f172a;
+    --muted:#5b6b7c;
+    --faint:#94a3b8;
+    --border:#e4ecf3;
+    --accent:#0369a1;
+    --radius:18px;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.04), 0 2px 6px rgba(15,23,42,.05);
+    --shadow-lg:0 18px 44px rgba(8,72,110,.16), 0 6px 14px rgba(15,23,42,.06);
+    --sans:"Fira Sans", -apple-system, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+    --mono:"Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{
+    font-family:var(--sans);
+    color:var(--text);
+    background:
+      radial-gradient(1100px 460px at 88% -8%, #e2f0fa 0%, rgba(226,240,250,0) 60%),
+      radial-gradient(900px 420px at -6% 4%, #eaf2f8 0%, rgba(234,242,248,0) 58%),
+      var(--bg);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    min-height:100vh; display:flex; flex-direction:column;
+  }
+
+  /* ── 顶栏 ── */
+  header{ position:sticky; top:0; z-index:10; background:rgba(255,255,255,.78); backdrop-filter:saturate(160%) blur(10px); border-bottom:1px solid var(--border); }
+  .bar{ max-width:1180px; margin:0 auto; padding:16px 24px; display:flex; align-items:center; gap:12px; }
+  .logo{ width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg, var(--accent), #38bdf8); display:grid; place-items:center; flex:0 0 auto; box-shadow:0 4px 12px rgba(3,105,161,.32); }
+  .logo svg{ width:21px; height:21px; }
+  .brand{ font-weight:700; font-size:19px; letter-spacing:.2px; }
+  .brand .accent{ color:var(--accent); }
+  .bar .spacer{ flex:1; }
+  .bar .tagline{ font-family:var(--mono); font-size:12px; color:var(--faint); letter-spacing:.04em; }
+  @media (max-width:560px){ .bar .tagline{ display:none; } }
+
+  /* ── 主区 ── */
+  main{ flex:1 0 auto; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:56px 24px 72px; }
+  .eyebrow{ font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 12px; }
+
+  /* hero 两栏:文案 + 装饰图 */
+  .hero{ display:grid; grid-template-columns:1.05fr .95fr; gap:48px; align-items:center; margin-bottom:54px; }
+  .hero-h1{ margin:0 0 14px; font-size:38px; line-height:1.14; font-weight:700; letter-spacing:-.01em; }
+  .hero-h1 .grad{ background:linear-gradient(135deg,#0369a1,#0ea5e9); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .lede{ margin:0 0 22px; color:var(--muted); font-size:16px; max-width:54ch; line-height:1.7; }
+  .meta{ display:flex; gap:10px; flex-wrap:wrap; }
+  .chip{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); background:#fff; border:1px solid var(--border); padding:6px 12px; border-radius:999px; box-shadow:var(--shadow-sm); }
+  .chip .dot{ width:7px; height:7px; border-radius:50%; }
+  .chip .dot.live{ background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.14); }
+  .chip .dot.next{ background:#94a3b8; }
+  .hero-art{ position:relative; }
+  .hero-art svg{ width:100%; height:auto; display:block; }
+  .hero-art .nd{ transform-box:fill-box; transform-origin:center; animation:float 6s ease-in-out infinite; }
+  .hero-art .nd:nth-child(2){ animation-delay:-1.2s; } .hero-art .nd:nth-child(3){ animation-delay:-2.4s; }
+  .hero-art .nd:nth-child(4){ animation-delay:-3.6s; } .hero-art .nd:nth-child(5){ animation-delay:-4.8s; }
+  @keyframes float{ 0%,100%{ transform:translateY(0); } 50%{ transform:translateY(-6px); } }
+  @media (max-width:860px){ .hero{ grid-template-columns:1fr; gap:8px; } .hero-art{ display:none; } }
+  @media (max-width:560px){ .hero-h1{ font-size:29px; } }
+
+  /* ── 产品网格 ── */
+  .grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:22px; }
+  @media (max-width:920px){ .grid{ grid-template-columns:repeat(2, 1fr); } }
+  @media (max-width:600px){ .grid{ grid-template-columns:1fr; } }
+
+  .card{ position:relative; border:1px solid var(--border); border-radius:var(--radius); background:var(--card); display:flex; flex-direction:column; overflow:hidden; min-height:330px; }
+  .card--active{ text-decoration:none; color:inherit; box-shadow:var(--shadow-sm); transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease; outline:none; }
+  .card--active:hover, .card--active:focus-visible{ transform:translateY(-5px); box-shadow:var(--shadow-lg); border-color:color-mix(in srgb, var(--c1) 45%, var(--border)); }
+  .card--active:focus-visible{ outline:2px solid var(--c1); outline-offset:3px; }
+
+  /* 顶部截图屏 */
+  .shot{ position:relative; height:166px; overflow:hidden; border-bottom:1px solid var(--border); background:linear-gradient(135deg, color-mix(in srgb, var(--c1) 8%, #fff), color-mix(in srgb, var(--c2) 12%, #fff)); }
+  .shot svg{ position:absolute; inset:0; width:100%; height:100%; transition:transform .35s ease; }
+  .card--active:hover .shot svg{ transform:scale(1.045); }
+  .shot::after{ content:""; position:absolute; inset:0; box-shadow:inset 0 -28px 28px -22px rgba(15,23,42,.12); pointer-events:none; }
+
+  /* 信息区 */
+  .body{ padding:18px 20px 20px; display:flex; flex-direction:column; flex:1; }
+  .tag{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.06em; padding:3px 9px; border-radius:999px; margin-bottom:11px; width:fit-content; }
+  .tag--live{ color:#15803d; background:#effaf2; border:1px solid #cdeed8; }
+  .tag--beta{ color:#b45309; background:#fff7ec; border:1px solid #f6e2bf; }
+  .dot{ width:6px; height:6px; border-radius:50%; }
+  .tag--live .dot{ background:#16a34a; } .tag--beta .dot{ background:#d97706; }
+  .row{ display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .card h2{ margin:0; font-size:19px; font-weight:700; letter-spacing:.2px; }
+  .from{ font-family:var(--mono); font-size:11px; color:var(--faint); }
+  .card p{ margin:0; color:var(--muted); font-size:14px; line-height:1.66; }
+  .enter{ margin-top:auto; display:inline-flex; align-items:center; gap:7px; color:var(--c1); font-weight:600; font-size:14px; padding-top:16px; }
+  .enter svg{ width:16px; height:16px; transition:transform .2s ease; }
+  .card--active:hover .enter svg, .card--active:focus-visible .enter svg{ transform:translateX(4px); }
+
+  /* coming-soon 通栏 banner */
+  .more{ grid-column:1 / -1; min-height:0; border-style:dashed; background:linear-gradient(180deg,#fbfdfe,#f7fafc); display:flex; flex-direction:row; align-items:center; gap:18px; padding:20px 24px; }
+  .more .soon-icon{ width:46px; height:46px; border-radius:12px; background:#fff; border:1px solid var(--border); display:grid; place-items:center; color:var(--faint); flex:0 0 auto; }
+  .more .soon-icon svg{ width:24px; height:24px; }
+  .more .soon-title{ font-size:15.5px; font-weight:600; color:var(--text); }
+  .more .soon-sub{ font-size:13px; color:var(--faint); margin-top:2px; }
+  .more .spacer{ flex:1; }
+  .more .cta{ font-size:13.5px; font-weight:600; color:var(--accent); white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+  .more .cta svg{ width:15px; height:15px; }
+  @media (max-width:600px){ .more .cta{ display:none; } }
+
+  footer{ flex-shrink:0; border-top:1px solid var(--border); background:rgba(255,255,255,.6); }
+  .foot{ max-width:1180px; margin:0 auto; padding:18px 24px; color:var(--faint); font-size:13px; display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .foot .spacer{ flex:1; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>
+    </span>
+    <span class="brand">RLab <span class="accent">Cortex</span></span>
+    <span class="spacer"></span>
+    <span class="tagline">AI Agent Suite for CFD / CAE</span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Product Suite</p>
+        <h1 class="hero-h1">面向仿真工程的<br><span class="grad">AI 智能体矩阵</span></h1>
+        <p class="lede">RLab Cortex 把 CFD / CAE 工作流拆给一组各司其职的智能体——执行、洞察、验证。点击进入已上线产品,产品线持续累加。</p>
+        <div class="meta">
+          <span class="chip"><span class="dot live"></span>3 款已上线</span>
+          <span class="chip"><span class="dot next"></span>产品线持续累加</span>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 440 360" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#0369a1"/></linearGradient>
+            <radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#0ea5e9" stop-opacity=".18"/><stop offset="1" stop-color="#0ea5e9" stop-opacity="0"/></radialGradient>
+          </defs>
+          <circle cx="220" cy="180" r="150" fill="url(#halo)"/>
+          <g stroke="#bcd9ec" stroke-width="1.4" opacity=".9">
+            <path d="M220 180 L110 92"/><path d="M220 180 L350 104"/><path d="M220 180 L128 280"/>
+            <path d="M220 180 L342 268"/><path d="M220 180 L62 196"/><path d="M220 180 L392 196"/>
+            <path d="M110 92 L350 104" stroke-dasharray="4 5" opacity=".5"/><path d="M128 280 L342 268" stroke-dasharray="4 5" opacity=".5"/>
+          </g>
+          <g class="nd"><circle cx="110" cy="92" r="11" fill="#38bdf8"/></g>
+          <g class="nd"><circle cx="350" cy="104" r="13" fill="#0d9488"/></g>
+          <g class="nd"><circle cx="128" cy="280" r="12" fill="#7c3aed"/></g>
+          <g class="nd"><circle cx="342" cy="268" r="9" fill="#0369a1"/></g>
+          <circle cx="62" cy="196" r="6" fill="#cbd5e1"/><circle cx="392" cy="196" r="7" fill="#cbd5e1"/>
+          <circle cx="220" cy="180" r="26" fill="#fff" stroke="url(#hg)" stroke-width="2.5"/>
+          <circle cx="220" cy="180" r="13" fill="url(#hg)"/>
+        </svg>
+      </div>
+    </section>
+    <div class="grid" id="grid" aria-label="产品列表"></div>
+  </div>
+</main>
+
+<footer>
+  <div class="foot"><span>© 2026 RLab · Cortex Suite</span><span class="spacer"></span><span>romtekcae.com</span></div>
+</footer>
+
+<script>
+/* ───────────────────────────────────────────────────────────
+   产品清单 —— 以后加新产品只改这一处。
+   status: "live" 已上线 | "beta" 内测 | "soon" 占位
+   shot  : 顶部迷你界面种类 "chat" | "dash" | "flow"(将来可换成真截图)
+   c1,c2 : 同家族不同色相
+─────────────────────────────────────────────────────────── */
+const PRODUCTS = [
+  { name:"Mirror Cortex", from:"原 sim-cli", status:"live", shot:"chat",
+    href:"https://mirror.romtekcae.com:5000",
+    desc:"对话式仿真执行引擎。用自然语言驱动网格、求解与后处理,作业与文件全流程托管。",
+    c1:"#0369a1", c2:"#38bdf8" },
+  { name:"Rsight Cortex", from:"原 simgraph", status:"live", shot:"dash",
+    href:"https://rsight.romtekcae.com:5000/",
+    desc:"仿真洞察与算例管理平台。汇集算例、提取关键量、可视化对比,让结果一眼看懂。",
+    c1:"#0d9488", c2:"#34d399" },
+  { name:"RLab Cortex", from:"", status:"live", shot:"flow",
+    href:"http://8.140.222.236",
+    desc:"可验证数据分析智能体。每一步解析、算法与图表都可追溯、可复算,结论站得住。",
+    c1:"#7c3aed", c2:"#a78bfa" },
+  { status:"soon" }
+];
+
+const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>';
+
+/* ── 迷你界面(风格化占位截图)── */
+function chrome(id, c1, c2, inner){
+  return `<svg viewBox="0 0 320 166" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="g${id}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${c2}" stop-opacity=".9"/><stop offset="1" stop-color="${c1}"/>
+      </linearGradient>
+    </defs>
+    <rect x="14" y="14" width="292" height="138" rx="9" fill="#fff" stroke="#e6eef5"/>
+    <rect x="14" y="14" width="292" height="22" rx="9" fill="#f4f8fb"/>
+    <rect x="14" y="28" width="292" height="8" fill="#f4f8fb"/>
+    <circle cx="27" cy="25" r="3" fill="#f0b6b0"/><circle cx="38" cy="25" r="3" fill="#f3d79a"/><circle cx="49" cy="25" r="3" fill="#bfe3b8"/>
+    <rect x="210" y="21" width="84" height="8" rx="4" fill="#eef3f7"/>
+    ${inner}
+  </svg>`;
+}
+
+function shotSVG(p){
+  const id = p.shot;
+  if (id === "chat"){
+    return chrome("chat", p.c1, p.c2, `
+      <rect x="26" y="48" width="96" height="12" rx="6" fill="#eef2f6"/>
+      <rect x="26" y="66" width="74" height="12" rx="6" fill="#eef2f6"/>
+      <rect x="40" y="90" width="82" height="12" rx="6" fill="url(#gchat)" opacity=".85"/>
+      <rect x="26" y="108" width="96" height="12" rx="6" fill="#eef2f6"/>
+      <rect x="26" y="126" width="58" height="12" rx="6" fill="#eef2f6"/>
+      <rect x="138" y="46" width="156" height="94" rx="7" fill="#0b1f2e"/>
+      <g opacity=".95">
+        <ellipse cx="216" cy="93" rx="70" ry="40" fill="${p.c1}" opacity=".22"/>
+        <ellipse cx="216" cy="93" rx="52" ry="30" fill="${p.c1}" opacity=".34"/>
+        <ellipse cx="216" cy="93" rx="34" ry="20" fill="${p.c2}" opacity=".7"/>
+        <ellipse cx="216" cy="93" rx="16" ry="9" fill="#fde68a"/>
+      </g>
+      <path d="M150 132 H282" stroke="#1e3a4d" stroke-width="2"/>`);
+  }
+  if (id === "dash"){
+    const bars = [40,64,30,78,52,70,44].map((h,i)=>{
+      const x = 30 + i*16, y = 130 - h;
+      return `<rect x="${x}" y="${y}" width="9" height="${h}" rx="2" fill="${i%2?p.c2:p.c1}" opacity="${i%2?.7:.92}"/>`;
+    }).join("");
+    return chrome("dash", p.c1, p.c2, `
+      <rect x="26" y="46" width="118" height="92" rx="6" fill="#fafcfe" stroke="#eef3f7"/>
+      ${bars}
+      <line x1="26" y1="130" x2="144" y2="130" stroke="#e2e8f0" stroke-width="1.5"/>
+      <rect x="156" y="46" width="138" height="42" rx="6" fill="#fafcfe" stroke="#eef3f7"/>
+      <polyline points="164,78 182,66 200,72 218,56 236,62 254,50 286,54" fill="none" stroke="url(#gdash)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="156" y="96" width="138" height="13" rx="3" fill="#eef3f7"/>
+      <rect x="156" y="114" width="138" height="13" rx="3" fill="#f3f7fa"/>
+      <rect x="156" y="96" width="46" height="13" rx="3" fill="${p.c1}" opacity=".2"/>`);
+  }
+  // flow (verifiable pipeline)
+  const node = (x,y,fill)=>`<rect x="${x}" y="${y}" width="46" height="30" rx="7" fill="#fff" stroke="${fill}" stroke-width="1.6"/>
+     <circle cx="${x+34}" cy="${y+8}" r="6" fill="${fill}"/>
+     <path d="M${x+31} ${y+8} l2 2 4-4" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+     <rect x="${x+8}" y="${y+11}" width="20" height="4" rx="2" fill="#e2e8f0"/>
+     <rect x="${x+8}" y="${y+19}" width="14" height="4" rx="2" fill="#eef2f6"/>`;
+  return chrome("flow", p.c1, p.c2, `
+    <path d="M76 63 H110 M156 63 H190 M236 78 V96 M99 96 H213" fill="none" stroke="${p.c1}" stroke-width="1.6" stroke-dasharray="3 3" opacity=".55"/>
+    ${node(30,48,p.c1)}
+    ${node(110,48,p.c2)}
+    ${node(213,48,p.c1)}
+    ${node(76,104,p.c2)}
+    ${node(190,104,p.c1)}
+    <rect x="26" y="138" width="120" height="6" rx="3" fill="#eef2f6"/>`);
+}
+
+function cardHTML(p){
+  if (p.status === "soon"){
+    return `<div class="card more" aria-label="更多智能体正在打造中" role="img">
+      <span class="soon-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+      <div><div class="soon-title">更多智能体正在打造</div><div class="soon-sub">仿真工作流的下一块拼图,持续累加</div></div>
+      <span class="spacer"></span>
+      <span class="cta">有想定制的场景?联系我们 ${ARROW}</span>
+    </div>`;
+  }
+  const tagClass = p.status === "beta" ? "tag--beta" : "tag--live";
+  const tagText  = p.status === "beta" ? "内测中" : "已上线";
+  const style = `--c1:${p.c1};--c2:${p.c2};`;
+  return `<a class="card card--active" style="${style}" href="${p.href}" aria-label="进入 ${p.name}">
+    <div class="shot" aria-hidden="true">${shotSVG(p)}</div>
+    <div class="body">
+      <span class="tag ${tagClass}"><span class="dot"></span>${tagText}</span>
+      <div class="row"><h2>${p.name}</h2><span class="from">${p.from}</span></div>
+      <p>${p.desc}</p>
+      <span class="enter">进入 ${ARROW}</span>
+    </div>
+  </a>`;
+}
+
+document.getElementById("grid").innerHTML = PRODUCTS.map(cardHTML).join("");
+</script>
+</body>
+</html>

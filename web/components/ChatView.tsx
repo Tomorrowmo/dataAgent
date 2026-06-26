@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square } from 'lucide-react';
 import Markdown from '@/components/Markdown';
-import { api, streamChat, type ChatMessage, type Dataset, type UploadResp } from '@/lib/api';
+import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
@@ -26,9 +26,19 @@ type DisplayMsg = {
 export default function ChatView({
   conversationId,
   onConversationCreated,
+  pendingAsk,
+  onGoSettings,
+  onViewDataset,
 }: {
   conversationId: number | null;
   onConversationCreated: (id: number) => void;
+  // A prompt forwarded from the datasets view (a clicked suggestion). When its
+  // nonce changes we run it on the given dataset.
+  pendingAsk?: { prompt: string; datasetId: number; nonce: number } | null;
+  // Shortcut to the Settings tab (e.g. when a "no LLM key" error is shown).
+  onGoSettings?: () => void;
+  // Open a dataset's full page in the datasets tab ("查看完整表格").
+  onViewDataset?: (id: number) => void;
 }) {
   const t = useT();
   const lang = useLangStore((s) => s.lang);
@@ -71,6 +81,8 @@ export default function ChatView({
   const loadedConvRef = useRef<number | null>(null);
   // Aborts the in-flight streaming turn (the 停止 button / terminating a session).
   const abortRef = useRef<AbortController | null>(null);
+  // Last pendingAsk nonce we've already fired, so re-renders don't resend it.
+  const lastAskRef = useRef<number | null>(null);
 
   function stop() {
     abortRef.current?.abort();
@@ -79,6 +91,17 @@ export default function ChatView({
   useEffect(() => {
     refreshDatasets();
   }, []);
+
+  // A suggestion was clicked in the datasets view → run it here on that dataset.
+  useEffect(() => {
+    if (!pendingAsk || lastAskRef.current === pendingAsk.nonce) return;
+    lastAskRef.current = pendingAsk.nonce;
+    const { prompt, datasetId } = pendingAsk;
+    refreshDatasets();
+    setActiveDatasets([datasetId]);
+    send(prompt, [datasetId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAsk?.nonce]);
 
   async function refreshDatasets() {
     try {
@@ -365,6 +388,7 @@ export default function ChatView({
           pending={pendingParser}
           onClose={() => setPendingParser(null)}
           onIngested={onParserIngested}
+          onGoSettings={onGoSettings}
         />
       )}
       {cleaningDataset && (
@@ -515,6 +539,7 @@ export default function ChatView({
           datasetName={activeDs?.name}
           datasets={activeDsList}
           onClean={(ds) => setCleaningDataset(ds)}
+          onViewDataset={onViewDataset}
         />
       )}
     </div>
@@ -606,6 +631,38 @@ function DatasetPicker({ datasets, activeIds, primaryId, onToggle }: {
   );
 }
 
+/** Instant, free "认识这份数据" card for the active dataset — the same
+ *  deterministic first-read shown in the datasets view, surfaced right here at
+ *  the chat's upload entry point so dropping a file gives immediate context. */
+function ChatProfileCard({ ds, lang }: { ds: Dataset; lang: 'en' | 'zh' }) {
+  const [p, setP] = useState<DatasetProfile | null>(null);
+  useEffect(() => {
+    setP(null);
+    let alive = true;
+    api.profileDataset(ds.id).then((r) => { if (alive) setP(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, [ds.id]);
+  if (!p) return null;
+  return (
+    <div className="mb-4 rounded-2xl bg-white ring-1 ring-brand-200 shadow-sm overflow-hidden flex items-stretch">
+      <div className="w-1.5 shrink-0 bg-gradient-to-b from-brand-500 to-violet-500" />
+      <div className="flex-1 p-4">
+        <div className="flex items-center gap-1.5 text-brand-700 font-semibold text-sm mb-1.5">
+          <Sparkles className="w-4 h-4" /> {lang === 'zh' ? '认识这份数据' : 'Know this data'}
+        </div>
+        <p className="text-[15px] text-ink-900 font-medium leading-relaxed">{p.headline}</p>
+        {p.facts.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {p.facts.map((f, i) => (
+              <span key={i} className="inline-flex items-center text-xs text-ink-600 bg-ink-50 ring-1 ring-ink-200/70 rounded-full px-2.5 py-1">{f}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Welcome({
   t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onToggleDataset, onClickUpload, onRecipeClick, onStarter, lang,
 }: {
@@ -659,8 +716,9 @@ function Welcome({
           </div>
         </div>
       ) : (
-        /* Has data → what to do with the current dataset */
+        /* Has data → understand it first, then what to do with it */
         <div className="mt-6">
+          {activeDs && <ChatProfileCard ds={activeDs} lang={lang} />}
           <p className="text-sm text-ink-500 mb-3">
             {lang === 'zh' ? '已有数据集 ' : 'Dataset '}
             <span className="font-medium text-ink-700">{activeDs?.name}</span>

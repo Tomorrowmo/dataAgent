@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, Database, Loader2, AlertTriangle, GitBranch, Bookmark, ChevronRight, Pin, PinOff, Recycle, BarChart3, Box, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import Markdown from '@/components/Markdown';
-import { api, type Dataset, type UploadResp } from '@/lib/api';
-import { useT } from '@/lib/i18n';
+import { api, type Dataset, type DatasetProfile, type UploadResp } from '@/lib/api';
+import { useT, useLangStore } from '@/lib/i18n';
+import { buildPrompt, type RecipeId } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
 import DatasetChart from '@/components/DatasetChart';
 import DataTable from '@/components/DataTable';
@@ -15,8 +16,10 @@ const MeshViewer3D = dynamic(() => import('@/components/MeshViewer3D'), { ssr: f
 
 type NeedsParser = NonNullable<UploadResp['needs_parser']>;
 
-export default function DatasetsView() {
+export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void }) {
   const t = useT();
+  // True after arriving here via "查看完整表格" from a conversation → show a 返回 link.
+  const [cameFromChat, setCameFromChat] = useState(false);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selected, setSelected] = useState<Dataset | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -47,6 +50,31 @@ export default function DatasetsView() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // Arrived via "查看完整表格" from a conversation → select that dataset (once the
+  // list is loaded) and flag it so the "← 返回对话" link shows.
+  const lastFocusRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusDataset || lastFocusRef.current === focusDataset.nonce) return;
+    const d = datasets.find((x) => x.id === focusDataset.id);
+    if (d) { setSelected(d); setCameFromChat(true); lastFocusRef.current = focusDataset.nonce; }
+  }, [focusDataset, datasets]);
+
+  // Report the currently-open dataset up so a feedback note dropped on this view
+  // records WHICH dataset, enabling "回到现场" to land on it exactly.
+  useEffect(() => { onActiveDataset?.(selected?.id ?? null); }, [selected, onActiveDataset]);
+
+  // Auto-select the newest dataset on first load so entering this page shows a
+  // real preview + data table on the right immediately, instead of an empty
+  // "请选择数据集" placeholder. One-shot (a ref guard) so it never fights the
+  // user re-deselecting (e.g. tapping ← 返回 on a narrow screen).
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (!autoSelectedRef.current && !selected && datasets.length > 0) {
+      setSelected(datasets[0]);
+      autoSelectedRef.current = true;
+    }
+  }, [datasets, selected]);
 
   // Upload a batch of files sequentially (one dropped folder / multi-select).
   // Natively-parseable files ingest straight away; unknown formats accumulate in
@@ -142,6 +170,7 @@ export default function DatasetsView() {
           pending={pendingParser}
           onClose={shiftQueue}
           onIngested={onParserIngested}
+          onGoSettings={onGoSettings}
         />
       )}
       <div
@@ -189,6 +218,12 @@ export default function DatasetsView() {
       </div>
 
       <div className={`flex-1 overflow-y-auto scroll-hide ${selected ? '' : 'max-md:hidden'}`}>
+        {cameFromChat && onBackToChat && (
+          <button onClick={onBackToChat}
+            className="sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-brand-50 border-b border-brand-100 text-sm text-brand-700 font-medium hover:bg-brand-100">
+            ← 返回对话
+          </button>
+        )}
         {selected && (
           <button onClick={() => setSelected(null)}
             className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
@@ -201,7 +236,7 @@ export default function DatasetsView() {
           </div>
         )}
         {!selected && <div className="grid place-items-center h-full text-ink-500">{t('ds.select')}</div>}
-        {selected && <DatasetPreview ds={selected} t={t} datasets={datasets} onPromote={() => handlePromote(selected.id)} onKeep={(k) => handleKeep(selected.id, k)} onSubsetSaved={(d) => { refresh(); setSelected(d); }} />}
+        {selected && <DatasetPreview ds={selected} t={t} datasets={datasets} onPromote={() => handlePromote(selected.id)} onKeep={(k) => handleKeep(selected.id, k)} onSubsetSaved={(d) => { refresh(); setSelected(d); }} onAsk={onAsk} />}
       </div>
     </div>
   );
@@ -261,20 +296,65 @@ function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
   return <div className="space-y-0.5">{roots.map((r) => renderNode(r, 0))}</div>;
 }
 
-function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void }) {
+// A suggestion slug → its chip label (zh/en) + emoji. Slugs come from the
+// backend profile; recipe slugs also exist in lib/recipes (→ chat prompt).
+const SUGG_META: Record<string, { zh: string; en: string; emoji: string }> = {
+  chart:    { zh: '可视化', en: 'Visualize', emoji: '📊' },
+  mesh3d:   { zh: '3D 网格', en: '3D mesh', emoji: '🧊' },
+  smooth:   { zh: '平滑降噪', en: 'Smooth', emoji: '🌊' },
+  drivers:  { zh: '找主因', en: 'Key drivers', emoji: '🎯' },
+  fit:      { zh: '拟合关系', en: 'Fit a relation', emoji: '📈' },
+  outliers: { zh: '找异常点', en: 'Outliers', emoji: '🚨' },
+  corr:     { zh: '相关性', en: 'Correlations', emoji: '🔗' },
+  pca:      { zh: '降维看结构', en: 'Reduce dims', emoji: '🧭' },
+  clean:    { zh: '清洗数据', en: 'Clean', emoji: '🧹' },
+  explain:  { zh: 'AI 详解', en: 'AI explain', emoji: '✨' },
+};
+const RECIPE_SLUGS = new Set<string>(['smooth', 'drivers', 'fit', 'outliers', 'corr', 'pca']);
+
+function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onAsk }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void; onAsk?: (prompt: string, datasetId: number) => void }) {
   const cols = ds.schema.columns ?? [];
+  const lang = useLangStore((s) => s.lang);
   const isDerived = ds.kind === 'derived' || ds.derived_from != null;
   const [showChart, setShowChart] = useState(false);
   const [showMesh, setShowMesh] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [explanation, setExplanation] = useState('');
-  // Re-explain when switching datasets.
+  // Instant deterministic first-read (free; auto-loaded on every dataset switch).
+  const [profile, setProfile] = useState<DatasetProfile | null>(null);
+  // Re-explain / re-profile when switching datasets.
   useEffect(() => { setExplanation(''); setExplaining(false); }, [ds.id]);
+  useEffect(() => {
+    setProfile(null);
+    let alive = true;
+    api.profileDataset(ds.id).then((p) => { if (alive) setProfile(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, [ds.id]);
   async function explain() {
     setExplaining(true); setExplanation('');
     try { const r = await api.explainDataset(ds.id); setExplanation(r.explanation || '(没有得到解释)'); }
     catch (e) { setExplanation('(解释失败:' + (e as Error).message + ')'); }
     finally { setExplaining(false); }
+  }
+  // Dispatch a suggestion chip: in-view actions run here; analysis recipes are
+  // forwarded to chat as a ready-made question on this dataset.
+  function onSuggest(slug: string) {
+    if (slug === 'chart') { setShowChart(true); return; }
+    if (slug === 'mesh3d') { setShowMesh(true); return; }
+    if (slug === 'explain') { explain(); return; }
+    if (slug === 'clean') {
+      onAsk?.(
+        lang === 'zh'
+          ? `帮我清洗这份数据「${ds.name}」：处理缺失值、去掉明显异常的点，整理成一张干净的表，并说明你做了哪些处理。`
+          : `Clean this dataset "${ds.name}": handle missing values, drop obvious bad points, produce a tidy table, and tell me what you changed.`,
+        ds.id,
+      );
+      return;
+    }
+    if (RECIPE_SLUGS.has(slug)) {
+      const prompt = buildPrompt(slug as RecipeId, ds, lang);
+      if (prompt) onAsk?.(prompt, ds.id);
+    }
   }
   // Mesh / CGNS dataset = has X/Y/Z coordinate columns → offer the 3D viewer.
   const isMesh = ['x', 'y', 'z'].every((a) => cols.some((c) => c.name.toLowerCase() === a));
@@ -312,6 +392,56 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved }: {
           </button>
         </div>
       </div>
+      {profile && (
+        <div className="mb-5 rounded-2xl bg-white ring-1 ring-brand-200 shadow-sm overflow-hidden flex items-stretch">
+          <div className="w-1.5 shrink-0 bg-gradient-to-b from-brand-500 to-violet-500" />
+          <div className="flex-1 p-4">
+            <div className="flex items-center gap-1.5 text-brand-700 font-semibold text-sm mb-1.5">
+              <Sparkles className="w-4 h-4" /> {lang === 'zh' ? '认识这份数据' : 'Know this data'}
+            </div>
+            <p className="text-[15px] text-ink-900 font-medium leading-relaxed">{profile.headline}</p>
+            {profile.facts.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {profile.facts.map((f, i) => (
+                  <span key={i} className="inline-flex items-center text-xs text-ink-600 bg-ink-50 ring-1 ring-ink-200/70 rounded-full px-2.5 py-1">{f}</span>
+                ))}
+              </div>
+            )}
+            {profile.semantic && profile.semantic.length > 0 && (
+              <div className="mt-3 rounded-lg bg-emerald-50/70 ring-1 ring-emerald-200 px-3 py-2">
+                <div className="text-xs text-emerald-700 font-medium mb-1.5">
+                  {lang === 'zh' ? '已套用专家规则（列含义）' : 'Applied expert rules (column meanings)'}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {profile.semantic.map((m) => (
+                    <span key={m.rule_id + m.column} className="inline-flex items-center gap-1 text-xs text-emerald-800 bg-white ring-1 ring-emerald-200 rounded-full px-2.5 py-1">
+                      <code className="text-emerald-900">{m.column}</code>
+                      <span className="text-emerald-400">→</span>
+                      <span className="font-medium">{m.label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profile.suggestions.length > 0 && (
+              <div className="mt-3.5 pt-3 border-t border-ink-100">
+                <div className="text-xs text-ink-500 mb-2">{lang === 'zh' ? '可以这样做：' : 'You could:'}</div>
+                <div className="flex flex-wrap gap-2">
+                  {profile.suggestions.map((s) => {
+                    const m = SUGG_META[s.slug];
+                    return (
+                      <button key={s.slug} onClick={() => onSuggest(s.slug)} title={s.why}
+                        className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-brand-50 ring-1 ring-brand-200 text-brand-700 font-medium hover:bg-brand-100 hover:ring-brand-300 transition">
+                        <span>{m?.emoji ?? '•'}</span>{m ? (lang === 'zh' ? m.zh : m.en) : s.slug}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {(explaining || explanation) && (
         <div className="mb-5 rounded-2xl bg-violet-50/60 ring-1 ring-violet-100 p-4 text-sm text-ink-700">
           <div className="flex items-center gap-1.5 text-violet-700 font-medium mb-1.5"><Sparkles className="w-4 h-4" /> AI 解释</div>

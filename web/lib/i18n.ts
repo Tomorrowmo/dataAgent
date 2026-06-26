@@ -9,8 +9,10 @@ const STORAGE_KEY = 'numetrix.lang';
 
 function detectInitial(): Lang {
   if (typeof window === 'undefined') return 'en';
-  const stored = window.localStorage.getItem(STORAGE_KEY) as Lang | null;
-  if (stored === 'en' || stored === 'zh') return stored;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY) as Lang | null;
+    if (stored === 'en' || stored === 'zh') return stored;
+  } catch { /* localStorage unavailable (private mode) — fall back to nav lang */ }
   const nav = window.navigator?.language?.toLowerCase() || '';
   return nav.startsWith('zh') ? 'zh' : 'en';
 }
@@ -23,7 +25,9 @@ type Store = {
 export const useLangStore = create<Store>((set) => ({
   lang: 'en', // overridden on mount
   setLang: (l) => {
-    if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, l);
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(STORAGE_KEY, l); } catch { /* ignore */ }
+    }
     set({ lang: l });
   },
 }));
@@ -44,7 +48,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'brand.tagline': 'Verifiable. Auditable. Reproducible.',
 
     // Landing nav
-    'nav.why': 'Why Numetrix',
+    'nav.why': 'Why RLab Cortex',
     'nav.how': 'How it works',
     'nav.verticals': 'Built for',
     'nav.pricing': 'Pricing',
@@ -58,13 +62,13 @@ const DICT: { en: Dict; zh: Dict } = {
     'hero.headHighlight': 'trust the number',
     'hero.headPart3': '.',
     'hero.sub':
-      'Numetrix runs your data through a curated library of vetted classical algorithms instead of guessing with LLM-generated pandas. Drop in your own MATLAB-replacement code, or let the agent write a new tool — but only after a sandboxed test passes and you approve it.',
+      'The verifiable data-analysis agent for engineers and scientists: drop in data in any format and AI reads it, then analyze with built-in algorithms, your own code, or tools the agent writes on the spot — every step has an auditable trail and can be saved as a reusable flow.',
     'hero.ctaPrimary': 'Start analyzing free',
     'hero.ctaSecondary': 'Sign in',
     'hero.note': 'No credit card. 50 runs/month free. BYOK DeepSeek / Qwen / OpenAI key supported.',
     'hero.demo.q': 'My points are unevenly sampled — smooth them into one curve.',
     'hero.demo.badge': 'Auto-picked Radial-Basis (RBF) · params shown · reproducible',
-    'hero.demo.caption': 'You never said "RBF" — Numetrix picked the right method itself.',
+    'hero.demo.caption': 'You never said "RBF" — RLab Cortex picked the right method itself.',
 
     // Why
     'why.title': 'Why generic AI tools fail engineers',
@@ -82,11 +86,11 @@ const DICT: { en: Dict; zh: Dict } = {
     'why.good3.b': 'If nothing in the library fits, the agent writes a candidate algorithm — but only after a sandboxed test passes and you approve.',
 
     // How
-    'how.title': 'How Numetrix works',
+    'how.title': 'How RLab Cortex works',
     'how.step1.t': 'Import & parse data',
     'how.step1.b': 'CSV, Excel (each worksheet becomes its own table), Parquet, JSON — and for a format we don\'t recognize, the AI writes a parser on the spot. Anything you bring is turned into a clean table with an auto-detected schema + preview.',
     'how.step2.t': 'Chat with the agent',
-    'how.step2.b': 'Tell Numetrix what you want. It picks the right algorithm from the curated library first.',
+    'how.step2.b': 'Tell RLab Cortex what you want. It picks the right algorithm from the curated library first.',
     'how.step3.t': 'Add your own tools',
     'how.step3.b': 'Paste a Python run(df, **params) function. We sandbox-test it; if it passes, it becomes a callable tool.',
     'how.step4.t': 'Trust + audit',
@@ -95,7 +99,7 @@ const DICT: { en: Dict; zh: Dict } = {
 
     // Verticals
     'verts.title': 'Built for engineers and scientists',
-    'verts.sub': 'Numetrix is the AI-native equivalent of a MATLAB toolbox — but multi-vendor, collaborative, and you don’t pay $$$ per seat.',
+    'verts.sub': 'RLab Cortex is the AI-native equivalent of a MATLAB toolbox — but multi-vendor, collaborative, and you don’t pay $$$ per seat.',
     'verts.battery.t': 'Battery test engineers',
     'verts.battery.chip': 'V1 wedge',
     'verts.battery.p1': 'Harmonize Maccor / Arbin / Neware / BioLogic exports',
@@ -184,10 +188,10 @@ const DICT: { en: Dict; zh: Dict } = {
     'side.cols': 'cols',
 
     // Chat
-    'chat.title': 'Chat with Numetrix',
+    'chat.title': 'Chat with RLab Cortex',
     'chat.dataset': 'Dataset:',
     'chat.none': '— none —',
-    'chat.pick': 'Pick a dataset (top-right) and ask Numetrix to analyze it. Try:',
+    'chat.pick': 'Pick a dataset (top-right) and ask RLab Cortex to analyze it. Try:',
     'chat.example1': '“Smooth voltage_v with a Savgol filter (window 31, order 3) and compare to the raw signal.”',
     'chat.example2': '“Run a sensitivity analysis of temp_c on voltage_v and current_a.”',
     'chat.example3': '“Make me an algorithm that finds peaks above 0.5σ in voltage_v.”',
@@ -200,7 +204,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'welcome.uploading': 'Uploading…',
     'welcome.uploaded': 'Got it — using',
     'welcome.recipes': 'What do you want to figure out?',
-    'welcome.recipesNeedData': 'Upload or pick a dataset, then tap any question below — no need to know any algorithm, Numetrix picks the right method for you.',
+    'welcome.recipesNeedData': 'Upload or pick a dataset, then tap any question below — no need to know any algorithm, RLab Cortex picks the right method for you.',
     'welcome.customQ': 'Or just describe any question in the box below ↓',
     'welcome.firstNumeric': 'first numeric column',
 
@@ -219,7 +223,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'recipe.pca.b': 'Dozens of columns? Collapse them into a few you can actually see.',
     'recipe.custom.t': 'I have my own question',
     'recipe.custom.b': 'Just say it in plain words — no algorithm knowledge needed.',
-    'chat.placeholder': 'Ask Numetrix about your data… — type @ to pick a dataset (Enter to send, Shift+Enter for newline)',
+    'chat.placeholder': 'Ask RLab Cortex about your data… — type @ to pick a dataset (Enter to send, Shift+Enter for newline)',
     'chat.send': 'Send',
     'chat.thinking': 'Thinking…',
     'chat.found': 'Found',
@@ -262,7 +266,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'algo.upload.save': 'Save to library',
     'algo.upload.saved': 'Saved!',
     'algo.gen.title': 'Describe the algorithm you need',
-    'algo.gen.desc': 'Numetrix will write Python that conforms to the safe-tool contract, then run it in the sandbox to prove it works. You approve before it’s saved.',
+    'algo.gen.desc': 'RLab Cortex will write Python that conforms to the safe-tool contract, then run it in the sandbox to prove it works. You approve before it’s saved.',
     'algo.gen.placeholder': 'e.g. "Compute the first-order Sobol indices of y against x1, x2, x3 using a quasi-random sample."',
     'algo.gen.hint': 'Dataset for schema hint (optional)',
     'algo.gen.go': 'Generate',
@@ -281,13 +285,26 @@ const DICT: { en: Dict; zh: Dict } = {
     // Settings
     'set.title': 'Settings',
     'set.sub': 'Manage your account and connected LLM provider.',
+    'side.about': 'About',
+    'about.title': 'About',
+    'about.sub': 'Version, changelog and product documents.',
+    'about.versionCard': 'Version',
+    'about.version': 'Current version',
+    'about.latest': 'latest',
+    'about.changelog': "What's new",
+    'about.viewAll': 'View all',
+    'about.hide': 'Collapse',
+    'about.docs': 'Product documents',
+    'about.view': 'View',
+    'about.download': 'Download',
+    'about.docsHint': '“View” opens the PDF in a new tab; “Download” gets the Word file.',
     'set.account': 'Account',
     'set.email': 'Email:',
     'set.name': 'Name:',
     'set.nameNone': '(none)',
     'set.llm.title': 'LLM provider (BYOK)',
     'set.llm.desc':
-      'Pick a provider, paste its key, and Numetrix uses it for the chat agent and AI-codegen. Takes effect on your next message — no restart needed. Status:',
+      'Pick a provider, paste its key, and RLab Cortex uses it for the chat agent and AI-codegen. Takes effect on your next message — no restart needed. Status:',
     'set.llm.keySet': 'key configured',
     'set.llm.keyMissing': 'not set',
     'set.llm.provider': 'Provider',
@@ -337,7 +354,7 @@ const DICT: { en: Dict; zh: Dict } = {
   zh: {
     'brand.tagline': '可验证 · 可审计 · 可复现',
 
-    'nav.why': '为什么选 Numetrix',
+    'nav.why': '为什么选 RLab Cortex',
     'nav.how': '工作方式',
     'nav.verticals': '适用人群',
     'nav.pricing': '定价',
@@ -350,13 +367,13 @@ const DICT: { en: Dict; zh: Dict } = {
     'hero.headHighlight': '相信结果数字',
     'hero.headPart3': ' 的人，',
     'hero.sub':
-      'Numetrix 把你的数据交给一组精挑细选、经过验证的经典算法去跑，而不是让大模型现编 pandas 代码。你也可以扔进自己的算法替代 MATLAB；想让 AI 写新算法也行 —— 但必须先通过沙箱测试且你本人确认后才会入库。',
+      '面向工程师与科研人员的可验证数据分析智能体：任意格式的数据拖进来，AI 自动读懂，用内置算法、你自己的代码、或 AI 现场生成的工具完成分析 —— 每一步都有可追溯的来历，并能沉淀成可复用的流程。',
     'hero.ctaPrimary': '免费开始分析',
     'hero.ctaSecondary': '登录',
     'hero.note': '无需信用卡。每月 50 次免费运行。支持 DeepSeek / Qwen / OpenAI 等自带 Key。',
     'hero.demo.q': '我这些点采样不太均匀，帮我插值成一条光滑的曲线。',
     'hero.demo.badge': '自动选用「径向基插值 RBF」· 参数可查 · 可复现',
-    'hero.demo.caption': '你没提“径向基”，Numetrix 自己挑对了方法。',
+    'hero.demo.caption': '你没提“径向基”，RLab Cortex 自己挑对了方法。',
 
     'why.title': '为什么通用 AI 工具救不了工程师',
     'why.bad1.t': '大模型瞎算数',
@@ -372,11 +389,11 @@ const DICT: { en: Dict; zh: Dict } = {
     'why.good3.t': 'AI 是后备方案，不是默认',
     'why.good3.b': '如果算法库里没有合适的，agent 会写一个候选算法 —— 但必须先通过沙箱测试且你确认后才入库。',
 
-    'how.title': 'Numetrix 怎么用',
+    'how.title': 'RLab Cortex 怎么用',
     'how.step1.t': '导入并解析数据',
     'how.step1.b': 'CSV / Excel(多个工作表自动各自拆成一张表)/ Parquet / JSON —— 遇到不认识的格式,AI 当场写解析器。各类数据都被解析成规整的表格,自动识别字段类型并预览。',
     'how.step2.t': '和 agent 对话',
-    'how.step2.b': '告诉 Numetrix 你想做什么，它优先从精选算法库里挑一个。',
+    'how.step2.b': '告诉 RLab Cortex 你想做什么，它优先从精选算法库里挑一个。',
     'how.step3.t': '上传自有工具',
     'how.step3.b': '粘贴一个 Python run(df, **params) 函数，沙箱测试通过后即成为可调用工具。',
     'how.step4.t': '可信 + 可审计',
@@ -384,7 +401,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'how.stepLabel': '第',
 
     'verts.title': '为工程师和科研人员而生',
-    'verts.sub': 'Numetrix 是 AI 时代的 MATLAB 工具箱 —— 但跨厂商、可协作，而且不按人头收高价。',
+    'verts.sub': 'RLab Cortex 是 AI 时代的 MATLAB 工具箱 —— 但跨厂商、可协作，而且不按人头收高价。',
     'verts.battery.t': '电池测试工程师',
     'verts.battery.chip': 'V1 切入点',
     'verts.battery.p1': '统一 Maccor / Arbin / Neware / BioLogic 的导出格式',
@@ -469,10 +486,10 @@ const DICT: { en: Dict; zh: Dict } = {
     'side.rows': '行',
     'side.cols': '列',
 
-    'chat.title': '与 Numetrix 对话',
+    'chat.title': '与 RLab Cortex 对话',
     'chat.dataset': '数据集：',
     'chat.none': '— 无 —',
-    'chat.pick': '在右上角选一个数据集，然后告诉 Numetrix 想分析什么。试试：',
+    'chat.pick': '在右上角选一个数据集，然后告诉 RLab Cortex 想分析什么。试试：',
     'chat.example1': '"用 Savgol 滤波器（window 31, order 3）平滑 voltage_v，并和原始信号对比。"',
     'chat.example2': '"分析 temp_c 对 voltage_v 与 current_a 的敏感性。"',
     'chat.example3': '"写一个算法，找出 voltage_v 中超过 0.5σ 的峰。"',
@@ -484,7 +501,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'welcome.uploading': '上传中…',
     'welcome.uploaded': '已就绪 —— 当前使用',
     'welcome.recipes': '你想搞清楚什么？',
-    'welcome.recipesNeedData': '先上传或选一份数据，然后点下面任意一个问题 —— 你不用懂任何算法，Numetrix 会自动挑合适的方法。',
+    'welcome.recipesNeedData': '先上传或选一份数据，然后点下面任意一个问题 —— 你不用懂任何算法，RLab Cortex 会自动挑合适的方法。',
     'welcome.customQ': '或者在下方输入框里，用大白话描述你的问题 ↓',
     'welcome.firstNumeric': '第一个数值列',
 
@@ -503,7 +520,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'recipe.pca.b': '几十列理不清？压成两三个主要维度看全局。',
     'recipe.custom.t': '我有自己的问题',
     'recipe.custom.b': '直接用大白话说，不用懂算法，AI 帮你搞定。',
-    'chat.placeholder': '让 Numetrix 帮你分析数据…  输入 @ 可选择数据集（回车发送，Shift+回车换行）',
+    'chat.placeholder': '让 RLab Cortex 帮你分析数据…  输入 @ 可选择数据集（回车发送，Shift+回车换行）',
     'chat.send': '发送',
     'chat.thinking': '思考中…',
     'chat.found': '找到',
@@ -544,7 +561,7 @@ const DICT: { en: Dict; zh: Dict } = {
     'algo.upload.save': '保存到算法库',
     'algo.upload.saved': '已保存！',
     'algo.gen.title': '描述你想要的算法',
-    'algo.gen.desc': 'Numetrix 会按安全工具规范写一段 Python，然后在沙箱里跑通验证。需要你确认后才会保存。',
+    'algo.gen.desc': 'RLab Cortex 会按安全工具规范写一段 Python，然后在沙箱里跑通验证。需要你确认后才会保存。',
     'algo.gen.placeholder': '示例：用准随机采样计算 y 对 x1、x2、x3 的一阶 Sobol 指数。',
     'algo.gen.hint': '辅助理解字段结构的数据集（可选）',
     'algo.gen.go': '生成',
@@ -562,13 +579,26 @@ const DICT: { en: Dict; zh: Dict } = {
 
     'set.title': '设置',
     'set.sub': '管理账号与已连接的 LLM 服务商。',
+    'side.about': '关于',
+    'about.title': '关于',
+    'about.sub': '版本信息、更新日志与产品文档。',
+    'about.versionCard': '版本',
+    'about.version': '当前版本',
+    'about.latest': '最新',
+    'about.changelog': '更新日志',
+    'about.viewAll': '查看全部',
+    'about.hide': '收起',
+    'about.docs': '产品文档',
+    'about.view': '查看',
+    'about.download': '下载',
+    'about.docsHint': '「查看」在新标签页打开 PDF；「下载」获取 Word 文档。',
     'set.account': '账号',
     'set.email': '邮箱：',
     'set.name': '昵称：',
     'set.nameNone': '（未填写）',
     'set.llm.title': 'LLM 服务商（自带 Key）',
     'set.llm.desc':
-      '选一个服务商，粘上 Key，Numetrix 会用它驱动聊天 agent 和 AI 代码生成。下条消息即生效，无需重启。状态：',
+      '选一个服务商，粘上 Key，RLab Cortex 会用它驱动聊天 agent 和 AI 代码生成。下条消息即生效，无需重启。状态：',
     'set.llm.keySet': '已配置',
     'set.llm.keyMissing': '未配置',
     'set.llm.provider': '服务商',

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Database, Table2, Sparkles, AlertTriangle } from 'lucide-react';
-import type { Dataset } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { Database, Table2, Sparkles, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
+import { api, type Dataset } from '@/lib/api';
 
 /** Heuristic: does this dataset look structurally messy (worth an AI cleanup)? */
 function looksMessy(ds: Dataset): boolean {
@@ -23,8 +23,22 @@ function looksMessy(ds: Dataset): boolean {
  * Designed to take an array so multi-dataset (compare/overlay) just adds tabs;
  * today ChatView passes the single active dataset.
  */
-export default function DataPanel({ datasets, onClean }: { datasets: Dataset[]; onClean?: (ds: Dataset) => void }) {
+export default function DataPanel({ datasets, onClean, onViewFull }: { datasets: Dataset[]; onClean?: (ds: Dataset) => void; onViewFull?: (id: number) => void }) {
   const [active, setActive] = useState(0);
+  // Fetch more than the stored 10-row head so this reads as a real preview.
+  const activeDs = datasets[Math.min(active, Math.max(0, datasets.length - 1))];
+  const [preview, setPreview] = useState<{ columns: string[]; rows: Record<string, unknown>[]; total: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!activeDs) { setPreview(null); return; }
+    setPreview(null); setLoading(true);
+    let alive = true;
+    api.datasetPreview(activeDs.id, 100)
+      .then((r) => { if (alive) setPreview({ columns: r.columns, rows: r.rows, total: r.total }); })
+      .catch(() => { /* fall back to the stored head */ })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [activeDs?.id]);
 
   if (!datasets.length) {
     return (
@@ -37,7 +51,9 @@ export default function DataPanel({ datasets, onClean }: { datasets: Dataset[]; 
   const ds = datasets[Math.min(active, datasets.length - 1)];
   const cols = ds.schema?.columns ?? [];
   const head = ds.schema?.head ?? [];
-  const colNames = cols.map((c) => c.name);
+  // Prefer the freshly-fetched rows; fall back to the stored 10-row head.
+  const rows = preview?.rows ?? head;
+  const colNames = preview?.columns ?? cols.map((c) => c.name);
 
   return (
     <div className="space-y-3">
@@ -95,13 +111,25 @@ export default function DataPanel({ datasets, onClean }: { datasets: Dataset[]; 
         ))}
       </div>
 
-      {/* Head preview */}
-      {head.length > 0 && (
+      {/* Row preview — fetched on demand (up to 100 rows), head as fallback */}
+      {(rows.length > 0 || loading) && (
         <div>
           <div className="flex items-center gap-1.5 text-[11px] text-ink-500 mb-1">
-            <Table2 className="w-3 h-3" /> 前 {head.length} 行
+            <Table2 className="w-3 h-3 shrink-0" />
+            {loading && !preview
+              ? <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> 正在加载预览…</span>
+              : <>预览前 {rows.length} 行{preview ? `（共 ${preview.total.toLocaleString()} 行）` : ''}</>}
+            {onViewFull && (
+              <button
+                onClick={() => onViewFull(ds.id)}
+                title="在「数据集」里打开这条数据的完整页面：排序 / 筛选 / 图表 / 血缘 / 另存"
+                className="ml-auto inline-flex items-center gap-1 text-brand-600 hover:text-brand-700 hover:underline shrink-0"
+              >
+                <Maximize2 className="w-3 h-3" /> 查看完整表格
+              </button>
+            )}
           </div>
-          <div className="rounded-lg ring-1 ring-ink-200 overflow-x-auto">
+          <div className="rounded-lg ring-1 ring-ink-200 overflow-auto max-h-96">
             <table className="text-[11px] min-w-full">
               <thead className="bg-ink-50 text-ink-500 sticky top-0">
                 <tr>
@@ -111,8 +139,8 @@ export default function DataPanel({ datasets, onClean }: { datasets: Dataset[]; 
                 </tr>
               </thead>
               <tbody>
-                {head.map((row, i) => (
-                  <tr key={i} className="border-t border-ink-100">
+                {rows.map((row, i) => (
+                  <tr key={i} className="border-t border-ink-100 hover:bg-ink-50/60">
                     {colNames.map((c) => (
                       <td key={c} className="py-1 px-2 font-mono whitespace-nowrap text-ink-700">
                         {fmt((row as Record<string, unknown>)[c])}

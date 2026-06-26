@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Key, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
@@ -128,7 +128,7 @@ export default function SettingsView() {
 
       <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
         <div className="flex items-center gap-2 mb-2">
-          <Key className="w-4 h-4 text-brand-600" />
+          <BrainCircuit className="w-4 h-4 text-brand-600" />
           <h3 className="font-medium">{t('set.llm.title')}</h3>
         </div>
         <p className="text-sm text-ink-500 mb-4">

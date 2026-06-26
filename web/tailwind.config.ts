@@ -9,16 +9,18 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#f5f7ff',
-          100: '#eaeefe',
-          200: '#cad3fb',
-          300: '#9aaaf6',
-          400: '#6478ee',
-          500: '#3e4ee0',
-          600: '#2d36c0',
-          700: '#252c97',
-          800: '#1f2778',
-          900: '#1c2466',
+          // Softened (was a vivid #3e4ee0 indigo) → a gentler, lower-chroma
+          // periwinkle indigo. Same family, much calmer overall.
+          50: '#f7f8fc',
+          100: '#eef0f9',
+          200: '#dce0f2',
+          300: '#c0c6e8',
+          400: '#9aa3d8',
+          500: '#7780c6',
+          600: '#5d66ab',
+          700: '#4b5289',
+          800: '#3e436e',
+          900: '#363a5b',
         },
         ink: {
           50: '#fafafa',

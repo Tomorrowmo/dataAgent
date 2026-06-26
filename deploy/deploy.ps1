@@ -1,4 +1,4 @@
-# Numetrix — Windows / local deploy helper using Docker Desktop.
+# RLab Cortex — Windows / local deploy helper using Docker Desktop.
 # Usage:   pwsh -File deploy/deploy.ps1
 # Optional env:  $env:DEEPSEEK_API_KEY = "sk-..."
 
@@ -49,7 +49,7 @@ for ($i = 0; $i -lt 30; $i++) {
 
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Green
-Write-Host "  Numetrix is live"                                                    -ForegroundColor Green
+Write-Host "  RLab Cortex is live"                                                    -ForegroundColor Green
 Write-Host "  URL:  http://localhost:$port"
 Write-Host "====================================================================" -ForegroundColor Green
 Write-Host ""

@@ -1,4 +1,4 @@
-# Numetrix — Handoff Note
+# RLab Cortex — Handoff Note
 
 > ⬇️ 顶部为 **2026-06-03 会话最新交接**;再下面的「What's built / Deploy…」是初版构建会话的历史记录(部分已过时,如"20 algorithms"现为 13 内置 + AI 生成)。
 
@@ -30,7 +30,7 @@
 - **旧实例坑**:残留 uvicorn 占 :8077 跑旧代码 → 新实例绑不上、新路由返回 **405**。按端口找真正 LISTENING 的 PID(`netstat -ano | findstr :8077`)杀掉,再起一个,用「新路由返 401 而非 405」验证。
 
 ## 下个会话开局输入(粘贴)
-> 继续 Numetrix(d:\Git\Personal\DataAgent)。先 `curl http://127.0.0.1:8077/api/health` 确认后端;没起就 venv python 跑 uvicorn(见运维段),冷导入要等几分钟。前端 :3000 硬刷新。这次想做:**【填:如 Pillar 4 发布小程序 / 派生数据集自动回收 / 流程画布升级可拖拽】**。背景见本文件 + 项目记忆(血缘 DAG / 可编辑流程 / 算法面板),保留纯计算不依赖 AI 的手动路径。
+> 继续 RLab Cortex(d:\Git\Personal\DataAgent)。先 `curl http://127.0.0.1:8077/api/health` 确认后端;没起就 venv python 跑 uvicorn(见运维段),冷导入要等几分钟。前端 :3000 硬刷新。这次想做:**【填:如 Pillar 4 发布小程序 / 派生数据集自动回收 / 流程画布升级可拖拽】**。背景见本文件 + 项目记忆(血缘 DAG / 可编辑流程 / 算法面板),保留纯计算不依赖 AI 的手动路径。
 
 ---
 

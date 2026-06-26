@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Numetrix — one-click deploy to a fresh Linux VM
+# RLab Cortex — one-click deploy to a fresh Linux VM
 # Tested on: Alibaba Cloud ECS / Tencent Cloud CVM / any Debian-Ubuntu host.
 #
 # Usage (on the cloud VM, after `scp -r` or `git clone`):
-#   cd Numetrix && bash deploy/deploy.sh
+#   cd RLab Cortex && bash deploy/deploy.sh
 #
 # Optional env:
 #   PUBLIC_PORT=80              # external port to expose (default 8088)
@@ -91,7 +91,7 @@ done
 PUB_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || echo "<server-ip>")
 echo
 echo -e "${GRN}====================================================================${NC}"
-echo -e "${GRN}  Numetrix is live${NC}"
+echo -e "${GRN}  RLab Cortex is live${NC}"
 echo -e "  Local URL:    http://127.0.0.1:${PUBLIC_PORT:-8088}"
 echo -e "  Public URL:   http://${PUB_IP}:${PUBLIC_PORT:-8088}"
 echo -e "${GRN}====================================================================${NC}"

@@ -1,4 +1,4 @@
-# Numetrix — 技术架构
+# RLab Cortex — 技术架构
 
 ## 技术栈一览
 

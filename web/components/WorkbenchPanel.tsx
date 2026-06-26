@@ -66,8 +66,11 @@ export function useWorkbenchOpen(defaultValue = true): [boolean, (v: boolean) =>
   useEffect(() => {
     try {
       const stored = localStorage.getItem(LS_KEY);
-      if (stored !== null) setOpen(stored === '1');
+      if (stored !== null) { setOpen(stored === '1'); return; }
     } catch { /* SSR */ }
+    // No saved preference → open on desktop, but CLOSED on a phone so the
+    // full-screen workbench overlay doesn't cover the chat on load.
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setOpen(false);
   }, []);
   const set = (v: boolean) => {
     setOpen(v);
@@ -82,12 +85,14 @@ export default function WorkbenchPanel({
   datasetName,
   datasets = [],
   onClean,
+  onViewDataset,
 }: {
   trace: EventTrace;
   onClose: () => void;
   datasetName?: string;
   datasets?: Dataset[];
   onClean?: (ds: Dataset) => void;
+  onViewDataset?: (id: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // "timeline" = chronological event log; "flow" = Dify/Coze-style node graph
@@ -130,16 +135,28 @@ export default function WorkbenchPanel({
     }
   }, [trace.events.length, trace.busy, view]);
 
+  // When a dataset first appears and nothing has run yet, surface its preview
+  // automatically — so importing/selecting data shows the table on the right
+  // instead of an empty timeline. Only fires on the 0→data transition, so it
+  // never fights a user who deliberately switched tabs mid-session.
+  const prevDsCount = useRef(0);
+  useEffect(() => {
+    if (prevDsCount.current === 0 && datasets.length > 0 && trace.events.length === 0 && !trace.busy) {
+      setView('data');
+    }
+    prevDsCount.current = datasets.length;
+  }, [datasets.length, trace.events.length, trace.busy]);
+
   return (
-    <aside style={{ width }} className="relative shrink-0 border-l border-ink-200 bg-ink-50/50 flex flex-col h-full">
-      {/* Drag handle on the left edge */}
+    <aside style={{ width }} className="relative shrink-0 border-l border-ink-200 bg-ink-50/50 flex flex-col h-full max-md:!fixed max-md:!inset-0 max-md:!z-50 max-md:!w-full max-md:!border-l-0">
+      {/* Drag handle on the left edge — desktop only (mobile is full-screen) */}
       <div
         onMouseDown={() => {
           draggingRef.current = true;
           document.body.style.cursor = 'col-resize';
           document.body.style.userSelect = 'none';
         }}
-        className="absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-brand-400/50 active:bg-brand-500/60 z-20"
+        className="absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-brand-400/50 active:bg-brand-500/60 z-20 max-md:hidden"
         title="拖拽调整宽度"
       />
       <div className="px-3 py-2.5 border-b border-ink-200 bg-white flex items-center gap-2">
@@ -182,7 +199,7 @@ export default function WorkbenchPanel({
         </div>
       ) : view === 'data' ? (
         <div className="flex-1 overflow-y-auto scroll-hide px-3 py-3">
-          <DataPanel datasets={datasets} onClean={onClean} />
+          <DataPanel datasets={datasets} onClean={onClean} onViewFull={onViewDataset} />
         </div>
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-hide px-3 py-3 space-y-1.5">

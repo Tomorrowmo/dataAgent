@@ -185,7 +185,11 @@ while ((Get-Date) -lt $deadline) {
   } catch {
     # Show import progress from the log so a slow cold start looks alive.
     if (Test-Path $logFile) {
-      $tail = (Get-Content $logFile -Tail 1 -ErrorAction SilentlyContinue)
+      # NOTE: avoid `Get-Content -Tail` here — under Windows PowerShell 5.1 in a
+      # tight catch-loop it can misbind and throw "Cannot convert … to
+      # SwitchParameter", which (with $ErrorActionPreference='Stop') aborts the
+      # whole launcher mid-wait. Reading + Select-Object -Last is robust.
+      $tail = (Get-Content $logFile -ErrorAction SilentlyContinue | Select-Object -Last 1)
       if ($tail -and $tail -ne $lastShown) { Write-Host "  …$tail"; $lastShown = $tail }
     }
     Start-Sleep -Milliseconds 800

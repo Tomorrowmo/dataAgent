@@ -4,14 +4,14 @@ import { Languages } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLangStore, type Lang } from '@/lib/i18n';
 
-export default function LanguageToggle({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+export default function LanguageToggle({ size = 'sm', compact = false }: { size?: 'sm' | 'md'; compact?: boolean }) {
   const lang = useLangStore((s) => s.lang);
   const setLang = useLangStore((s) => s.setLang);
   // useState to defeat SSR/CSR hydration mismatch — render nothing on the first paint.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) {
-    return <div className={size === 'sm' ? 'w-14 h-7' : 'w-20 h-9'} />;
+    return <div className={compact ? 'w-10 h-10' : size === 'sm' ? 'w-14 h-7' : 'w-20 h-9'} />;
   }
 
   function pick(next: Lang) {
@@ -19,6 +19,20 @@ export default function LanguageToggle({ size = 'sm' }: { size?: 'sm' | 'md' }) 
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('lang', next === 'zh' ? 'zh-CN' : 'en');
     }
+  }
+
+  // Compact single-button variant for the narrow icon rail: shows the current
+  // language, clicking switches to the other (no room for a horizontal pill).
+  if (compact) {
+    return (
+      <button
+        onClick={() => pick(lang === 'zh' ? 'en' : 'zh')}
+        title="Language / 语言"
+        className="w-10 h-10 grid place-items-center rounded-xl text-[11px] font-semibold text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+      >
+        {lang === 'zh' ? '中' : 'EN'}
+      </button>
+    );
   }
 
   const isSmall = size === 'sm';

@@ -1,4 +1,4 @@
-"""Numetrix end-to-end walkthrough on a real battery-test dataset.
+"""RLab Cortex end-to-end walkthrough on a real battery-test dataset.
 
 Replays the full agent trajectory — schema discovery → registry lookup →
 built-in algorithm → wrong-slug recovery → built-in IQR outlier detection →
