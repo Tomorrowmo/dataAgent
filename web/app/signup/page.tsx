@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { api, setToken } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { api, setToken, OIDC_LOGIN_URL } from '@/lib/api';
 import LanguageToggle from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
 
@@ -15,6 +15,24 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // When OIDC is on, accounts live at the auth center — there is no local signup;
+  // we bounce to the auth center (its login page links to registration). ?local=1
+  // forces the local signup form.
+  const [phase, setPhase] = useState<'probing' | 'redirecting' | 'local'>('probing');
+
+  useEffect(() => {
+    const forceLocal = new URLSearchParams(window.location.search).has('local');
+    api.oidcConfig()
+      .then((c) => {
+        if (c.enabled && !forceLocal) {
+          setPhase('redirecting');
+          window.location.replace(OIDC_LOGIN_URL);
+        } else {
+          setPhase('local');
+        }
+      })
+      .catch(() => setPhase('local'));
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +47,14 @@ export default function SignupPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (phase !== 'local') {
+    return (
+      <main className="min-h-screen grid place-items-center bg-ink-50 px-4">
+        <p className="text-sm text-ink-500">{t('auth.redirecting')}</p>
+      </main>
+    );
   }
 
   return (

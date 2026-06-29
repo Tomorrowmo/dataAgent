@@ -51,7 +51,7 @@ $pth = (Get-ChildItem "$py\python*._pth" | Select-Object -First 1).FullName
 (Get-Content $pth) -replace '^#\s*import site', 'import site' | Set-Content $pth -Encoding ascii
 & "$py\python.exe" "$dl\get-pip.py" --no-warn-script-location | Out-Null
 & "$py\python.exe" -m pip install -r "$root\backend\requirements.txt" -i $PIP_MIRROR --no-warn-script-location | Out-Null
-& "$py\python.exe" -c "import fastapi,uvicorn,pandas,numpy,scipy,sklearn,pyarrow,sqlalchemy,openpyxl,passlib,jwt,httpx"
+& "$py\python.exe" -c "import fastapi,uvicorn,pandas,numpy,scipy,sklearn,pyarrow,sqlalchemy,openpyxl,passlib,jwt,httpx,authlib,itsdangerous"
 if ($LASTEXITCODE) { throw "embeddable Python failed import check" }
 
 Write-Host "== unpack portable Node ==" -ForegroundColor Cyan

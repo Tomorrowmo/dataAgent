@@ -4,7 +4,7 @@ import { Bot, Database, FunctionSquare, Workflow, Settings, LogOut, Plus, Trash2
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, type Conversation, setToken } from '@/lib/api';
+import { api, type Conversation, setToken, OIDC_LOGOUT_URL } from '@/lib/api';
 import LanguageToggle from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
 
@@ -68,9 +68,17 @@ export default function Sidebar({
     } catch { /* ignore */ }
   }
 
-  function logout() {
+  async function logout() {
+    // Under OIDC, clear the local token AND bounce through the auth center for a
+    // true single logout; otherwise just drop the local token.
+    let oidc = false;
+    try { oidc = (await api.oidcConfig()).enabled; } catch { /* keep local logout */ }
     setToken(null);
-    router.push('/login');
+    if (oidc) {
+      window.location.href = OIDC_LOGOUT_URL;
+    } else {
+      router.push('/login');
+    }
   }
 
   // The conversation list toggles (VSCode-style) and is HIDDEN by default:

@@ -97,9 +97,16 @@ def _warmup(app: "FastAPI") -> None:
         from .api import datasets as datasets_api
         from .api import feedback as feedback_api
         from .api import mappings as mappings_api
+        from .api import oidc as oidc_api
         from .api import templates as templates_api
 
         app.include_router(auth_api.router, prefix="/api")
+        # OIDC routes are always mounted (cheap); they self-404 when disabled, and
+        # /auth/oidc/config stays reachable so the login page can probe SSO state.
+        app.include_router(oidc_api.router, prefix="/api")
+        if settings.oidc_enabled:
+            from .core.oidc import init_oidc
+            init_oidc()
         app.include_router(datasets_api.router, prefix="/api")
         app.include_router(algorithms_api.router, prefix="/api")
         app.include_router(chat_api.router, prefix="/api")
@@ -154,6 +161,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# OIDC (Authlib) stashes PKCE verifier / state / nonce in the request session
+# between /login and /callback, so SessionMiddleware is required — but only when
+# OIDC is enabled (signed-cookie session, keyed by the app secret).
+if settings.oidc_enabled:
+    from starlette.middleware.sessions import SessionMiddleware
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",  # allow the top-level GET redirect back from the auth center
+        https_only=False,  # TLS is terminated at the reverse proxy; cookie still flows
+    )
+    logger.info("OIDC enabled — SessionMiddleware mounted (issuer=%s)", settings.oidc_issuer)
 
 # Paths that must work before warmup finishes (no heavy deps needed).
 _ALWAYS_OPEN = ("/api/health", "/api/ready", "/api/about", "/openapi.json", "/docs", "/redoc")

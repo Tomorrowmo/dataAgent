@@ -29,6 +29,26 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "Admin"
 
+    # ── OIDC (统一认证中心 / MCLink Cortex auth_server) ───────────────────────
+    # When enabled, login is delegated to the auth center (Authorization Code +
+    # PKCE). The backend exchanges the code, reads identity from the id_token
+    # (sub/email/name/is_admin), find-or-creates a local user keyed by `sub`, and
+    # mints THIS app's own JWT — so the rest of the app (Bearer auth, owner_id FKs)
+    # is unchanged. Disabled by default → falls back to local email/password.
+    oidc_enabled: bool = False
+    # Backend's address to reach the auth center for discovery / token exchange.
+    # Same machine → http://localhost:6001 saves a hop; cross-machine → public https.
+    oidc_issuer: str = "https://auth.romtekcae.com:5000"
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    # Must EXACTLY match the callback registered at the auth center admin, and be
+    # an address the browser can reach (in this SPA setup it goes through the
+    # frontend origin, which proxies /api to the backend), e.g.
+    #   https://你的产品域名/api/auth/oidc/callback
+    oidc_redirect_uri: str = ""
+    # Where to land in the SPA after a successful login (frontend route).
+    oidc_post_login_path: str = "/app"
+
     llm_provider: str = "deepseek"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"

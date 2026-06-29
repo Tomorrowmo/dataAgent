@@ -27,6 +27,11 @@ export function getToken(): string | null {
   }
 }
 
+// OIDC login/logout are browser redirects (not fetch) — full-page navigate to
+// these. They go through the same /api rewrite to the FastAPI backend.
+export const OIDC_LOGIN_URL = '/api/auth/oidc/login';
+export const OIDC_LOGOUT_URL = '/api/auth/oidc/logout';
+
 class ApiError extends Error {
   status: number;
   body: unknown;
@@ -80,6 +85,8 @@ export const api = {
       'PUT', '/auth/llm-key', { api_key, base_url, model }),
   /** Version, changelog and linked documents for the「关于」panel. Public + warmup-open. */
   about: () => request<AboutInfo>('GET', '/about'),
+  /** Whether login is delegated to the 统一认证中心 (OIDC). Drives the SSO button. */
+  oidcConfig: () => request<{ enabled: boolean }>('GET', '/auth/oidc/config'),
 
   listDatasets: () => request<Dataset[]>('GET', '/datasets'),
   getDataset: (id: number) => request<Dataset>('GET', `/datasets/${id}`),

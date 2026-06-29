@@ -53,6 +53,7 @@ async def init_db() -> None:
             for col_name, ddl in (
                 ("llm_base_url", "ALTER TABLE users ADD COLUMN llm_base_url VARCHAR(512)"),
                 ("llm_model",    "ALTER TABLE users ADD COLUMN llm_model VARCHAR(120)"),
+                ("oidc_sub",     "ALTER TABLE users ADD COLUMN oidc_sub VARCHAR(255)"),
             ):
                 if col_name not in user_cols:
                     await conn.execute(text(ddl))

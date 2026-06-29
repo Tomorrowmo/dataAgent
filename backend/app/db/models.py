@@ -17,8 +17,13 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120), default="")
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # Empty for OIDC-managed users (identity lives at the auth center, no local
+    # password). Local email/password users always have a bcrypt hash here.
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Stable cross-product subject from the auth center's id_token (OIDC `sub`).
+    # NULL for local accounts; set when a user is provisioned/linked via OIDC.
+    oidc_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     # User-scoped LLM overrides (BYOK + per-user provider switching).

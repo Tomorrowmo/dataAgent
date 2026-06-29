@@ -172,6 +172,10 @@ const DICT: { en: Dict; zh: Dict } = {
     'auth.newHere': 'New here?',
     'auth.haveAccount': 'Already have an account?',
     'auth.createOne': 'Create an account',
+    'auth.ssoLogin': 'Sign in with the auth center (SSO)',
+    'auth.or': 'or',
+    'auth.redirecting': 'Taking you to sign-in…',
+    'auth.localLogin': 'Use a local account instead',
 
     // Sidebar
     'side.chat': 'Chat',
@@ -472,6 +476,10 @@ const DICT: { en: Dict; zh: Dict } = {
     'auth.newHere': '还没有账号？',
     'auth.haveAccount': '已经有账号？',
     'auth.createOne': '注册一个',
+    'auth.ssoLogin': '用统一认证中心登录（SSO）',
+    'auth.or': '或',
+    'auth.redirecting': '正在前往统一登录…',
+    'auth.localLogin': '改用本地账号登录',
 
     'side.chat': '对话',
     'side.datasets': '数据集',
