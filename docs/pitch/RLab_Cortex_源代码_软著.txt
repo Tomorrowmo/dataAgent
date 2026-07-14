@@ -1,0 +1,3179 @@
+﻿软件名称（全称）：ROMTEK 工程数据智能分析软件
+软件简称：RLab Cortex（软件运行界面显示此英文简称）
+说明：以下为本软件源代码清单。两个文件之间以一行「—」分隔，每个文件前标注其文件路径，便于定位文件的头与尾。
+————————————————————————————————————————————————————————————————
+
+【文件 1/17】 web/app/login/page.tsx
+【说明】 前端·登录界面（显示产品简称 RLab Cortex）    （本文件 110 行）
+
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { api, setToken, OIDC_LOGIN_URL } from '@/lib/api';
+import LanguageToggle from '@/components/LanguageToggle';
+import { useT } from '@/lib/i18n';
+
+export default function LoginPage() {
+  const router = useRouter();
+  const t = useT();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [oidc, setOidc] = useState(false);
+  // 'probing' until we know whether login is delegated to the auth center; then
+  // 'redirecting' (OIDC on → bounce straight to the auth center, no local form
+  // shown) or 'local' (OIDC off, or ?local=1 escape hatch → show the form).
+  const [phase, setPhase] = useState<'probing' | 'redirecting' | 'local'>('probing');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    // Surface an error bounced back from the OIDC callback (?error=...).
+    const e = params.get('error');
+    if (e) setError(e);
+    // ?local=1 forces the local email/password form (admin escape hatch when the
+    // auth center is down). Otherwise OIDC, when enabled, is the only entry: we
+    // redirect immediately so the user never sees this intermediate page.
+    const forceLocal = params.has('local') || !!e;
+
+    api.oidcConfig()
+      .then((c) => {
+        setOidc(c.enabled);
+        if (c.enabled && !forceLocal) {
+          setPhase('redirecting');
+          window.location.replace(OIDC_LOGIN_URL); // straight to the auth center (silent SSO if already signed in)
+        } else {
+          setPhase('local');
+        }
+      })
+      .catch(() => setPhase('local')); // probe failed → never block login, show the form
+  }, []);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      const r = await api.login(email, password);
+      setToken(r.access_token);
+      router.push('/app');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // While probing or bouncing to the auth center, show a minimal splash (no form
+  // flash). The auth center handles login; if already signed in it returns at once.
+  if (phase !== 'local') {
+    return (
+      <main className="min-h-screen grid place-items-center bg-ink-50 px-4">
+        <p className="text-sm text-ink-500">{t('auth.redirecting')}</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen grid place-items-center bg-ink-50 px-4 relative">
+      <div className="absolute top-4 right-4"><LanguageToggle /></div>
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm ring-1 ring-ink-200 p-7">
+        <Link href="/" className="flex items-center gap-2 font-semibold mb-6">
+          <div className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">N</div>
+          RLab Cortex
+        </Link>
+        <h1 className="text-xl font-semibold mb-1">{t('auth.signin.title')}</h1>
+        <p className="text-sm text-ink-500 mb-5">{t('auth.welcomeBack')}</p>
+        {oidc && (
+          <>
+            <a href={OIDC_LOGIN_URL} className="btn-primary w-full block text-center mb-3">
+              {t('auth.ssoLogin')}
+            </a>
+            <div className="flex items-center gap-3 my-4 text-xs text-ink-400">
+              <span className="h-px flex-1 bg-ink-200" />{t('auth.or')}<span className="h-px flex-1 bg-ink-200" />
+            </div>
+          </>
+        )}
+        <form onSubmit={onSubmit} className="space-y-3">
+          <input className="input" type="email" placeholder={t('auth.email')} value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input className="input" type="password" placeholder={t('auth.password')} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          {error && <div className="text-sm text-red-600">{error}</div>}
+          <button className="btn-primary w-full" disabled={busy}>{busy ? t('auth.signing') : t('auth.signinBtn')}</button>
+        </form>
+        <p className="text-sm text-ink-500 mt-5 text-center">
+          {t('auth.newHere')} <Link href="/signup" className="text-brand-600 hover:underline">{t('auth.createOne')}</Link>
+        </p>
+      </div>
+      <style jsx global>{`
+        .input { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #e4e4e7; border-radius: 0.6rem; background: #fff; }
+        .input:focus { outline: none; border-color: #3e4ee0; box-shadow: 0 0 0 3px #eaeefe; }
+        .btn-primary { background: #2d36c0; color: #fff; padding: 0.6rem 0.8rem; border-radius: 0.6rem; font-weight: 500; }
+        .btn-primary:hover { background: #252c97; }
+        .btn-primary:disabled { opacity: 0.6; }
+      `}</style>
+    </main>
+  );
+}
+
+————————————————————————————————————————————————————————————————
+
+【文件 2/17】 web/app/signup/page.tsx
+【说明】 前端·注册界面    （本文件 90 行）
+
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { api, setToken, OIDC_LOGIN_URL } from '@/lib/api';
+import LanguageToggle from '@/components/LanguageToggle';
+import { useT } from '@/lib/i18n';
+
+export default function SignupPage() {
+  const router = useRouter();
+  const t = useT();
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  // When OIDC is on, accounts live at the auth center — there is no local signup;
+  // we bounce to the auth center (its login page links to registration). ?local=1
+  // forces the local signup form.
+  const [phase, setPhase] = useState<'probing' | 'redirecting' | 'local'>('probing');
+
+  useEffect(() => {
+    const forceLocal = new URLSearchParams(window.location.search).has('local');
+    api.oidcConfig()
+      .then((c) => {
+        if (c.enabled && !forceLocal) {
+          setPhase('redirecting');
+          window.location.replace(OIDC_LOGIN_URL);
+        } else {
+          setPhase('local');
+        }
+      })
+      .catch(() => setPhase('local'));
+  }, []);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      const r = await api.signup(email, password, name);
+      setToken(r.access_token);
+      router.push('/app');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (phase !== 'local') {
+    return (
+      <main className="min-h-screen grid place-items-center bg-ink-50 px-4">
+        <p className="text-sm text-ink-500">{t('auth.redirecting')}</p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen grid place-items-center bg-ink-50 px-4 relative">
+      <div className="absolute top-4 right-4"><LanguageToggle /></div>
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm ring-1 ring-ink-200 p-7">
+        <Link href="/" className="flex items-center gap-2 font-semibold mb-6">
+          <div className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">N</div>
+          RLab Cortex
+        </Link>
+        <h1 className="text-xl font-semibold mb-1">{t('auth.signup.title')}</h1>
+        <p className="text-sm text-ink-500 mb-5">{t('auth.signup.note')}</p>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <input className="input" type="text" placeholder={t('auth.name')} value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input" type="email" placeholder={t('auth.email')} value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input className="input" type="password" placeholder={t('auth.passwordHint')} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          {error && <div className="text-sm text-red-600">{error}</div>}
+          <button className="btn-primary w-full" disabled={busy}>{busy ? t('auth.creating') : t('auth.createBtn')}</button>
+        </form>
+        <p className="text-sm text-ink-500 mt-5 text-center">
+          {t('auth.haveAccount')} <Link href="/login" className="text-brand-600 hover:underline">{t('auth.signinBtn')}</Link>
+        </p>
+      </div>
+      <style jsx global>{`
+        .input { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #e4e4e7; border-radius: 0.6rem; background: #fff; }
+        .input:focus { outline: none; border-color: #3e4ee0; box-shadow: 0 0 0 3px #eaeefe; }
+        .btn-primary { background: #2d36c0; color: #fff; padding: 0.6rem 0.8rem; border-radius: 0.6rem; font-weight: 500; }
+        .btn-primary:hover { background: #252c97; }
+        .btn-primary:disabled { opacity: 0.6; }
+      `}</style>
+    </main>
+  );
+}
+
+————————————————————————————————————————————————————————————————
+
+【文件 3/17】 web/app/layout.tsx
+【说明】 前端·应用外壳（页面标题 RLab Cortex）    （本文件 55 行）
+
+import type { Metadata, Viewport } from 'next';
+
+export const metadata: Metadata = {
+  title: 'RLab Cortex — Verifiable data analysis agent',
+  description:
+    'RLab Cortex is a verifiable analysis agent for engineers and scientists. Curated algorithms, sandboxed custom code, and LLM-generated tools — all with auditable provenance.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
+// Next 15's PostCSS pipeline silently no-ops in our standalone/non-standalone
+// Docker builds — globals.css is imported here ordinarily but never bundled.
+// As a robust workaround we precompile Tailwind into public/styles.css
+// (see package.json "css:build" script that runs before `next build`)
+// and link it directly. Dev server still uses globals.css via the import
+// below — Next's dev server is what Tailwind actually integrates with.
+import './globals.css';
+
+// Polyfills for Safari < 15.4 / iOS 15.x, which lack .at() / Object.hasOwn /
+// structuredClone / Array.findLast(Index) used across the app + its deps. Runs
+// as a classic inline script BEFORE any app chunk so the methods exist by the
+// time React code calls them. (The remark-gfm lookbehind regex — a *parse*-time
+// failure that can't be polyfilled — is handled separately via Markdown.tsx.)
+const OLD_SAFARI_POLYFILLS = `!function(){function d(o,n,f){if(!o[n]){try{Object.defineProperty(o,n,{value:f,writable:true,configurable:true})}catch(e){o[n]=f}}}
+d(Array.prototype,'at',function(i){i=Math.trunc(i)||0;if(i<0)i+=this.length;return(i<0||i>=this.length)?undefined:this[i]});
+d(String.prototype,'at',function(i){i=Math.trunc(i)||0;if(i<0)i+=this.length;return(i<0||i>=this.length)?undefined:this[i]});
+d(Array.prototype,'findLast',function(c,t){for(var i=this.length-1;i>=0;i--){if(c.call(t,this[i],i,this))return this[i]}});
+d(Array.prototype,'findLastIndex',function(c,t){for(var i=this.length-1;i>=0;i--){if(c.call(t,this[i],i,this))return i}return -1});
+if(!Object.hasOwn){d(Object,'hasOwn',function(o,k){return Object.prototype.hasOwnProperty.call(o,k)})}
+if(typeof structuredClone==='undefined'){try{window.structuredClone=function(v){return v==null?v:JSON.parse(JSON.stringify(v))}}catch(e){}}}();`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    // suppressHydrationWarning: i18n adjusts <html lang> client-side after mount
+    // (to the user's detected/stored language); without this, that intended
+    // attribute drift would log a hydration warning.
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen antialiased">
+        {/* Inline + synchronous so the polyfills are installed before any app
+            chunk executes (see OLD_SAFARI_POLYFILLS above). */}
+        <script dangerouslySetInnerHTML={{ __html: OLD_SAFARI_POLYFILLS }} />
+        {/* React 19 hoists <link rel="stylesheet"> to <head> automatically,
+            but ONLY if `precedence` is set — otherwise it's dropped from the
+            output. This is the prebuilt Tailwind stylesheet (see
+            package.json "css:build" script which runs before next build). */}
+        <link rel="stylesheet" href="/styles.css" precedence="default" />
+        {children}
+      </body>
+    </html>
+  );
+}
+
+————————————————————————————————————————————————————————————————
+
+【文件 4/17】 web/components/Sidebar.tsx
+【说明】 前端·主导航侧栏    （本文件 198 行）
+
+'use client';
+
+import { Bot, Database, FunctionSquare, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Info } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { api, type Conversation, setToken, OIDC_LOGOUT_URL } from '@/lib/api';
+import LanguageToggle from '@/components/LanguageToggle';
+import { useT } from '@/lib/i18n';
+
+type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'feedback' | 'settings' | 'about';
+
+// Per-conversation avatar colour, hashed from the id so each conversation keeps
+// a stable, distinct tint (Notion/Linear style) — makes the list scannable.
+const AVATAR_COLORS = [
+  'bg-blue-100 text-blue-700', 'bg-violet-100 text-violet-700', 'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700',
+  'bg-indigo-100 text-indigo-700', 'bg-fuchsia-100 text-fuchsia-700',
+];
+const avatarColor = (id: number) => AVATAR_COLORS[((id % AVATAR_COLORS.length) + AVATAR_COLORS.length) % AVATAR_COLORS.length];
+const avatarChar = (title: string) => (title?.trim()?.[0] ?? '·').toUpperCase();
+
+export default function Sidebar({
+  activeView,
+  onChangeView,
+  activeConv,
+  onSelectConv,
+  onNewConv,
+  onConvDeleted,
+}: {
+  activeView: View;
+  onChangeView: (v: View) => void;
+  activeConv: number | null;
+  onSelectConv: (id: number) => void;
+  onNewConv: () => void;
+  onConvDeleted?: (id: number) => void;
+}) {
+  const router = useRouter();
+  const t = useT();
+  const [convs, setConvs] = useState<Conversation[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    api.listConversations().then(setConvs).catch(() => {});
+    api.me().then((m) => setIsAdmin(!!m.is_admin)).catch(() => {});
+    api.about().then((a) => setVersion(a.version)).catch(() => {});
+  }, []);
+
+  function startRename(c: Conversation) { setEditingId(c.id); setEditTitle(c.title); }
+  async function saveRename(c: Conversation) {
+    const title = editTitle.trim();
+    setEditingId(null);
+    if (!title || title === c.title) return;
+    try {
+      await api.renameConversation(c.id, title);
+      setConvs((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)));
+    } catch { /* ignore */ }
+  }
+  async function del(c: Conversation) {
+    if (!confirm(`删除会话「${c.title}」?此操作不可撤销。`)) return;
+    try {
+      await api.deleteConversation(c.id);
+      setConvs((cs) => cs.filter((x) => x.id !== c.id));
+      onConvDeleted?.(c.id);
+    } catch { /* ignore */ }
+  }
+
+  async function logout() {
+    // Under OIDC, clear the local token AND bounce through the auth center for a
+    // true single logout; otherwise just drop the local token.
+    let oidc = false;
+    try { oidc = (await api.oidcConfig()).enabled; } catch { /* keep local logout */ }
+    setToken(null);
+    if (oidc) {
+      window.location.href = OIDC_LOGOUT_URL;
+    } else {
+      router.push('/login');
+    }
+  }
+
+  // The conversation list toggles (VSCode-style) and is HIDDEN by default:
+  // clicking the chat icon opens it; clicking it again collapses it.
+  const [convPanelOpen, setConvPanelOpen] = useState(false);
+
+  const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
+    { id: 'chat', label: t('side.chat'), icon: <Bot className="w-5 h-5" /> },
+    { id: 'datasets', label: t('side.datasets'), icon: <Database className="w-5 h-5" /> },
+    { id: 'algorithms', label: t('side.algorithms'), icon: <FunctionSquare className="w-5 h-5" /> },
+    { id: 'templates', label: '流程模板', icon: <Workflow className="w-5 h-5" /> },
+    // Feedback inbox is admin-only — it's the boss's triage queue.
+    ...(isAdmin ? [{ id: 'feedback' as View, label: '反馈收件箱', icon: <Inbox className="w-5 h-5" /> }] : []),
+    { id: 'settings', label: t('side.settings'), icon: <Settings className="w-5 h-5" /> },
+    { id: 'about', label: t('side.about'), icon: <Info className="w-5 h-5" /> },
+  ];
+
+  return (
+    <div className="flex h-full shrink-0">
+      {/* Tier 1 — icon rail (primary navigation) */}
+      <aside className="w-14 shrink-0 border-r border-ink-200 bg-white flex flex-col items-center py-3 gap-1">
+        <Link href="/" title="RLab Cortex" className="w-9 h-9 rounded-lg bg-brand-600 text-white grid place-items-center text-sm font-semibold mb-1">R</Link>
+        {/* New conversation — prominent, always reachable from the rail */}
+        <button
+          onClick={onNewConv}
+          title="新建对话"
+          className="w-10 h-10 grid place-items-center rounded-xl text-brand-500 hover:bg-brand-50 mb-1"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+        {NAV.map((n) => (
+          <button
+            key={n.id}
+            onClick={() => {
+              // The chat icon toggles the conversation list: open it (or, if
+              // already on chat with it open, collapse it).
+              if (n.id === 'chat' && activeView === 'chat') { setConvPanelOpen((o) => !o); return; }
+              if (n.id === 'chat') setConvPanelOpen(true);
+              onChangeView(n.id);
+            }}
+            title={n.label}
+            className={`w-10 h-10 grid place-items-center rounded-xl transition ${
+              activeView === n.id ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700'
+            }`}
+          >
+            {n.icon}
+          </button>
+        ))}
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <LanguageToggle compact />
+          <button onClick={logout} title={t('side.signout')} className="w-10 h-10 grid place-items-center rounded-xl text-ink-400 hover:bg-ink-100 hover:text-red-600">
+            <LogOut className="w-5 h-5" />
+          </button>
+          {version && (
+            <button
+              onClick={() => onChangeView('about')}
+              title={`版本 v${version} · 点击查看更新日志`}
+              className="text-[9px] leading-none font-mono text-ink-300 hover:text-brand-600 pb-0.5"
+            >
+              v{version}
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* Tier 2 — contextual panel: conversation list (only on the chat view) */}
+      {activeView === 'chat' && convPanelOpen && (
+        <aside className="w-60 shrink-0 border-r border-ink-200 bg-ink-50/40 flex flex-col max-md:fixed max-md:left-14 max-md:top-0 max-md:bottom-0 max-md:z-40 max-md:shadow-2xl">
+          <div className="px-3 pt-3 pb-1.5">
+            <span className="text-[11px] font-medium text-ink-500 uppercase tracking-wide">{t('side.conversations')}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto scroll-hide px-2 pb-2 space-y-0.5">
+            {convs.length === 0 && <div className="px-2 py-3 text-xs text-ink-400">{t('side.noSessions')}</div>}
+            {convs.map((c) => {
+              const active = activeConv === c.id;
+              return (
+                <div
+                  key={c.id}
+                  className={`group flex items-center gap-2 rounded-lg px-1.5 py-1.5 ${active ? 'bg-brand-50 ring-1 ring-brand-200' : 'hover:bg-white'}`}
+                >
+                  <span className={`shrink-0 w-7 h-7 rounded-lg grid place-items-center text-xs font-semibold ${avatarColor(c.id)}`}>
+                    {avatarChar(c.title)}
+                  </span>
+                  {editingId === c.id ? (
+                    <input
+                      autoFocus
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveRename(c); else if (e.key === 'Escape') setEditingId(null); }}
+                      onBlur={() => saveRename(c)}
+                      className="flex-1 min-w-0 text-sm px-1.5 py-1 rounded border border-brand-300 focus:outline-none bg-white"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => { onSelectConv(c.id); if (typeof window !== 'undefined' && window.innerWidth < 768) setConvPanelOpen(false); }}
+                      className={`flex-1 min-w-0 text-left text-sm truncate ${active ? 'text-brand-700 font-medium' : 'text-ink-700'}`}
+                    >
+                      {c.title}
+                    </button>
+                  )}
+                  {editingId === c.id ? (
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => saveRename(c)} title="保存" className="shrink-0 p-1 text-ink-400 hover:text-emerald-600"><Check className="w-3.5 h-3.5" /></button>
+                  ) : (
+                    <div className="shrink-0 flex items-center opacity-0 group-hover:opacity-100">
+                      <button onClick={() => startRename(c)} title="重命名" className="p-1 text-ink-400 hover:text-brand-600"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => del(c)} title="删除会话" className="p-1 text-ink-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+      )}
+    </div>
+  );
+}
+
+————————————————————————————————————————————————————————————————
+
+【文件 5/17】 web/components/SettingsView.tsx
+【说明】 前端·系统设置（大模型 BYOK）    （本文件 215 行）
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { api } from '@/lib/api';
+import { useT } from '@/lib/i18n';
+
+type PresetId = 'deepseek' | 'qwen' | 'openai' | 'custom';
+
+type Preset = {
+  id: PresetId;
+  label: string;
+  base_url: string;
+  default_model: string;
+  model_options: string[];
+  key_hint: string;
+  docs: string;
+};
+
+const PRESETS: Preset[] = [
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    base_url: 'https://api.deepseek.com/v1',
+    default_model: 'deepseek-chat',
+    model_options: ['deepseek-chat', 'deepseek-reasoner'],
+    key_hint: 'sk-...',
+    docs: 'https://platform.deepseek.com',
+  },
+  {
+    id: 'qwen',
+    label: 'Qwen / 通义千问 (DashScope)',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    default_model: 'qwen-plus',
+    model_options: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen3-coder-plus', 'qwen-coder-plus'],
+    key_hint: 'sk-...',
+    docs: 'https://dashscope.console.aliyun.com',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    base_url: 'https://api.openai.com/v1',
+    default_model: 'gpt-4o-mini',
+    model_options: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
+    key_hint: 'sk-...',
+    docs: 'https://platform.openai.com',
+  },
+  {
+    id: 'custom',
+    label: 'Custom (any OpenAI-compatible endpoint)',
+    base_url: '',
+    default_model: '',
+    model_options: [],
+    key_hint: 'Bearer token',
+    docs: '',
+  },
+];
+
+function presetFor(base_url: string): PresetId {
+  if (!base_url) return 'deepseek';
+  const hit = PRESETS.find((p) => p.id !== 'custom' && p.base_url === base_url);
+  return hit?.id ?? 'custom';
+}
+
+export default function SettingsView() {
+  const t = useT();
+  const [hasKey, setHasKey] = useState(false);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+
+  const [presetId, setPresetId] = useState<PresetId>('deepseek');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [model, setModel] = useState('');
+  const [key, setKey] = useState('');
+
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const preset = PRESETS.find((p) => p.id === presetId)!;
+
+  useEffect(() => {
+    api.me().then((u) => {
+      setHasKey(u.has_llm_key);
+      setEmail(u.email);
+      setName(u.name);
+      const detected = presetFor(u.llm_base_url || '');
+      setPresetId(detected);
+      setBaseUrl(u.llm_base_url || '');
+      setModel(u.llm_model || '');
+    }).catch(() => {});
+  }, []);
+
+  function pickPreset(id: PresetId) {
+    setPresetId(id);
+    setSaved(false);
+    const p = PRESETS.find((x) => x.id === id)!;
+    if (id !== 'custom') {
+      setBaseUrl(p.base_url);
+      if (!model || !p.model_options.includes(model)) setModel(p.default_model);
+    } else {
+      setBaseUrl('');
+      setModel('');
+    }
+  }
+
+  async function save() {
+    setBusy(true); setError(''); setSaved(false);
+    try {
+      const r = await api.saveLLMConfig(key, baseUrl, model);
+      setHasKey(r.has_llm_key);
+      setKey('');
+      setSaved(true);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="p-6 max-w-2xl">
+      <h2 className="text-xl font-semibold mb-1">{t('set.title')}</h2>
+      <p className="text-sm text-ink-500 mb-6">{t('set.sub')}</p>
+
+      <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5 mb-5">
+        <h3 className="font-medium mb-2">{t('set.account')}</h3>
+        <div className="text-sm text-ink-700">{t('set.email')} <span className="font-mono">{email}</span></div>
+        <div className="text-sm text-ink-700">{t('set.name')} {name || <span className="text-ink-500">{t('set.nameNone')}</span>}</div>
+      </div>
+
+      <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <BrainCircuit className="w-4 h-4 text-brand-600" />
+          <h3 className="font-medium">{t('set.llm.title')}</h3>
+        </div>
+        <p className="text-sm text-ink-500 mb-4">
+          {t('set.llm.desc')} <strong>{hasKey ? t('set.llm.keySet') : t('set.llm.keyMissing')}</strong>.
+        </p>
+
+        <label className="block text-xs font-medium text-ink-700 mb-1">{t('set.llm.provider')}</label>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+          {PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => pickPreset(p.id)}
+              className={`text-left text-xs px-3 py-2 rounded-lg border ${
+                presetId === p.id
+                  ? 'border-brand-500 bg-brand-50 text-brand-700 font-medium'
+                  : 'border-ink-200 hover:bg-ink-50'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <label className="block text-xs font-medium text-ink-700 mb-1">{t('set.llm.baseUrl')}</label>
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); }}
+          placeholder={preset.id === 'custom' ? 'https://your-endpoint/v1' : preset.base_url}
+          className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm font-mono mb-3 focus:outline-none focus:border-brand-500"
+        />
+
+        <label className="block text-xs font-medium text-ink-700 mb-1">{t('set.llm.model')}</label>
+        {preset.model_options.length > 0 ? (
+          <div className="flex gap-2 items-center mb-3">
+            <select
+              value={preset.model_options.includes(model) ? model : '__custom'}
+              onChange={(e) => { if (e.target.value !== '__custom') setModel(e.target.value); setSaved(false); }}
+              className="border border-ink-200 rounded-lg px-2 py-2 text-sm bg-white"
+            >
+              {preset.model_options.map((m) => <option key={m} value={m}>{m}</option>)}
+              <option value="__custom">{t('set.llm.custom')}</option>
+            </select>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+              placeholder="model id"
+              className="flex-1 border border-ink-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500"
+            />
+          </div>
+        ) : (
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => { setModel(e.target.value); setSaved(false); }}
+            placeholder="e.g. llama3.1:8b"
+            className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm font-mono mb-3 focus:outline-none focus:border-brand-500"
+          />
+        )}
+
+        <label className="block text-xs font-medium text-ink-700 mb-1">{t('set.llm.apiKey')}</label>
+        <input
+          type="password"
+          value={key}
+          onChange={(e) => { setKey(e.target.value); setSaved(false); }}
+          placeholder={hasKey ? t('set.llm.keyExists') : preset.key_hint}
+          className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500"
+        />
+        <div className="text-xs text-ink-500 mt-2">
+          {preset.docs && <>{t('set.llm.docHint')} <a className="text-brand-600 hover:underline" href={preset.docs} target="_blank" rel="noreferrer">{preset.docs}</a>. </>}
+          {t('set.llm.clearHint')}
+        </div>
+
+        <button onClick={save} disabled={busy} className={`mt-4 px-4 py-2 rounded-xl font-medium flex items-center gap-2 ${saved ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white hover:bg-brand-700'} disabled:opacity-50`}>
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+          {busy ? t('set.llm.saving') : saved ? t('set.llm.saved') : t('set.llm.save')}
+        </button>
+        {error && <div className="mt-3 text-sm text-red-600 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div>}
+      </div>
+    </div>
+  );
+}
+
+————————————————————————————————————————————————————————————————
+
+【文件 6/17】 backend/app/main.py
+【说明】 后端·应用入口与路由装配    （本文件 233 行）
+
+import asyncio
+import logging
+import logging.handlers
+import os
+import sys
+import threading
+import time
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+
+def _install_file_logging() -> None:
+    """If BACKEND_LOG_FILE is set, mirror everything (uvicorn access + app
+    logs + uncaught exceptions) to that file with line-buffered flush.
+
+    Windows note: Start-Process -RedirectStandardOutput buffers writes inside
+    the child process, so uvicorn.err.log stays at 0 bytes for minutes — we
+    can't debug what we can't see. Python's RotatingFileHandler flushes on
+    every emit, so logs appear immediately.
+
+    Called BEFORE the heavy app imports below so the file appears even while
+    pandas/sklearn are still loading (Windows AV can stretch first-import to
+    a minute+ — invisible without this)."""
+    path = os.environ.get("BACKEND_LOG_FILE")
+    if not path:
+        return
+    log_path = Path(path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    handler = logging.handlers.RotatingFileHandler(
+        log_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)-5s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    handler.setLevel(logging.INFO)
+
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.INFO)
+    # uvicorn's default config disables propagation on these loggers, so we
+    # have to attach the handler directly. They DO propagate when we re-enable
+    # it — but that'd double-log via root. Keep propagate=False.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
+        lg = logging.getLogger(name)
+        lg.addHandler(handler)
+        lg.setLevel(logging.INFO)
+        lg.propagate = False
+
+    def _hook(exc_type, exc, tb):
+        logging.getLogger("unhandled").error(
+            "uncaught %s: %s", exc_type.__name__, exc, exc_info=(exc_type, exc, tb)
+        )
+    sys.excepthook = _hook
+
+    logging.getLogger("boot").info("file logging installed -> %s", log_path)
+
+
+_install_file_logging()
+logger = logging.getLogger(__name__)
+_boot_t0 = time.monotonic()
+logger.info("importing fastapi + heavy deps…")
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+
+from .core.config import get_settings
+from .db.base import bootstrap_admin, init_db
+from .version import APP_VERSION, about_payload
+
+logger.info("light imports done in %.2fs", time.monotonic() - _boot_t0)
+
+settings = get_settings()
+
+# ── Background warmup ────────────────────────────────────────────────────────
+# The heavy, slow imports (pandas/scipy/sklearn pulled in transitively by the
+# routers + algorithm registry) are DEFERRED to a background thread, so the
+# server binds the port and answers /api/health in ~2 s even when Windows
+# Defender cold-scans those packages on first read (which can take many minutes).
+#
+# This is the real fix for the start-up trap: previously every restart paid the
+# full cold-import BEFORE binding, so overlapping launches all cold-imported in
+# parallel and then raced to bind (Errno 10048). Now the socket is up instantly;
+# data routes answer 503 "warming up" until the thread finishes mounting them.
+_WARM: dict = {"ready": False, "error": None, "t0": time.monotonic()}
+
+
+def _warmup(app: "FastAPI") -> None:
+    try:
+        t0 = time.monotonic()
+        logger.info("warmup: importing routers + heavy deps…")
+        from .algorithms import bootstrap as _algo_bootstrap  # noqa: F401  (triggers registration)
+        from .api import algorithms as algorithms_api
+        from .api import auth as auth_api
+        from .api import chat as chat_api
+        from .api import datasets as datasets_api
+        from .api import feedback as feedback_api
+        from .api import mappings as mappings_api
+        from .api import oidc as oidc_api
+        from .api import templates as templates_api
+
+        app.include_router(auth_api.router, prefix="/api")
+        # OIDC routes are always mounted (cheap); they self-404 when disabled, and
+        # /auth/oidc/config stays reachable so the login page can probe SSO state.
+        app.include_router(oidc_api.router, prefix="/api")
+        if settings.oidc_enabled:
+            from .core.oidc import init_oidc
+            init_oidc()
+        app.include_router(datasets_api.router, prefix="/api")
+        app.include_router(algorithms_api.router, prefix="/api")
+        app.include_router(chat_api.router, prefix="/api")
+        app.include_router(templates_api.router, prefix="/api")
+        app.include_router(feedback_api.router, prefix="/api")
+        app.include_router(mappings_api.router, prefix="/api")
+        app.openapi_schema = None  # invalidate cache so the new routes appear in /openapi.json
+
+        # Touch sklearn/scipy too while we're paying the cold-scan cost, so the
+        # first PCA / AI-codegen call isn't the one that waits on it.
+        try:
+            import sklearn.linear_model  # noqa: F401
+            import sklearn.metrics  # noqa: F401
+            import sklearn.preprocessing  # noqa: F401
+            import scipy.optimize  # noqa: F401
+            import scipy.signal  # noqa: F401
+            import scipy.stats  # noqa: F401
+        except Exception as e:  # noqa: BLE001
+            logger.warning("warmup: sklearn/scipy prewarm skipped (%s: %s)", type(e).__name__, e)
+
+        _WARM["ready"] = True
+        logger.info("warmup: routers ready in %.2fs", time.monotonic() - t0)
+    except Exception as e:  # noqa: BLE001
+        _WARM["error"] = f"{type(e).__name__}: {e}"
+        logger.exception("warmup FAILED")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # init_db is light (no pandas) and the async sqlite engine is loop-bound, so
+    # it must run on THIS event loop — keep it here. The slow router imports go to
+    # a daemon thread that does pure imports + sync include_router (no loop use),
+    # so there's no cross-loop hazard.
+    await init_db()
+    # First-run admin seed (no-op when unconfigured or already present). On the
+    # event loop because it touches the loop-bound sqlite engine, like init_db.
+    # Never let a bootstrap failure brick startup — degrade to manual signup.
+    try:
+        await bootstrap_admin()
+    except Exception:  # noqa: BLE001
+        logger.exception("bootstrap_admin failed; starting without a seeded admin")
+    threading.Thread(target=_warmup, args=(app,), daemon=True, name="warmup").start()
+    yield
+
+
+app = FastAPI(title="RLab Cortex Data Agent API", version=APP_VERSION, lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# OIDC (Authlib) stashes PKCE verifier / state / nonce in the request session
+# between /login and /callback, so SessionMiddleware is required — but only when
+# OIDC is enabled (signed-cookie session, keyed by the app secret).
+if settings.oidc_enabled:
+    from starlette.middleware.sessions import SessionMiddleware
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",  # allow the top-level GET redirect back from the auth center
+        https_only=False,  # TLS is terminated at the reverse proxy; cookie still flows
+    )
+    logger.info("OIDC enabled — SessionMiddleware mounted (issuer=%s)", settings.oidc_issuer)
+
+# Paths that must work before warmup finishes (no heavy deps needed).
+_ALWAYS_OPEN = ("/api/health", "/api/ready", "/api/about", "/openapi.json", "/docs", "/redoc")
+
+
+@app.middleware("http")
+async def _warm_gate(request: Request, call_next):
+    """Until warmup mounts the routers, answer data routes with a clear, retryable
+    503 instead of a 404 (route not mounted yet) or a hang."""
+    path = request.url.path
+    if _WARM["ready"] or path in _ALWAYS_OPEN or path.startswith("/api/result-file"):
+        return await call_next(request)
+    if _WARM["error"]:
+        return JSONResponse({"detail": f"backend failed to start: {_WARM['error']}"}, status_code=500)
+    return JSONResponse(
+        {"detail": "后端正在启动(首次加载科学计算库可能较慢),请稍候重试。", "warming": True},
+        status_code=503,
+    )
+
+
+@app.get("/api/health")
+async def health():
+    return {"ok": True, "service": "numetrix-api", "version": APP_VERSION, "ready": _WARM["ready"]}
+
+
+@app.get("/api/about")
+async def about():
+    """Version, changelog and linked documents for the in-app「关于」panel.
+    Stays open before warmup (static data, no DB / heavy deps)."""
+    return about_payload()
+
+
+@app.get("/api/ready")
+async def ready():
+    """Warmup progress — the frontend / launcher polls this to know when the
+    data routes are live."""
+    return {
+        "ready": _WARM["ready"],
+        "error": _WARM["error"],
+        "elapsed_s": round(time.monotonic() - _WARM["t0"], 1),
+    }
+
+
+@app.get("/api/result-file")
+async def download_result(path: str):
+    """Serve a parquet/CSV result back to the browser. The path must live under
+    the configured upload directory — anything else is rejected."""
+    upload_root = settings.upload_path
+    target = Path(path).resolve()
+    try:
+        target.relative_to(upload_root)
+    except ValueError:
+        return JSONResponse({"error": "path not under upload directory"}, status_code=400)
+    if not target.exists():
+        return JSONResponse({"error": "file not found"}, status_code=404)
+    return FileResponse(target, filename=target.name)
+
+————————————————————————————————————————————————————————————————
+
+【文件 7/17】 backend/app/core/config.py
+【说明】 后端·全局配置    （本文件 77 行）
+
+from functools import lru_cache
+from pathlib import Path
+from typing import List
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    app_env: str = "dev"
+    secret_key: str = "dev-only-secret-please-override"
+    access_token_expires_minutes: int = 60 * 24 * 7
+
+    database_url: str = "sqlite+aiosqlite:///./data/db/app.db"
+    upload_dir: str = "./data/uploads"
+
+    # First-run admin bootstrap. When both are set and no user with this email
+    # exists yet, an is_admin=True account is created on startup. Lets a packaged
+    # build ship with a ready admin (the package's DB is otherwise empty). Empty
+    # values (the default) disable bootstrap entirely.
+    bootstrap_admin_email: str = ""
+    bootstrap_admin_password: str = ""
+    bootstrap_admin_name: str = "Admin"
+
+    # ── OIDC (统一认证中心 / MCLink Cortex auth_server) ───────────────────────
+    # When enabled, login is delegated to the auth center (Authorization Code +
+    # PKCE). The backend exchanges the code, reads identity from the id_token
+    # (sub/email/name/is_admin), find-or-creates a local user keyed by `sub`, and
+    # mints THIS app's own JWT — so the rest of the app (Bearer auth, owner_id FKs)
+    # is unchanged. Disabled by default → falls back to local email/password.
+    oidc_enabled: bool = False
+    # Backend's address to reach the auth center for discovery / token exchange.
+    # Same machine → http://localhost:6001 saves a hop; cross-machine → public https.
+    oidc_issuer: str = "https://auth.romtekcae.com:5000"
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    # Must EXACTLY match the callback registered at the auth center admin, and be
+    # an address the browser can reach (in this SPA setup it goes through the
+    # frontend origin, which proxies /api to the backend), e.g.
+    #   https://你的产品域名/api/auth/oidc/callback
+    oidc_redirect_uri: str = ""
+    # Where to land in the SPA after a successful login (frontend route).
+    oidc_post_login_path: str = "/app"
+
+    llm_provider: str = "deepseek"
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_model: str = "deepseek-chat"
+
+    sandbox_cpu_seconds: int = 10
+    sandbox_memory_mb: int = 512
+    sandbox_timeout_seconds: int = 30
+    sandbox_max_output_bytes: int = 10 * 1024 * 1024
+
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origin_list(self) -> List[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def upload_path(self) -> Path:
+        p = Path(self.upload_dir).resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+————————————————————————————————————————————————————————————————
+
+【文件 8/17】 backend/app/core/security.py
+【说明】 后端·安全与 JWT 令牌    （本文件 36 行）
+
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
+
+import jwt
+from passlib.context import CryptContext
+
+from .config import get_settings
+
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_ALG = "HS256"
+
+
+def hash_password(plain: str) -> str:
+    return _pwd.hash(plain)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return _pwd.verify(plain, hashed)
+
+
+def create_access_token(subject: str, extra: Optional[Dict[str, Any]] = None) -> str:
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    payload: Dict[str, Any] = {
+        "sub": subject,
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.access_token_expires_minutes),
+    }
+    if extra:
+        payload.update(extra)
+    return jwt.encode(payload, settings.secret_key, algorithm=_ALG)
+
+
+def decode_token(token: str) -> Dict[str, Any]:
+    settings = get_settings()
+    return jwt.decode(token, settings.secret_key, algorithms=[_ALG])
+
+————————————————————————————————————————————————————————————————
+
+【文件 9/17】 backend/app/api/auth.py
+【说明】 后端·登录/注册接口    （本文件 102 行）
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..core.security import create_access_token, hash_password, verify_password
+from ..db.models import User
+from ..services.datasets import seed_examples_for_user
+from .deps import current_user, get_db
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class SignupReq(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=200)
+    name: str = ""
+
+
+class LoginReq(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResp(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    email: str
+    name: str
+
+
+class MeResp(BaseModel):
+    id: int
+    email: str
+    name: str
+    is_admin: bool
+    has_llm_key: bool
+    llm_base_url: str = ""
+    llm_model: str = ""
+
+
+class SaveKeyReq(BaseModel):
+    api_key: str = Field(default="", description="LLM provider key (Bearer). Empty clears it.")
+    base_url: str = Field(default="", description="OpenAI-compatible endpoint. Empty falls back to server .env.")
+    model: str = Field(default="", description="Model name. Empty falls back to server .env.")
+
+
+@router.post("/signup", response_model=TokenResp)
+async def signup(body: SignupReq, session: AsyncSession = Depends(get_db)):
+    existing = (await session.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "email already registered")
+    user = User(email=body.email, name=body.name, password_hash=hash_password(body.password))
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    # Seed a standard set of example datasets so a brand-new account isn't empty.
+    try:
+        await seed_examples_for_user(session, user.id)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+    token = create_access_token(str(user.id))
+    return TokenResp(access_token=token, user_id=user.id, email=user.email, name=user.name)
+
+
+@router.post("/login", response_model=TokenResp)
+async def login(body: LoginReq, session: AsyncSession = Depends(get_db)):
+    user = (await session.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
+    if user is None or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid email or password")
+    token = create_access_token(str(user.id))
+    return TokenResp(access_token=token, user_id=user.id, email=user.email, name=user.name)
+
+
+@router.get("/me", response_model=MeResp)
+async def me(user: User = Depends(current_user)):
+    return MeResp(
+        id=user.id, email=user.email, name=user.name,
+        is_admin=user.is_admin, has_llm_key=bool(user.llm_api_key),
+        llm_base_url=user.llm_base_url or "",
+        llm_model=user.llm_model or "",
+    )
+
+
+@router.put("/llm-key")
+async def save_key(
+    body: SaveKeyReq,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    user.llm_api_key = body.api_key.strip() or None
+    user.llm_base_url = body.base_url.strip() or None
+    user.llm_model = body.model.strip() or None
+    await session.commit()
+    return {
+        "ok": True,
+        "has_llm_key": bool(user.llm_api_key),
+        "llm_base_url": user.llm_base_url or "",
+        "llm_model": user.llm_model or "",
+    }
+
+————————————————————————————————————————————————————————————————
+
+【文件 10/17】 backend/app/db/models.py
+【说明】 后端·数据库数据模型    （本文件 286 行）
+
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    # Empty for OIDC-managed users (identity lives at the auth center, no local
+    # password). Local email/password users always have a bcrypt hash here.
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Stable cross-product subject from the auth center's id_token (OIDC `sub`).
+    # NULL for local accounts; set when a user is provisioned/linked via OIDC.
+    oidc_sub: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    # User-scoped LLM overrides (BYOK + per-user provider switching).
+    # When set, these take precedence over the server-side .env values, so a
+    # user can swap DeepSeek <-> Qwen <-> OpenAI without a redeploy.
+    llm_api_key: Mapped[Optional[str]] = mapped_column(String(255), default=None)
+    llm_base_url: Mapped[Optional[str]] = mapped_column(String(512), default=None)
+    llm_model: Mapped[Optional[str]] = mapped_column(String(120), default=None)
+
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    filename: Mapped[str] = mapped_column(String(512))
+    storage_path: Mapped[str] = mapped_column(String(1024))
+    file_format: Mapped[str] = mapped_column(String(32))  # csv, parquet, xlsx, json
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    columns: Mapped[int] = mapped_column(Integer, default=0)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    schema_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    # Derived-dataset lineage: a dataset produced by an algorithm step carries
+    # kind="derived", its parent id, and the op that made it. Lets users inspect
+    # every pipeline stage, branch from it, and compare (e.g. 原始 vs 去噪后).
+    kind: Mapped[str] = mapped_column(String(16), default="source")  # source | derived
+    derived_from: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    lineage: Mapped[dict] = mapped_column(JSON, default=dict)  # {from, from_name, op:{slug,label,params}}
+    # Auto-GC pin: a derived dataset is reclaimable by the garbage collector
+    # unless the user has KEPT it (in place, without promoting to source — which
+    # would lose its tree position). Source datasets and kept derived ones are
+    # never swept. See services.datasets.gc_derived_datasets.
+    kept: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Algorithm(Base):
+    """A callable tool — built-in, user-uploaded, or LLM-generated."""
+
+    __tablename__ = "algorithms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    slug: Mapped[str] = mapped_column(String(120), index=True)  # e.g. "savgol_filter"
+    name: Mapped[str] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(64), index=True)  # e.g. "filter", "regression"
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    source: Mapped[str] = mapped_column(String(32))  # "builtin" | "user" | "ai"
+    language: Mapped[str] = mapped_column(String(32), default="python")
+    code: Mapped[str] = mapped_column(Text, default="")  # for user / ai algorithms
+    builtin_ref: Mapped[Optional[str]] = mapped_column(String(255), default=None)  # for builtin
+
+    params_schema: Mapped[dict] = mapped_column(JSON, default=dict)  # JSON-Schema-ish
+    returns: Mapped[str] = mapped_column(String(32), default="dataframe")
+
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # passed test
+    test_report: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Run(Base):
+    """A single execution of an algorithm against a dataset."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    algorithm_id: Mapped[int] = mapped_column(ForeignKey("algorithms.id", ondelete="CASCADE"))
+    dataset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+
+    params: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|ok|error
+    error: Mapped[str] = mapped_column(Text, default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_dataset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    result_artifacts: Mapped[list] = mapped_column(JSON, default=list)
+    logs: Mapped[str] = mapped_column(Text, default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class FormatAdapter(Base):
+    """An LLM-generated (or user-uploaded) parser for a file format the
+    built-in pandas readers don't understand. Looked up by file extension
+    on subsequent uploads so the user only has to teach RLab Cortex a format
+    once."""
+
+    __tablename__ = "format_adapters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    extension: Mapped[str] = mapped_column(String(32), index=True)  # ".ndax" (with dot, lowercase)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    code: Mapped[str] = mapped_column(Text)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    test_report: Mapped[dict] = mapped_column(JSON, default=dict)
+    sample_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class FlowTemplate(Base):
+    """A reusable multi-step pipeline — the ordered tool chain captured from a
+    conversation's flow graph, replayable on new data. Bridges the chat
+    orchestration and the manual run side."""
+
+    __tablename__ = "flow_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    # steps: [{ "action": "run_tool", "slug": "...", "params": {...}, "label": "..." }, ...]
+    # — the LINEAR execution order used by replay (derived from `graph` topo-sort
+    # when edited on the free-form canvas).
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    # Free-form React-Flow layout: { nodes: [{id, slug, params, label, position}],
+    # edges: [{source, target}] }. Purely for the visual canvas; replay still
+    # uses `steps`. Empty for templates created before the canvas (the canvas
+    # synthesizes a linear layout from `steps` in that case).
+    graph: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="New session")
+    dataset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    # Cross-turn pipeline state: maps str(source_dataset_id) -> {head_id,
+    # head_name, steps}. The "head" is the latest derived dataset a prior turn
+    # produced for that source; the next turn SEEDS its working copy from it so
+    # a pipeline (去噪 → 检测 → 插值 …) keeps composing across messages instead of
+    # resetting every turn. Cleared by /reset-pipeline.
+    pipeline_state: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.id"
+    )
+
+
+class Feedback(Base):
+    """An in-the-moment note dropped by a user while using the product — the
+    seed of the knowledge flywheel. The whole point is to capture the THOUGHT
+    together with the CONTEXT it happened in (which view / conversation /
+    dataset / run the user was looking at), so a vague "this was wrong somewhere"
+    becomes an actionable, replayable record.
+
+    `kind` splits feedback into the three buckets that route to different fixes
+    (don't pour them into one box — they go to different places):
+      - "cannot"   能力缺口:想做但做不到      → 需要新工件
+      - "wrong"    正确性:它做错了我得手动改  → 真值 / 纠正
+      - "distrust" 信任:结果对但我不敢信      → 解释 / 验证 UX
+      - "idea"     想法 / 其它
+
+    `status` lets you triage later (new → triaged → done). When this fills up
+    with real usage it grows into the 渊-style candidate→review→promote loop.
+    """
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="idea", index=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+
+    # Context the note was dropped in. The ids are stored WITHOUT FK constraints
+    # on purpose: a referenced conversation/dataset/run may later be deleted, but
+    # the feedback (and the fact it pointed at id N) must survive regardless.
+    view: Mapped[str] = mapped_column(String(32), default="")  # chat|datasets|algorithms|...
+    conversation_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    dataset_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)  # url, ua, anything extra
+
+    # An optional screenshot of exactly what the user was looking at — for "this
+    # part, what does it mean?" the picture pins the referent far better than
+    # words. Stored as a file under <upload>/feedback/; this holds its path.
+    screenshot: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True)  # new|triaged|done
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class MappingRule(Base):
+    """Sedimented EXPERT JUDGMENT about what a column MEANS — the first carrier
+    of the "judgment layer" of domain knowledge.
+
+    A correction the expert makes ("this `U(V)` column is voltage") is promoted
+    into one of these rules. Thereafter the system CONSULTS these rules at
+    decision time (dataset profiling / column picking) and applies the expert's
+    meaning automatically — so the next (non-expert) user gets it for free. That
+    consult-before-decide step is the whole point: a rule that's stored but never
+    read back changes nothing.
+
+    `is_public` defaults True because inheritance across users IS the value:
+    one expert correction → everyone benefits.
+    """
+
+    __tablename__ = "mapping_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    # What to match a column name against, and how.
+    pattern: Mapped[str] = mapped_column(String(255), index=True)  # e.g. "U(V)"
+    match_type: Mapped[str] = mapped_column(String(16), default="normalized")  # normalized|exact|contains|regex
+
+    # The meaning to assign when it matches.
+    role: Mapped[str] = mapped_column(String(64))                  # e.g. "voltage" (machine key)
+    label: Mapped[str] = mapped_column(String(120), default="")    # e.g. "电压 Voltage" (display)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    # Provenance + sharing.
+    source: Mapped[str] = mapped_column(String(16), default="manual")  # feedback|manual
+    feedback_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))  # user|assistant|tool|system
+    content: Mapped[str] = mapped_column(Text, default="")
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+————————————————————————————————————————————————————————————————
+
+【文件 11/17】 backend/app/services/codegen.py
+【说明】 后端·AI 代码生成    （本文件 402 行）
+
+"""Natural-language → algorithm code generation with auto-test.
+
+The model is forced to emit a self-contained module with a `run(df, **params)`
+function, a `META` dict describing the algorithm, and a `test_cases` list of
+synthetic inputs we can execute in the sandbox to prove the code runs.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+
+from ..sandbox import executor as sandbox_executor
+from .llm import LLMClient
+
+CODEGEN_SYSTEM = """You are an expert Python data-engineering author writing safe, focused, single-purpose algorithms for a curated tool library.
+
+OUTPUT FORMAT — STRICTLY a single fenced ```python``` block containing:
+1. A top-level `META` dict with keys: name, slug, category, description, params_schema, returns, tags.
+   - `slug`  : snake_case identifier, max 60 chars
+   - `category` : one of regression | filter | preprocess | structure | reduce | custom
+   - `params_schema` : {param_name: {type, default?, required?, description, enum?}}
+   - `returns` : 'dataframe' | 'dict' | 'series' | 'scalar'
+2. A `run(df, **params)` function. It MUST take a pandas DataFrame `df` as the first argument (may be None for purely generative algorithms) and keyword parameters.
+3. A `test_cases` list. Each item is {'df': <DataFrame or None>, 'params': <dict>}. Provide 1–3 synthetic cases the sandbox will execute to prove correctness.
+
+HARD RULES — code that violates these will be rejected:
+- Allowed imports ONLY: numpy, pandas, scipy (and submodules), sklearn (and submodules), math, statistics, itertools, functools, operator, collections, typing, dataclasses, enum, copy, re, json, datetime.
+- Every third-party module referenced anywhere in the file (top-level META, test_cases, OR inside run()) MUST be imported at the very top of the file. If you use `pd.DataFrame(...)` or `np.array(...)` anywhere — including in `test_cases` — you MUST emit `import pandas as pd` and/or `import numpy as np` at the top. Do not rely on implicit availability.
+- NO file I/O, NO network, NO subprocess, NO eval/exec/compile, NO open(), NO __import__.
+- NO global side effects outside META / run / test_cases.
+- Validate parameters explicitly inside run() and raise ValueError with a clear message on bad input.
+- Comments and docstrings are welcome but keep them short and useful.
+
+LIBRARY PREFERENCE — picking lighter libraries makes the sandbox much faster:
+- **Prefer numpy / scipy over sklearn whenever they can do the job.** Polynomial fit is `np.polyfit(x, y, deg)`. Linear regression is `np.linalg.lstsq`. Curve fitting is `scipy.optimize.curve_fit`. Stats tests are `scipy.stats`. Use sklearn ONLY when you genuinely need its ML-specific APIs (Pipeline, cross_val_score, GridSearchCV, specific estimators with no direct numpy/scipy equivalent).
+- Why: sklearn pulls in joblib / threadpoolctl / huge module trees that take many seconds to cold-import in the sandbox subprocess. numpy + scipy are already pre-warmed.
+
+Reply with nothing outside the fenced code block."""
+
+
+CODEGEN_REPAIR_TEMPLATE = """Your previous attempt FAILED at stage: {stage}.
+
+Error:
+{error}
+
+Your previous code was:
+```python
+{prev_code}
+```
+
+Diagnose the root cause and emit a CORRECTED, self-contained module that obeys every rule in the system message. Common failure modes to check before you reply:
+- Forgot `import pandas as pd` / `import numpy as np` at the top — required even if pd/np only appear inside `test_cases`.
+- `run(df, **params)` raised on the test input because of wrong column names, type assumptions, or unhandled NaN/empty cases.
+- `META` missing required keys, or a `params_schema` field referenced by run() but not declared.
+- A test case's `df` schema does not match what `run()` actually reads.
+
+Reply with the FULL corrected module in a single ```python``` fenced block. No prose outside the block."""
+
+
+# Modules safe to inject into the parse-time namespace. The model SHOULD import
+# these explicitly, but we provide them defensively so a trivial NameError in
+# top-level `test_cases` doesn't waste a retry slot.
+_SAFE_NS_MODULES: Dict[str, Any] = {"pd": pd, "np": np}
+
+
+# Smoke-test timeout: fresh subprocess + cold-import numpy/pandas/sklearn can
+# easily eat the default 30 s on Windows with AV scanning .pyc files. Bump for
+# codegen specifically so the LLM doesn't get blamed for OS slowness.
+_SMOKE_TEST_TIMEOUT_SECONDS = 90
+
+
+# --- Diagnostic hints ----------------------------------------------------------
+#
+# Every entry maps a regex (matched against the full sandbox error string) to a
+# human-readable explanation and a `fatal` flag.
+#
+#   fatal=True  -> the LLM CANNOT fix this by rewriting code; we short-circuit
+#                  the retry loop and surface the hint instead of burning more
+#                  LLM calls. Examples: sandbox timeout, AST validator rejecting
+#                  a forbidden import, OOM kill.
+#
+#   fatal=False -> the LLM has a reasonable chance to self-correct on retry,
+#                  but we still attach the hint to the attempt_log so the
+#                  frontend can show "we noticed X; the model is trying again".
+#
+# Order matters — the FIRST matching rule wins. Put more-specific patterns above
+# generic ones.
+_HINT_RULES: List[Dict[str, Any]] = [
+    {
+        "pattern": r"NameError: name 'pd' is not defined",
+        "cause":   "代码顶部缺少 `import pandas as pd`（即使 pd 只出现在 test_cases 里也必须 import）。",
+        "fatal":   False,
+    },
+    {
+        "pattern": r"NameError: name 'np' is not defined",
+        "cause":   "代码顶部缺少 `import numpy as np`。",
+        "fatal":   False,
+    },
+    {
+        "pattern": r"NameError: name '([A-Za-z_][A-Za-z0-9_]*)' is not defined",
+        "cause":   "代码引用了未定义的名字 '{0}'。可能是变量名拼写错误，或顶部 import 缺失。",
+        "fatal":   False,
+    },
+    {
+        "pattern": r"function\(\) argument 'code' must be code, not str",
+        "cause":   "（已修复的老 bug）sandbox 的网络拦截破坏了 ssl 继承链。如果还看到这条，说明你跑的是旧版后端 —— 重启 uvicorn。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"^validation failed:.*import not allowed: ([\w.]+)",
+        "cause":   "AST 静态检查拒绝了 import '{0}'。沙箱只允许 numpy / pandas / scipy / sklearn 子模块 / math / statistics / itertools / functools / collections / typing / dataclasses / enum / copy / re / json / datetime。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"^validation failed:.*use of '([\w_]+)' is not allowed",
+        "cause":   "AST 静态检查拒绝使用 '{0}'。沙箱禁用了 eval / exec / compile / __import__ / open / globals / locals / vars / input。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"^validation failed:",
+        "cause":   "AST 静态检查未通过 —— 代码触犯了沙箱的硬规则。LLM 重试也救不回来，需要换思路。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"^timeout after \d+s",
+        "cause":   "代码或其依赖在沙箱里执行/加载超时。常见原因：(1) 在 Windows 上首次冷启 sklearn/scipy 时 AV 扫描 .pyc 拖慢导入；(2) run() 里有死循环 / 极慢的算法。如果是 (1)，重跑一次通常就好；如果是 (2)，LLM 重写也不一定救得回来。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"^memory limit exceeded",
+        "cause":   "代码超出沙箱内存上限。可能是创建了过大的中间数组，或没有分块/迭代处理大 DataFrame。",
+        "fatal":   True,
+    },
+    {
+        "pattern": r"KeyError: '([^']+)'",
+        "cause":   "代码引用了不存在的字典/列名 '{0}'。检查列名拼写、大小写、以及 params_schema 是否声明完整。",
+        "fatal":   False,
+    },
+    {
+        "pattern": r"ModuleNotFoundError: No module named '([\w.]+)'",
+        "cause":   "找不到模块 '{0}'。如果它是 numpy/pandas/scipy/sklearn 的子模块，检查路径拼写；否则不在沙箱白名单里。",
+        "fatal":   False,  # might be a typo the LLM can fix
+    },
+    {
+        "pattern": r"TypeError:.*missing \d+ required positional argument",
+        "cause":   "run() 签名与 params_schema 声明的参数不匹配。检查必填参数是否齐全。",
+        "fatal":   False,
+    },
+    {
+        "pattern": r"AttributeError: 'NoneType' object has no attribute",
+        "cause":   "run(df, ...) 收到了 None 但代码没有先判空。在函数开头加 `if df is None: raise ValueError(...)`。",
+        "fatal":   False,
+    },
+]
+
+
+def diagnose(error: str) -> List[Dict[str, Any]]:
+    """Return a list of {cause, fatal} hints describing likely root causes of
+    a sandbox/codegen error string. Empty list if no rule matches — that means
+    the error is novel or generic and the caller should surface it verbatim."""
+    if not error:
+        return []
+    hints: List[Dict[str, Any]] = []
+    for rule in _HINT_RULES:
+        m = re.search(rule["pattern"], error, flags=re.MULTILINE)
+        if m:
+            try:
+                cause = rule["cause"].format(*m.groups())
+            except (IndexError, KeyError):
+                cause = rule["cause"]
+            hints.append({"cause": cause, "fatal": bool(rule["fatal"])})
+            # First match wins — don't double-up with generic fallbacks below.
+            break
+    return hints
+
+
+def _is_fatal(error: str) -> bool:
+    return any(h["fatal"] for h in diagnose(error))
+
+
+_CODE_RE = re.compile(r"```python\s*(.*?)```", re.DOTALL)
+
+
+def extract_code(text: str) -> str:
+    m = _CODE_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    return text.strip()
+
+
+def parse_meta(code: str) -> Dict[str, Any]:
+    """Run the code in a throwaway namespace to read META. We do NOT sandbox this
+    because we will sandbox the actual `run` execution; META is a literal dict.
+
+    We pre-seed the namespace with `pd` / `np` so a trivial NameError in top-level
+    `test_cases` (model forgot the import) doesn't masquerade as a real META bug.
+    """
+    ns: Dict[str, Any] = dict(_SAFE_NS_MODULES)
+    try:
+        exec(compile(code, "<meta-extract>", "exec"), ns, ns)
+    except Exception as e:
+        raise ValueError(f"could not import generated code: {e}") from e
+    if "META" not in ns or not isinstance(ns["META"], dict):
+        raise ValueError("generated code is missing a top-level META dict")
+    meta = ns["META"]
+    for k in ("name", "slug", "category", "description"):
+        if not meta.get(k):
+            raise ValueError(f"META.{k} is missing")
+    if "run" not in ns or not callable(ns["run"]):
+        raise ValueError("generated code is missing a `run` function")
+    return meta
+
+
+def _extract_test_cases_serialized(code: str) -> List[Dict[str, Any]]:
+    """Pull out test_cases by evaluating the module and serialising the test data."""
+    ns: Dict[str, Any] = dict(_SAFE_NS_MODULES)
+    try:
+        exec(compile(code, "<test-extract>", "exec"), ns, ns)
+    except Exception:
+        return []
+    raw = ns.get("test_cases") or []
+    cases: List[Dict[str, Any]] = []
+    for c in raw[:3]:
+        df = c.get("df") if isinstance(c, dict) else None
+        params = c.get("params", {}) if isinstance(c, dict) else {}
+        cases.append({
+            "df": df if isinstance(df, pd.DataFrame) else None,
+            "params": params or {},
+        })
+    return cases
+
+
+def _build_repair_messages(
+    user_msg: str,
+    prev_code: str,
+    stage: str,
+    error: str,
+) -> List[Dict[str, str]]:
+    """Construct a follow-up prompt that hands the failing code + error back to
+    the model so it can self-correct. We keep the original task in `user` and
+    inject the repair instruction in a second `user` turn — this matches how
+    DeepSeek/OpenAI chat models handle iterative correction better than
+    stuffing it all into one message."""
+    return [
+        {"role": "system", "content": CODEGEN_SYSTEM},
+        {"role": "user", "content": user_msg},
+        {"role": "assistant", "content": f"```python\n{prev_code}\n```"},
+        {
+            "role": "user",
+            "content": CODEGEN_REPAIR_TEMPLATE.format(
+                stage=stage, error=error[:2000], prev_code=prev_code,
+            ),
+        },
+    ]
+
+
+def _smoke_test(code: str) -> tuple[List[Dict[str, Any]], bool, Optional[str]]:
+    """Run the code's `test_cases` (or a fallback) through the sandbox.
+
+    Returns (reports, all_passed, first_error). Each report now carries a
+    `hints` list — see `diagnose()` — so the caller (and ultimately the
+    frontend) can show the user what likely went wrong without making them
+    parse a raw Python traceback."""
+    cases = _extract_test_cases_serialized(code)
+    if not cases:
+        df_fallback = pd.DataFrame(
+            {"x": [1.0, 2.0, 3.0, 4.0, 5.0], "y": [2.1, 3.9, 6.2, 8.1, 9.8]}
+        )
+        cases = [{"df": df_fallback, "params": {}}]
+
+    reports: List[Dict[str, Any]] = []
+    all_ok = True
+    first_err: Optional[str] = None
+    for i, c in enumerate(cases):
+        result = sandbox_executor.execute(
+            code, c["params"], input_df=c["df"], save_result=False,
+            timeout_seconds=_SMOKE_TEST_TIMEOUT_SECONDS,
+        )
+        hints = diagnose(result.error) if result.status != "ok" else []
+        reports.append({
+            "case": i + 1,
+            "status": result.status,
+            "error": result.error,
+            "duration_ms": result.duration_ms,
+            "summary": result.summary,
+            "hints": hints,
+        })
+        if result.status != "ok":
+            all_ok = False
+            if first_err is None:
+                first_err = result.error or "test case failed without an error message"
+    return reports, all_ok, first_err
+
+
+async def generate_algorithm(
+    prompt: str,
+    *,
+    llm: LLMClient,
+    schema_hint: Optional[str] = None,
+    max_attempts: int = 3,
+) -> Dict[str, Any]:
+    """Ask the model for code, parse META, run sandboxed tests, return a bundle.
+
+    Self-healing: if META parsing fails OR any sandbox test fails, we feed the
+    error + previous code back to the model and let it correct itself, up to
+    `max_attempts` total attempts. This is the system's autonomy contract — the
+    user should not have to look at codegen internals when the LLM makes a
+    one-off mistake (forgotten import, bad column name, etc.).
+    """
+    user_msg = prompt.strip()
+    if schema_hint:
+        user_msg = f"Schema of the user's current dataset:\n{schema_hint}\n\nTask:\n{user_msg}"
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": CODEGEN_SYSTEM},
+        {"role": "user", "content": user_msg},
+    ]
+
+    attempt_log: List[Dict[str, Any]] = []
+    code: str = ""
+    meta: Dict[str, Any] = {}
+    test_reports: List[Dict[str, Any]] = []
+    last_error: Optional[str] = None
+    last_stage: str = ""
+
+    for attempt in range(1, max_attempts + 1):
+        text = await llm.chat(messages, temperature=0.2, max_tokens=4000)
+        code = extract_code(text)
+
+        # Stage 1: META + run() must be parseable.
+        try:
+            meta = parse_meta(code)
+        except Exception as e:
+            last_error = str(e)
+            last_stage = "parse_meta"
+            hints = diagnose(last_error)
+            attempt_log.append({
+                "attempt": attempt,
+                "stage":   last_stage,
+                "error":   last_error,
+                "hints":   hints,
+            })
+            # If parse failure is fatal (e.g. SyntaxError from a violated hard
+            # rule), don't burn LLM calls trying to fix the unfixable.
+            if any(h["fatal"] for h in hints):
+                break
+            if attempt < max_attempts:
+                messages = _build_repair_messages(user_msg, code, last_stage, last_error)
+            continue
+
+        # Stage 2: sandboxed smoke test of every test_case.
+        test_reports, all_ok, first_err = _smoke_test(code)
+        attempt_log.append({
+            "attempt": attempt,
+            "stage":   "smoke_test",
+            "passed":  all_ok,
+            "reports": test_reports,
+        })
+        if all_ok:
+            return {
+                "code": code,
+                "meta": meta,
+                "tests": test_reports,
+                "all_tests_passed": True,
+                "attempts": attempt,
+                "attempt_log": attempt_log,
+            }
+
+        last_error = first_err or "one or more test cases failed"
+        last_stage = "smoke_test"
+
+        # Short-circuit: if the error is sandbox infrastructure (timeout,
+        # validation reject, OOM, etc.), the LLM rewriting code won't help.
+        # Surfacing the hints once is far more useful than 2 more failed
+        # attempts that say the same thing.
+        if _is_fatal(last_error):
+            break
+
+        if attempt < max_attempts:
+            messages = _build_repair_messages(user_msg, code, last_stage, last_error)
+
+    # Exhausted retries (or short-circuited on a fatal infra error) — return
+    # the last attempt so the caller can show the code, the failing report,
+    # and the diagnostic hints to the user. all_tests_passed=False signals
+    # this is unverified.
+    final_hints = diagnose(last_error or "")
+    return {
+        "code": code,
+        "meta": meta,
+        "tests": test_reports,
+        "all_tests_passed": False,
+        "attempts": len(attempt_log) or max_attempts,
+        "attempt_log": attempt_log,
+        "final_error": last_error,
+        "final_stage": last_stage,
+        "final_hints": final_hints,
+    }
+
+————————————————————————————————————————————————————————————————
+
+【文件 12/17】 backend/app/sandbox/validator.py
+【说明】 后端·外来代码静态校验    （本文件 148 行）
+
+"""Static AST validation for user/AI-generated algorithm code.
+
+We can't make Python truly safe by static checks alone, but we can catch the
+obvious bad patterns before paying for a subprocess spin-up. The subprocess
+itself provides the real isolation.
+"""
+
+from __future__ import annotations
+
+import ast
+from dataclasses import dataclass, field
+from typing import List, Set
+
+# Modules the user code is allowed to import. Anything outside this list is
+# rejected up-front. We deliberately keep this tight — adding to it is cheap,
+# removing is hard.
+ALLOWED_IMPORTS: Set[str] = {
+    "math", "statistics", "numbers", "fractions", "decimal", "cmath",
+    "itertools", "functools", "operator", "collections", "heapq", "bisect",
+    "typing", "dataclasses", "enum", "copy", "re", "json", "string",
+    "datetime", "time",  # `time.sleep` is OK — sandbox will time out anyway
+    "numpy", "pandas", "scipy", "sklearn", "sklearn.preprocessing",
+    "sklearn.decomposition", "sklearn.linear_model", "sklearn.cluster",
+    "sklearn.metrics", "sklearn.ensemble", "sklearn.model_selection",
+    "sklearn.tree", "sklearn.neighbors", "sklearn.svm", "sklearn.pipeline",
+    "scipy.stats", "scipy.signal", "scipy.optimize", "scipy.interpolate",
+    "scipy.linalg", "scipy.fft", "scipy.spatial",
+}
+
+FORBIDDEN_NAMES: Set[str] = {
+    "eval", "exec", "compile", "__import__", "open",
+    "globals", "locals", "vars",
+    "input",
+}
+
+# Parser-mode validation drops `open` from the forbidden set so adapters can
+# read binary input files. Everything else stays restricted.
+PARSER_FORBIDDEN_NAMES: Set[str] = FORBIDDEN_NAMES - {"open"}
+
+# Extra modules useful for binary / text format parsing — added on top of
+# ALLOWED_IMPORTS when validating parser-mode code.
+PARSER_EXTRA_IMPORTS: Set[str] = {
+    "struct", "io", "gzip", "zipfile", "bz2", "binascii", "base64",
+    "csv", "xml", "xml.etree", "xml.etree.ElementTree", "configparser",
+    "yaml",        # PyYAML — text configs / metadata files
+    "tomllib",     # stdlib in 3.11+
+    "html",  "html.parser",
+    "string",
+    "warnings",    # parsers often want warnings.filterwarnings
+    "pathlib",     # safe — just path manipulation
+    "urllib.parse",  # parsing URLs in CSV-like data; no network access
+}
+
+FORBIDDEN_ATTRS: Set[str] = {
+    "__class__", "__bases__", "__subclasses__", "__mro__",
+    "__globals__", "__getattribute__", "__reduce__", "__reduce_ex__",
+    "__code__", "__closure__", "__dict__",
+}
+
+
+@dataclass
+class ValidationResult:
+    ok: bool
+    errors: List[str] = field(default_factory=list)
+    imports: List[str] = field(default_factory=list)
+    has_run_function: bool = False
+    has_meta: bool = False
+
+
+def validate_algorithm_code(source: str, *, mode: str = "algorithm") -> ValidationResult:
+    """Validate user-supplied code.
+
+    mode='algorithm' — expects a top-level `run(df, **params)` function AND a
+                      top-level `META` dict. `open` is forbidden.
+    mode='viz'       — AI-written chart code: expects `run(df, **params)` that
+                      returns a chart-spec dict. NO `META` required (it's not a
+                      library algorithm, just a one-off chart builder).
+    mode='parser'    — expects a top-level `parse(path, **kwargs)` function.
+                      `open` is allowed (parsers read binary files).
+    """
+    res = ValidationResult(ok=True)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        res.ok = False
+        res.errors.append(f"SyntaxError: {e}")
+        return res
+
+    expected_fn = "parse" if mode == "parser" else "run"
+    forbidden_names = PARSER_FORBIDDEN_NAMES if mode == "parser" else FORBIDDEN_NAMES
+    allowed_imports = ALLOWED_IMPORTS | PARSER_EXTRA_IMPORTS if mode == "parser" else ALLOWED_IMPORTS
+
+    found_entry = False
+    found_meta = False
+
+    # A top-level `META = {...}` assignment, checked statically (no exec). Only
+    # required for algorithm mode — parsers describe themselves differently.
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "META" for t in node.targets
+        ) and isinstance(node.value, ast.Dict):
+            found_meta = True
+            break
+
+    for node in ast.walk(tree):
+        # Imports
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if alias.name not in allowed_imports and root not in allowed_imports:
+                    res.errors.append(f"import not allowed: {alias.name}")
+                res.imports.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is None:
+                res.errors.append("relative imports are not allowed")
+                continue
+            root = node.module.split(".")[0]
+            if node.module not in allowed_imports and root not in allowed_imports:
+                res.errors.append(f"import not allowed: {node.module}")
+            res.imports.append(node.module)
+
+        # Forbidden builtin names
+        elif isinstance(node, ast.Name) and node.id in forbidden_names:
+            if isinstance(getattr(node, "ctx", None), ast.Store):
+                continue
+            res.errors.append(f"use of '{node.id}' is not allowed")
+
+        # Dunder access
+        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
+            res.errors.append(f"access to '{node.attr}' is not allowed")
+
+        # Expected entry-point function
+        elif isinstance(node, ast.FunctionDef) and node.name == expected_fn:
+            found_entry = True
+
+    res.has_run_function = found_entry
+    if not found_entry:
+        res.errors.append(f"missing top-level function `{expected_fn}(...)`")
+
+    # META is part of the接入规范 for algorithms (not parsers). Flag it here so
+    # the upload UI can show a precise conformance checklist instead of letting
+    # the user discover it only when save → parse_meta fails.
+    res.has_meta = found_meta
+    if mode == "algorithm" and not found_meta:
+        res.errors.append("missing top-level META dict (须定义顶级 META 字典)")
+
+    res.ok = len(res.errors) == 0
+    return res
+
+————————————————————————————————————————————————————————————————
+
+【文件 13/17】 backend/app/sandbox/executor.py
+【说明】 后端·安全沙箱执行器    （本文件 188 行）
+
+"""Cross-platform sandbox: spawn a Python subprocess, feed it code+data via
+stdio, enforce a wall-clock timeout, and parse a delimited JSON result."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import pandas as pd
+
+from ..core.config import get_settings
+from .validator import ValidationResult, validate_algorithm_code
+
+_WORKER = Path(__file__).resolve().parent / "runner_worker.py"
+_RESULT_DELIM = "\n__SANDBOX_RESULT__\n"
+
+
+@dataclass
+class ExecutionResult:
+    status: str  # "ok" | "error"
+    error: str
+    duration_ms: int
+    summary: Dict[str, Any]
+    logs: str
+    result_path: Optional[str]
+    result_rows: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "error": self.error,
+            "duration_ms": self.duration_ms,
+            "summary": self.summary,
+            "logs": self.logs,
+            "result_path": self.result_path,
+            "result_rows": self.result_rows,
+        }
+
+
+class SandboxError(RuntimeError):
+    pass
+
+
+def execute(
+    code: str,
+    params: Optional[Dict[str, Any]] = None,
+    input_df: Optional[pd.DataFrame] = None,
+    *,
+    save_result: bool = True,
+    mode: str = "algorithm",
+    parser_file: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
+) -> ExecutionResult:
+    """Run user code in a sandboxed subprocess.
+
+    mode='algorithm' : code defines run(df, **params)
+    mode='parser'    : code defines parse(path, **kwargs); `parser_file` is
+                       the input file the parser opens.
+
+    timeout_seconds  : per-call override of settings.sandbox_timeout_seconds.
+                       Used by codegen smoke-tests, which must absorb a cold
+                       import of numpy/pandas/sklearn in a fresh subprocess —
+                       on Windows that alone can take 30-60 s the first time
+                       (AV scanning .pyc files), so the default 30 s is far
+                       too tight for unverified AI code.
+    """
+    settings = get_settings()
+    effective_timeout = int(timeout_seconds if timeout_seconds is not None else settings.sandbox_timeout_seconds)
+
+    validation = validate_algorithm_code(code, mode=mode)
+    if not validation.ok:
+        return ExecutionResult(
+            status="error",
+            error="validation failed: " + "; ".join(validation.errors),
+            duration_ms=0,
+            summary={},
+            logs="",
+            result_path=None,
+            result_rows=0,
+        )
+
+    workdir = Path(tempfile.mkdtemp(prefix="da_sbox_"))
+    try:
+        input_path = ""
+        if input_df is not None:
+            input_path = str(workdir / "input.parquet")
+            input_df.to_parquet(input_path, index=False)
+
+        output_path = str(workdir / "output.parquet") if save_result else ""
+
+        req = {
+            "mode": mode,
+            "code": code,
+            "params": params or {},
+            "input_path": input_path,
+            "output_path": output_path,
+            "parser_file": parser_file or "",
+            "cpu_seconds": settings.sandbox_cpu_seconds,
+            "memory_mb": settings.sandbox_memory_mb,
+            "wall_seconds": effective_timeout,
+        }
+
+        env = os.environ.copy()
+        # Block well-known proxy / network helpers in user code (best-effort)
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+            env.pop(k, None)
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUNBUFFERED"] = "1"
+
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-I", str(_WORKER)],
+                input=json.dumps(req).encode("utf-8"),
+                capture_output=True,
+                timeout=effective_timeout,
+                env=env,
+                cwd=str(workdir),
+            )
+        except subprocess.TimeoutExpired:
+            return ExecutionResult(
+                status="error",
+                error=f"timeout after {effective_timeout}s",
+                duration_ms=effective_timeout * 1000,
+                summary={},
+                logs="",
+                result_path=None,
+                result_rows=0,
+            )
+
+        stdout = proc.stdout.decode("utf-8", errors="replace").replace("\r\n", "\n")
+        stderr = proc.stderr.decode("utf-8", errors="replace").replace("\r\n", "\n")
+
+        if _RESULT_DELIM not in stdout:
+            return ExecutionResult(
+                status="error",
+                error=f"worker did not return a result.\nstderr:\n{stderr[:2000]}",
+                duration_ms=0,
+                summary={},
+                logs=stdout[:2000],
+                result_path=None,
+                result_rows=0,
+            )
+
+        _, payload = stdout.rsplit(_RESULT_DELIM, 1)
+        try:
+            parsed = json.loads(payload.strip())
+        except json.JSONDecodeError as e:
+            return ExecutionResult(
+                status="error",
+                error=f"worker returned invalid JSON: {e}",
+                duration_ms=0,
+                summary={},
+                logs=stdout[:2000],
+                result_path=None,
+                result_rows=0,
+            )
+
+        result_path: Optional[str] = None
+        if save_result and parsed.get("status") == "ok" and os.path.exists(output_path):
+            # Persist the result inside the upload dir so the API can read it later.
+            dest = settings.upload_path / "results"
+            dest.mkdir(parents=True, exist_ok=True)
+            final = dest / f"{Path(workdir).name}.parquet"
+            shutil.copy(output_path, final)
+            result_path = str(final)
+
+        return ExecutionResult(
+            status=parsed.get("status", "error"),
+            error=parsed.get("error", ""),
+            duration_ms=int(parsed.get("duration_ms", 0)),
+            summary=parsed.get("summary") or {},
+            logs=parsed.get("logs", ""),
+            result_path=result_path,
+            result_rows=int(parsed.get("result_rows", 0)),
+        )
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def validate(code: str, mode: str = "algorithm") -> ValidationResult:
+    return validate_algorithm_code(code, mode=mode)
+
+————————————————————————————————————————————————————————————————
+
+【文件 14/17】 backend/app/sandbox/runner_worker.py
+【说明】 后端·沙箱子进程 worker    （本文件 206 行）
+
+"""Worker that runs inside the sandbox subprocess.
+
+Protocol (stdio):
+  - parent writes a single JSON line on stdin with: {code, params, input_path, output_path}
+  - worker imports the code, calls `run(df, **params)`, writes parquet result
+  - worker prints a single JSON line on stdout with: {status, summary, error, logs}
+
+Resource limits are applied here for POSIX (setrlimit). On Windows the parent
+process enforces a wall-clock timeout via process.kill().
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import sys
+import time
+import traceback
+from contextlib import redirect_stderr, redirect_stdout
+from typing import Any, Dict
+
+
+def _apply_posix_limits(cpu_seconds: int, memory_mb: int) -> None:
+    try:
+        import resource  # POSIX-only
+    except ImportError:
+        return
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
+    except Exception:
+        pass
+    try:
+        bytes_ = memory_mb * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (bytes_, bytes_))
+    except Exception:
+        pass
+    try:
+        # Disallow forking new processes from inside user code.
+        resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+    except Exception:
+        pass
+
+
+def _summarize(obj: Any) -> Dict[str, Any]:
+    import numpy as np
+    import pandas as pd
+
+    if isinstance(obj, pd.DataFrame):
+        return {
+            "type": "dataframe",
+            "rows": int(len(obj)),
+            "columns": list(map(str, obj.columns)),
+            "dtypes": {str(c): str(t) for c, t in obj.dtypes.items()},
+            "head": json.loads(obj.head(10).to_json(orient="records", date_format="iso")),
+        }
+    if isinstance(obj, pd.Series):
+        return {
+            "type": "series",
+            "name": str(obj.name),
+            "length": int(len(obj)),
+            "head": json.loads(obj.head(20).to_json(orient="records", date_format="iso")),
+        }
+    if isinstance(obj, np.ndarray):
+        return {
+            "type": "ndarray",
+            "shape": list(obj.shape),
+            "dtype": str(obj.dtype),
+            "preview": obj.flatten()[:20].tolist(),
+        }
+    if isinstance(obj, dict):
+        try:
+            return {"type": "dict", "value": json.loads(json.dumps(obj, default=str))}
+        except Exception:
+            return {"type": "dict", "value": {str(k): str(v) for k, v in obj.items()}}
+    if isinstance(obj, (list, tuple)):
+        try:
+            return {"type": "list", "value": json.loads(json.dumps(list(obj), default=str))}
+        except Exception:
+            return {"type": "list", "value": [str(x) for x in obj]}
+    return {"type": type(obj).__name__, "value": str(obj)[:1000]}
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    req = json.loads(raw)
+
+    mode: str = req.get("mode", "algorithm")  # "algorithm" | "parser"
+    code: str = req["code"]
+    params: Dict[str, Any] = req.get("params", {}) or {}
+    input_path: str = req.get("input_path", "")
+    output_path: str = req.get("output_path", "")
+    parser_file: str = req.get("parser_file", "")  # input file for parser mode
+    cpu_seconds: int = int(req.get("cpu_seconds", 10))
+    memory_mb: int = int(req.get("memory_mb", 512))
+
+    _apply_posix_limits(cpu_seconds, memory_mb)
+
+    # Block network — best-effort, the AST validator already disallows `socket`.
+    #
+    # We CANNOT replace `socket.socket` with a function: ssl.py does
+    # `from socket import socket` and then `class SSLSocket(socket):`, and
+    # inheriting from a function raises a cryptic
+    # "TypeError: function() argument 'code' must be code, not str".
+    # That breaks asyncio -> ssl, which breaks joblib, which breaks sklearn,
+    # which breaks every AI-generated algorithm that touches sklearn.
+    #
+    # Instead, leave `socket.socket` as the real class so subclassing works,
+    # and only block the methods that actually establish a connection. Plus
+    # we replace `socket.create_connection` (a function -> function swap is fine).
+    try:
+        import socket  # noqa: F401
+
+        def _blocked(*_a, **_kw):
+            raise RuntimeError("network access is not allowed in the sandbox")
+
+        socket.socket.connect = _blocked  # type: ignore[assignment]
+        socket.socket.connect_ex = _blocked  # type: ignore[assignment]
+        socket.create_connection = _blocked  # type: ignore[assignment]
+    except Exception:
+        pass
+
+    stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
+    started = time.perf_counter()
+    status, error = "ok", ""
+    summary: Dict[str, Any] = {}
+    result_rows = 0
+
+    try:
+        import pandas as pd
+
+        df = None
+        if input_path and os.path.exists(input_path):
+            if input_path.endswith(".parquet"):
+                df = pd.read_parquet(input_path)
+            elif input_path.endswith(".csv"):
+                df = pd.read_csv(input_path)
+            elif input_path.endswith(".json"):
+                df = pd.read_json(input_path)
+
+        # User code namespace — explicitly minimal builtins
+        builtin_names = [
+            "abs", "all", "any", "bool", "bytes", "callable", "chr", "complex",
+            "dict", "divmod", "enumerate", "filter", "float", "frozenset",
+            "hash", "hex", "int", "isinstance", "issubclass", "iter", "len",
+            "list", "map", "max", "min", "next", "oct", "ord", "pow", "print",
+            "range", "repr", "reversed", "round", "set", "slice", "sorted",
+            "str", "sum", "tuple", "type", "zip",
+            "True", "False", "None",
+            "Exception", "ValueError", "TypeError", "KeyError", "IndexError",
+            "ZeroDivisionError", "ArithmeticError", "RuntimeError",
+            "memoryview", "bytearray",
+            "__import__",  # required so `import numpy as np` works
+        ]
+        if mode == "parser":
+            builtin_names.append("open")  # parsers need to read binary files
+        safe_builtins = {
+            n: __builtins__[n] if isinstance(__builtins__, dict) else getattr(__builtins__, n)
+            for n in builtin_names
+        }
+        ns: Dict[str, Any] = {"__builtins__": safe_builtins, "__name__": "__sandbox__"}
+        with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+            exec(compile(code, "<algorithm>", "exec"), ns, ns)
+            if mode == "parser":
+                if "parse" not in ns or not callable(ns["parse"]):
+                    raise RuntimeError("parser must define a top-level `parse(path)` function")
+                if not parser_file:
+                    raise RuntimeError("parser_file path missing in sandbox request")
+                result = ns["parse"](parser_file, **params)
+            else:
+                if "run" not in ns or not callable(ns["run"]):
+                    raise RuntimeError("algorithm must define a top-level `run(df, **params)` function")
+                result = ns["run"](df, **params)
+
+        summary = _summarize(result)
+
+        if isinstance(result, pd.DataFrame) and output_path:
+            result.to_parquet(output_path, index=False)
+            result_rows = int(len(result))
+        elif hasattr(result, "to_frame") and output_path:
+            result.to_frame().to_parquet(output_path, index=False)
+            result_rows = int(len(result))
+
+    except MemoryError:
+        status, error = "error", "memory limit exceeded"
+    except Exception as e:
+        status, error = "error", f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    logs = (stdout_buf.getvalue() + stderr_buf.getvalue())[:200_000]
+
+    sys.stdout.write("\n__SANDBOX_RESULT__\n")
+    sys.stdout.write(json.dumps({
+        "status": status,
+        "error": error,
+        "duration_ms": duration_ms,
+        "summary": summary,
+        "logs": logs,
+        "result_rows": result_rows,
+    }, default=str))
+    sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+————————————————————————————————————————————————————————————————
+
+【文件 15/17】 backend/app/algorithms/registry.py
+【说明】 后端·算法注册表    （本文件 236 行）
+
+"""Unified algorithm registry.
+
+Built-in algorithms are trusted in-process Python callables exposed via a
+common signature `fn(df, **params) -> result`. User-uploaded and AI-generated
+algorithms are stored as source strings and executed inside the sandbox.
+
+The registry is the single source of truth the chat agent and the REST API
+talk to when they need to discover or invoke a tool.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
+
+import pandas as pd
+
+from ..sandbox import executor as sandbox_executor
+
+
+@dataclass
+class AlgorithmSpec:
+    slug: str
+    name: str
+    category: str
+    description: str
+    params_schema: Dict[str, Any]  # {name: {type, default, required, description, enum?}}
+    returns: str = "dataframe"  # dataframe | series | dict | scalar | artifact
+    tags: List[str] = field(default_factory=list)
+    references: List[str] = field(default_factory=list)
+    examples: List[str] = field(default_factory=list)
+    aliases: List[str] = field(default_factory=list)  # alt names the LLM may guess
+
+
+@dataclass
+class _Builtin:
+    spec: AlgorithmSpec
+    fn: Callable[..., Any]
+
+
+_BUILTINS: Dict[str, _Builtin] = {}
+# Alias → canonical slug. The chat LLM sometimes emits a near-miss name
+# (e.g. "peak_detector" for find_peaks, "kmeans_clustering" for kmeans_cluster);
+# resolving aliases makes that self-healing instead of a "tool not found".
+_ALIASES: Dict[str, str] = {}
+
+
+def _resolve(slug: str) -> str:
+    return _ALIASES.get(slug, slug)
+
+
+def register_builtin(spec: AlgorithmSpec, fn: Callable[..., Any]) -> None:
+    if spec.slug in _BUILTINS:
+        raise RuntimeError(f"duplicate algorithm slug: {spec.slug}")
+    _BUILTINS[spec.slug] = _Builtin(spec=spec, fn=fn)
+    for a in spec.aliases:
+        _ALIASES.setdefault(a, spec.slug)
+
+
+def list_builtins(category: Optional[str] = None) -> List[AlgorithmSpec]:
+    out = [b.spec for b in _BUILTINS.values()]
+    if category:
+        out = [s for s in out if s.category == category]
+    return sorted(out, key=lambda s: (s.category, s.name))
+
+
+def get_builtin(slug: str) -> Optional[AlgorithmSpec]:
+    b = _BUILTINS.get(slug) or _BUILTINS.get(_resolve(slug))
+    return b.spec if b else None
+
+
+def all_categories() -> List[str]:
+    return sorted({b.spec.category for b in _BUILTINS.values()})
+
+
+def _humanize_error(exc: Exception, df: Optional[pd.DataFrame]) -> Optional[str]:
+    """Translate the most common raw exceptions into a plain-language Chinese
+    message that BOTH the user and the agent (on retry) can act on.
+
+    The key win is naming the *real* cause (e.g. "these columns don't exist")
+    and listing the columns that actually ARE in the data — far more useful
+    than a pandas `KeyError: None of [Index([...])]` traceback or an unrelated
+    enum hint. Returns None when no friendly translation applies, so the caller
+    falls back to the raw message.
+    """
+    import re
+
+    name = type(exc).__name__
+    raw = str(exc)
+    cols = [str(c) for c in df.columns] if df is not None else []
+    colset = set(cols)
+    col_preview = "、".join(cols[:30]) + ("…" if len(cols) > 30 else "") if cols else "（这份数据没有任何列）"
+
+    # 1) df[[...]] with columns that don't exist → pandas "None of [Index([...])]"
+    m = re.search(r"None of \[Index\(\[(.*?)\]", raw)
+    if m:
+        wanted = [s.strip().strip("'\"") for s in m.group(1).split(",") if s.strip()]
+        missing = [w for w in wanted if w not in colset] or wanted
+        return (
+            f"用到的列「{'、'.join(missing)}」在这份数据里不存在。"
+            f"这份数据真正有的列是：{col_preview}。请改用真实存在的列名再试。"
+        )
+
+    # 2) single-column lookup miss → KeyError: 'colname'
+    if name == "KeyError":
+        bad = raw.strip().strip("'\"")
+        if bad and bad not in colset:
+            return (
+                f"列「{bad}」在这份数据里不存在。"
+                f"这份数据真正有的列是：{col_preview}。"
+            )
+
+    # 3) trying to do math on a text column
+    if "could not convert string to float" in raw or "invalid literal for" in raw \
+            or ("must be a string or a number" in raw):
+        return (
+            "有一列是文本(非数值),没法做数值计算。"
+            f"这份数据的列是：{col_preview}。请只选数值列。"
+        )
+
+    # 4) empty input after filtering
+    if name in ("ValueError",) and ("empty" in raw.lower() or "0 sample" in raw or "n_samples=0" in raw):
+        return "处理后没有可用数据(可能被某一步过滤光了),请放宽条件或换一份数据再试。"
+
+    return None
+
+
+def execute_builtin(
+    slug: str,
+    df: Optional[pd.DataFrame],
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run a trusted built-in algorithm in-process.
+
+    Returns a result dict shaped like the sandbox result so the chat agent
+    doesn't need to branch on source.
+    """
+    import json
+    import time
+    import traceback
+
+    from ..sandbox.runner_worker import _summarize  # reuse the summarizer
+
+    slug = _resolve(slug)  # LLM may emit a near-miss alias; map it to the real slug
+    if slug not in _BUILTINS:
+        return {
+            "status": "error",
+            "error": f"unknown algorithm: {slug}",
+            "duration_ms": 0,
+            "summary": {},
+            "logs": "",
+            "result_path": None,
+            "result_rows": 0,
+        }
+    fn = _BUILTINS[slug].fn
+    # Tolerate extra / hallucinated kwargs from the LLM: drop any param the
+    # function doesn't declare, so a stray argument is IGNORED rather than raising
+    # TypeError — which used to send the agent into a repair spiral (generate_tool
+    # + flailing retries) instead of just running the tool.
+    import inspect
+    try:
+        _sig = inspect.signature(fn)
+        if not any(p.kind == inspect.Parameter.VAR_KEYWORD for p in _sig.parameters.values()):
+            _allowed = {n for n, p in _sig.parameters.items()
+                        if p.kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)}
+            params = {k: v for k, v in (params or {}).items() if k in _allowed}
+    except (ValueError, TypeError):
+        pass
+    started = time.perf_counter()
+    try:
+        result = fn(df, **(params or {}))
+        summary = _summarize(result)
+        result_rows = int(len(result)) if isinstance(result, pd.DataFrame) else 0
+
+        result_path: Optional[str] = None
+        if isinstance(result, pd.DataFrame):
+            from ..core.config import get_settings
+
+            settings = get_settings()
+            out_dir = settings.upload_path / "results"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"builtin_{slug}_{int(time.time() * 1000)}.parquet"
+            out_path = out_dir / fname
+            result.to_parquet(out_path, index=False)
+            result_path = str(out_path)
+
+        return {
+            "status": "ok",
+            "error": "",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "summary": summary,
+            "logs": "",
+            "result_path": result_path,
+            "result_rows": result_rows,
+        }
+    except Exception as e:
+        # Prefer a plain-language explanation of the real cause (e.g. "these
+        # columns don't exist; the data actually has a/b/c"). Both the user and
+        # the agent-on-retry can act on that. Only when no friendly translation
+        # applies do we fall back to the raw error + the tool's valid enum values
+        # (so the agent can self-correct a bad `method`, etc.).
+        human = _humanize_error(e, df)
+        if human:
+            msg = human
+        else:
+            msg = f"{type(e).__name__}: {e}"
+            try:
+                spec = _BUILTINS[slug].spec
+                enum_hints = [
+                    f"{n}∈{{{'|'.join(str(v) for v in ps['enum'])}}}"
+                    for n, ps in (spec.params_schema or {}).items()
+                    if isinstance(ps, dict) and ps.get("enum")
+                ]
+                if enum_hints:
+                    msg += f"  (valid: {', '.join(enum_hints)})"
+            except Exception:
+                pass
+        return {
+            "status": "error",
+            "error": msg,
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "summary": {},
+            "logs": traceback.format_exc()[:8000],
+            "result_path": None,
+            "result_rows": 0,
+        }
+
+
+def execute_code(
+    code: str,
+    df: Optional[pd.DataFrame],
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run untrusted user/AI code in the sandbox."""
+    result = sandbox_executor.execute(code, params, input_df=df, save_result=True)
+    return result.to_dict()
+
+————————————————————————————————————————————————————————————————
+
+【文件 16/17】 backend/app/algorithms/builtins_regression.py
+【说明】 后端·回归与拟合算法    （本文件 264 行）
+
+"""Regression & fitting algorithms."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+
+from .registry import AlgorithmSpec, register_builtin
+
+
+def _require_cols(df: pd.DataFrame, cols: List[str]) -> None:
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"missing columns: {missing}. available: {list(df.columns)}")
+
+
+# ---------------------------------------------------------------- linear regression
+def _linear_regression(df: pd.DataFrame, *, x: List[str], y: str, fit_intercept: bool = True) -> Dict[str, Any]:
+    from sklearn.linear_model import LinearRegression
+
+    _require_cols(df, x + [y])
+    sub = df[x + [y]].dropna()
+    model = LinearRegression(fit_intercept=fit_intercept)
+    model.fit(sub[x].values, sub[y].values)
+    yhat = model.predict(sub[x].values)
+    ss_res = float(np.sum((sub[y].values - yhat) ** 2))
+    ss_tot = float(np.sum((sub[y].values - sub[y].mean()) ** 2))
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    rmse = float(np.sqrt(ss_res / len(sub))) if len(sub) else float("nan")
+    return {
+        "coefficients": {xi: float(c) for xi, c in zip(x, model.coef_)},
+        "intercept": float(model.intercept_),
+        "r_squared": r2,
+        "rmse": rmse,
+        "n_samples": int(len(sub)),
+    }
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="linear_regression",
+        name="Linear regression",
+        category="regression",
+        description="Use to find how an output is driven by several inputs together (linearly), how much each weighs, and to predict it — ordinary least squares; returns coefficients, R² and RMSE.",
+        params_schema={
+            "x": {"type": "array", "items": "string", "required": True, "description": "Feature column(s)"},
+            "y": {"type": "string", "required": True, "description": "Target column"},
+            "fit_intercept": {"type": "boolean", "default": True},
+        },
+        returns="dict",
+        tags=["regression", "fit"],
+    ),
+    _linear_regression,
+)
+
+
+# ---------------------------------------------------------------- polynomial regression
+def _poly_regression(df: pd.DataFrame, *, x: str, y: str, degree: int = 2) -> Dict[str, Any]:
+    _require_cols(df, [x, y])
+    sub = df[[x, y]].dropna()
+    coeffs = np.polyfit(sub[x].values, sub[y].values, deg=degree)
+    yhat = np.polyval(coeffs, sub[x].values)
+    ss_res = float(np.sum((sub[y].values - yhat) ** 2))
+    ss_tot = float(np.sum((sub[y].values - sub[y].mean()) ** 2))
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return {
+        "coefficients": [float(c) for c in coeffs],
+        "degree": int(degree),
+        "r_squared": r2,
+        "rmse": float(np.sqrt(ss_res / len(sub))),
+        "n_samples": int(len(sub)),
+    }
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="polynomial_regression",
+        name="Polynomial regression",
+        category="regression",
+        description="Use when one quantity varies with another along a curve (not a straight line) and you want to fit that trend — polynomial least-squares of degree N.",
+        params_schema={
+            "x": {"type": "string", "required": True},
+            "y": {"type": "string", "required": True},
+            "degree": {"type": "integer", "default": 2, "minimum": 1, "maximum": 10},
+        },
+        returns="dict",
+        tags=["regression", "fit"],
+    ),
+    _poly_regression,
+)
+
+
+# ---------------------------------------------------------------- curve fit
+def _curve_fit(
+    df: pd.DataFrame,
+    *,
+    x: str,
+    y: str,
+    model: str = "exponential",
+    p0: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    """Fit common closed-form models: exponential | logarithmic | power | sigmoid."""
+    from scipy.optimize import curve_fit
+
+    _require_cols(df, [x, y])
+    sub = df[[x, y]].dropna()
+    xv, yv = sub[x].values.astype(float), sub[y].values.astype(float)
+
+    def exponential(t, a, b, c):
+        return a * np.exp(b * t) + c
+
+    def logarithmic(t, a, b):
+        return a * np.log(np.abs(t) + 1e-12) + b
+
+    def power(t, a, b):
+        return a * np.power(np.abs(t) + 1e-12, b)
+
+    def sigmoid(t, a, b, c, d):
+        return a / (1 + np.exp(-b * (t - c))) + d
+
+    fmap = {
+        "exponential": (exponential, [1.0, 0.01, 0.0]),
+        "logarithmic": (logarithmic, [1.0, 0.0]),
+        "power": (power, [1.0, 1.0]),
+        "sigmoid": (sigmoid, [float(yv.max() - yv.min()), 1.0, float(np.median(xv)), float(yv.min())]),
+    }
+    if model not in fmap:
+        raise ValueError(f"unknown model '{model}'. choose from {list(fmap)}")
+    fn, default_p0 = fmap[model]
+    popt, _ = curve_fit(fn, xv, yv, p0=p0 or default_p0, maxfev=10000)
+    yhat = fn(xv, *popt)
+    ss_res = float(np.sum((yv - yhat) ** 2))
+    ss_tot = float(np.sum((yv - yv.mean()) ** 2))
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    return {
+        "model": model,
+        "parameters": [float(p) for p in popt],
+        "r_squared": r2,
+        "rmse": float(np.sqrt(ss_res / len(sub))),
+        "n_samples": int(len(sub)),
+    }
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="curve_fit",
+        name="Non-linear curve fit",
+        category="regression",
+        description="Use when the data follows a known shape — exponential growth/decay, logarithmic, power-law, or S-shaped saturation — and you want the fitted parameters.",
+        params_schema={
+            "x": {"type": "string", "required": True},
+            "y": {"type": "string", "required": True},
+            "model": {"type": "string", "enum": ["exponential", "logarithmic", "power", "sigmoid"], "default": "exponential"},
+            "p0": {"type": "array", "items": "number", "required": False, "description": "Initial parameter guess"},
+        },
+        returns="dict",
+        tags=["regression", "fit", "nonlinear"],
+    ),
+    _curve_fit,
+)
+
+
+# ---------------------------------------------------------------- correlation
+def _correlation(
+    df: pd.DataFrame,
+    *,
+    columns: Optional[List[str]] = None,
+    method: str = "pearson",
+) -> pd.DataFrame:
+    if method not in ("pearson", "spearman", "kendall"):
+        raise ValueError("method must be one of pearson | spearman | kendall")
+    sub = df[columns] if columns else df.select_dtypes(include="number")
+    return sub.corr(method=method).reset_index().rename(columns={"index": "variable"})
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="correlation",
+        name="Correlation matrix",
+        category="regression",
+        description="Use to find which variables move together / are related (and how strongly) — pairwise Pearson / Spearman / Kendall correlations.",
+        params_schema={
+            "columns": {"type": "array", "items": "string", "required": False, "description": "If empty, uses all numeric columns"},
+            "method": {"type": "string", "enum": ["pearson", "spearman", "kendall"], "default": "pearson"},
+        },
+        returns="dataframe",
+        tags=["correlation", "statistics"],
+    ),
+    _correlation,
+)
+
+
+# ---------------------------------------------------------------- interpolation
+def _interpolate(
+    df: pd.DataFrame,
+    *,
+    x: str,
+    y,
+    method: str = "linear",
+    x_new: Optional[List[float]] = None,
+    n_points: int = 200,
+) -> pd.DataFrame:
+    """Interpolate one or more y columns as a function of x onto a shared x-grid.
+
+    `y` may be a single column name OR a list of column names (a pipeline step
+    after a multi-column filter naturally hands several columns through — e.g.
+    voltage_v_gauss / current_a_gauss / …). method: linear | cubic | quadratic |
+    nearest.
+    """
+    from scipy.interpolate import interp1d
+
+    ys = [y] if isinstance(y, str) else [str(c) for c in (y or [])]
+    if not ys:
+        raise ValueError("interpolate requires at least one y column")
+    _require_cols(df, [x, *ys])
+    sub = df[[x, *ys]].dropna().sort_values(by=x)
+    xs = sub[x].to_numpy(dtype=float)
+    if xs.size < 2:
+        raise ValueError("need at least 2 non-missing rows to interpolate")
+    if x_new is None:
+        x_new = list(np.linspace(float(xs.min()), float(xs.max()), n_points))
+    xn = np.asarray(x_new, dtype=float)
+    out: Dict[str, Any] = {x: list(map(float, xn))}
+    for col in ys:
+        yv = sub[col].to_numpy(dtype=float)
+        if method == "rbf":
+            # Radial-basis interpolation — smooth fit through uneven / scattered
+            # samples (no requirement that x be on a regular grid).
+            from scipy.interpolate import Rbf
+
+            out[col] = list(map(float, Rbf(xs, yv, function="multiquadric")(xn)))
+        else:
+            f = interp1d(xs, yv, kind=method, fill_value="extrapolate", assume_sorted=True)
+            out[col] = list(map(float, f(xn)))
+    return pd.DataFrame(out)
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="interpolate",
+        name="1D interpolation",
+        category="regression",
+        description=(
+            "Resample/interpolate y vs x onto a smooth curve — fill in missing points, align "
+            "different sampling rates, or smooth out an unevenly-sampled signal. Use linear/cubic "
+            "for regular evenly-spaced data; use rbf (radial basis function) when the samples are "
+            "uneven/scattered or you want a smoother fit through noisy scatter."
+        ),
+        params_schema={
+            "x": {"type": "string", "required": True},
+            # array → the UI offers a multi-column picker; a single column also works.
+            "y": {"type": "array", "items": "string", "required": True,
+                  "description": "一个或多个要插值的列"},
+            "method": {"type": "string", "enum": ["linear", "cubic", "quadratic", "nearest", "rbf"], "default": "linear"},
+            "x_new": {"type": "array", "items": "number", "required": False},
+            "n_points": {"type": "integer", "default": 200, "minimum": 2},
+        },
+        returns="dataframe",
+        tags=["interpolation"],
+    ),
+    _interpolate,
+)
+
+————————————————————————————————————————————————————————————————
+
+【文件 17/17】 backend/app/algorithms/builtins_preprocess.py
+【说明】 后端·数据预处理算法    （本文件 226 行）
+
+"""Preprocessing / transform algorithms."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+
+from .registry import AlgorithmSpec, register_builtin
+
+
+def _numeric_cols(df: pd.DataFrame, columns: Optional[List[str]]) -> List[str]:
+    if columns:
+        return columns
+    return [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
+
+# ---------------------------------------------------------------- normalize
+def _normalize(
+    df: pd.DataFrame,
+    *,
+    columns: Optional[List[str]] = None,
+    method: str = "minmax",
+) -> pd.DataFrame:
+    """method: minmax | zscore | maxabs"""
+    cols = _numeric_cols(df, columns)
+    out = df.copy()
+    for c in cols:
+        s = df[c].astype(float)
+        if method == "minmax":
+            lo, hi = s.min(), s.max()
+            rng = hi - lo
+            out[c] = (s - lo) / rng if rng else 0.0
+        elif method == "zscore":
+            mu, sd = s.mean(), s.std(ddof=0)
+            out[c] = (s - mu) / sd if sd else 0.0
+        elif method == "maxabs":
+            mx = s.abs().max()
+            out[c] = s / mx if mx else 0.0
+        else:
+            raise ValueError(f"unknown method '{method}'")
+    return out
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="normalize",
+        name="Normalize / scale",
+        category="preprocess",
+        description="Use when columns have different units/ranges and you need them on the same scale (to compare them, or feed a model) — Min-Max, Z-score, or Max-Abs scaling.",
+        params_schema={
+            "columns": {"type": "array", "items": "string", "required": False},
+            "method": {"type": "string", "enum": ["minmax", "zscore", "maxabs"], "default": "minmax"},
+        },
+        returns="dataframe",
+        tags=["preprocess", "scale"],
+    ),
+    _normalize,
+)
+
+
+# ---------------------------------------------------------------- fill missing
+def _fill_missing(
+    df: pd.DataFrame,
+    *,
+    columns: Optional[List[str]] = None,
+    method: str = "linear",
+    value: Optional[float] = None,
+) -> pd.DataFrame:
+    """method: linear | ffill | bfill | mean | median | value"""
+    cols = _numeric_cols(df, columns)
+    out = df.copy()
+    for c in cols:
+        s = out[c]
+        if method == "linear":
+            out[c] = s.interpolate(method="linear", limit_direction="both")
+        elif method == "ffill":
+            out[c] = s.ffill()
+        elif method == "bfill":
+            out[c] = s.bfill()
+        elif method == "mean":
+            out[c] = s.fillna(s.mean())
+        elif method == "median":
+            out[c] = s.fillna(s.median())
+        elif method == "value":
+            if value is None:
+                raise ValueError("method=value requires the 'value' parameter")
+            out[c] = s.fillna(value)
+        else:
+            raise ValueError(f"unknown method '{method}'")
+    return out
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="fill_missing",
+        name="Fill missing values",
+        category="preprocess",
+        description="Use when the data has missing / blank values (gaps, dropped readings) you need to fill in sensibly — linear / ffill / bfill / mean / median / constant imputation.",
+        params_schema={
+            "columns": {"type": "array", "items": "string", "required": False},
+            "method": {
+                "type": "string",
+                "enum": ["linear", "ffill", "bfill", "mean", "median", "value"],
+                "default": "linear",
+            },
+            "value": {"type": "number", "required": False},
+        },
+        returns="dataframe",
+        tags=["preprocess", "missing", "imputation"],
+    ),
+    _fill_missing,
+)
+
+
+# ---------------------------------------------------------------- outlier detection
+def _outliers(
+    df: pd.DataFrame,
+    *,
+    columns: Optional[List[str]] = None,
+    method: str = "iqr",
+    iqr_k: float = 1.5,
+    z_threshold: float = 3.0,
+) -> pd.DataFrame:
+    """Add an `<col>_outlier` boolean column for each selected column.
+
+    Methods:
+      - iqr    : Tukey's fences (default, robust)
+      - zscore : |z| > threshold
+      - dixon  : Dixon's Q test for small samples (n in [3, 30])
+    """
+    cols = _numeric_cols(df, columns)
+    out = df.copy()
+
+    def _dixon(values: np.ndarray) -> np.ndarray:
+        flags = np.zeros(len(values), dtype=bool)
+        n = len(values)
+        if n < 3 or n > 30:
+            return flags
+        # Conservative critical values for Q at 95% confidence, n=3..30
+        Q95 = {3: 0.970, 4: 0.829, 5: 0.710, 6: 0.625, 7: 0.568, 8: 0.526, 9: 0.493,
+               10: 0.466, 11: 0.444, 12: 0.426, 13: 0.410, 14: 0.396, 15: 0.384,
+               16: 0.374, 17: 0.365, 18: 0.356, 19: 0.349, 20: 0.342, 21: 0.337,
+               22: 0.331, 23: 0.326, 24: 0.321, 25: 0.317, 26: 0.312, 27: 0.308,
+               28: 0.305, 29: 0.301, 30: 0.290}
+        crit = Q95.get(n, 0.290)
+        order = np.argsort(values)
+        sorted_vals = values[order]
+        rng = sorted_vals[-1] - sorted_vals[0]
+        if rng == 0:
+            return flags
+        q_low = (sorted_vals[1] - sorted_vals[0]) / rng
+        q_high = (sorted_vals[-1] - sorted_vals[-2]) / rng
+        if q_low > crit:
+            flags[order[0]] = True
+        if q_high > crit:
+            flags[order[-1]] = True
+        return flags
+
+    for c in cols:
+        s = out[c].astype(float)
+        arr = s.to_numpy()
+        if method == "iqr":
+            q1, q3 = np.nanpercentile(arr, 25), np.nanpercentile(arr, 75)
+            iqr = q3 - q1
+            lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
+            out[f"{c}_outlier"] = (arr < lo) | (arr > hi)
+        elif method == "zscore":
+            mu = np.nanmean(arr)
+            sd = np.nanstd(arr)
+            z = (arr - mu) / (sd if sd > 0 else 1.0)
+            out[f"{c}_outlier"] = np.abs(z) > z_threshold
+        elif method == "dixon":
+            out[f"{c}_outlier"] = _dixon(arr[~np.isnan(arr)])
+            if out[f"{c}_outlier"].dtype != bool:
+                out[f"{c}_outlier"] = out[f"{c}_outlier"].astype(bool)
+        else:
+            raise ValueError(f"unknown method '{method}'")
+    return out
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="outlier_detect",
+        name="Outlier detection",
+        category="preprocess",
+        description="Use to find abnormal / bad data points (sensor glitches, recording errors) before they corrupt downstream results — flags outliers per column via Tukey IQR, Z-score, or Dixon's Q-test.",
+        params_schema={
+            "columns": {"type": "array", "items": "string", "required": False},
+            "method": {"type": "string", "enum": ["iqr", "zscore", "dixon"], "default": "iqr"},
+            "iqr_k": {"type": "number", "default": 1.5},
+            "z_threshold": {"type": "number", "default": 3.0},
+        },
+        returns="dataframe",
+        tags=["preprocess", "outlier", "quality"],
+    ),
+    _outliers,
+)
+
+
+# ---------------------------------------------------------------- prep
+def _prep(df: pd.DataFrame, *, drop_na: bool = True, drop_dup: bool = True) -> pd.DataFrame:
+    out = df.copy()
+    if drop_dup:
+        out = out.drop_duplicates()
+    if drop_na:
+        out = out.dropna()
+    return out.reset_index(drop=True)
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="data_prep",
+        name="Data preparation",
+        category="preprocess",
+        description="Use to tidy a messy table first — drops duplicate rows and/or rows with missing values, then resets the index.",
+        params_schema={
+            "drop_na": {"type": "boolean", "default": True},
+            "drop_dup": {"type": "boolean", "default": True},
+        },
+        returns="dataframe",
+        tags=["preprocess", "cleaning"],
+    ),
+    _prep,
+)
+
+————————————————————————————————————————————————————————————————
+— 源代码清单结束 —  共 17 个文件，代码合计约 3072 行 —
