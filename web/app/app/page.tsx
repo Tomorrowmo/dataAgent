@@ -25,6 +25,10 @@ export default function WorkspacePage() {
   // The dataset currently open in the datasets view — recorded as context when a
   // feedback note is dropped there.
   const [activeDataset, setActiveDataset] = useState<number | null>(null);
+  // Bumped whenever the datasets view adds or deletes datasets. ChatView stays
+  // mounted while hidden, so it needs an explicit nudge to re-read the list —
+  // otherwise its top-right picker still offers datasets that were just deleted.
+  const [dsVer, setDsVer] = useState(0);
 
   // "回到现场" from the feedback inbox: reconstruct the in-app location from a
   // note's structured context (this is a SPA — the saved URL is always /app, so
@@ -57,6 +61,7 @@ export default function WorkspacePage() {
             pendingAsk={pendingAsk}
             onGoSettings={() => setView('settings')}
             onViewDataset={(id) => { setFocusDataset({ id, nonce: Date.now() }); setView('datasets'); }}
+            datasetsVersion={dsVer}
           />
         </div>
         {view === 'datasets' && (
@@ -70,6 +75,7 @@ export default function WorkspacePage() {
             focusDataset={focusDataset}
             onBackToChat={() => setView('chat')}
             onActiveDataset={setActiveDataset}
+            onDatasetsChanged={() => setDsVer((v) => v + 1)}
           />
         )}
         {view === 'algorithms' && <AlgorithmsView />}

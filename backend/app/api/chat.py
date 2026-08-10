@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select, update
@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Conversation, Dataset, Message, User
 from ..services.chat_agent import run_turn
+from ..services.datasets import save_temp_upload
+from ..services.image_parser import IMAGE_EXTS
 from .deps import current_user, get_db, llm_for
 
 logger = logging.getLogger(__name__)
@@ -173,6 +175,33 @@ class SendReq(BaseModel):
     # Multi-dataset: the full set of datasets active in this turn. The first is
     # treated as PRIMARY. Falls back to dataset_id / the conversation's dataset.
     dataset_ids: Optional[List[int]] = None
+    # An image the user attached to THIS message (a chart/plot/diagram to analyze
+    # or digitize). Ref = the token returned by POST /chat/upload-image. The agent
+    # sees it and can call `analyze_image`. Distinct from dataset upload (which
+    # OCRs a table); here the image is analysis context driven by the question.
+    image_ref: Optional[str] = None
+
+
+@router.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+):
+    """Stash an image for use in the NEXT chat message. Returns a ref the client
+    passes back as `image_ref` on /send. Kept separate from /send so that
+    endpoint stays a small JSON body + SSE stream (no multipart streaming)."""
+    ext = "." + (file.filename or "img.png").rsplit(".", 1)[-1].lower()
+    if ext not in IMAGE_EXTS:
+        raise HTTPException(400, f"不支持的图片格式 {ext};支持 {', '.join(sorted(IMAGE_EXTS))}")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "空文件")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(400, "图片太大(上限 20MB)")
+    path = save_temp_upload(data, file.filename or f"chat_image{ext}")
+    # The ref is just the saved path; the agent reads it back by path. Basename is
+    # returned for display only.
+    return {"ref": str(path), "name": file.filename or f"image{ext}", "ext": ext}
 
 
 @router.post("/conversations/{conv_id}/send")
@@ -211,8 +240,38 @@ async def send_message(
     if datasets and conv.dataset_id != datasets[0].id:
         conv.dataset_id = datasets[0].id
 
-    # Persist user message immediately.
-    user_msg = Message(conversation_id=conv.id, role="user", content=body.message)
+    # Resolve the image for THIS turn. A fresh attachment wins; otherwise the
+    # image is STICKY across the conversation — the user naturally expects "the
+    # chart I uploaded" to stay available for follow-up questions, not vanish
+    # after one message. So when nothing new is attached, reuse the most recent
+    # prior image in this conversation that's still on disk.
+    from pathlib import Path as _Path
+    image_ref: Optional[str] = None
+    image_fresh = False  # True only when THIS message carried a new image
+    if body.image_ref:
+        p = _Path(body.image_ref)
+        if p.exists() and p.is_file():
+            image_ref = str(p)
+            image_fresh = True
+        else:
+            raise HTTPException(400, "图片引用无效或已过期,请重新上传图片。")
+    else:
+        prior = (await session.execute(
+            select(Message).where(Message.conversation_id == conv.id, Message.role == "user")
+            .order_by(Message.id.desc())
+        )).scalars().all()
+        for m in prior:
+            ref = (m.meta or {}).get("image_ref")
+            if ref and _Path(ref).exists():
+                image_ref = ref
+                break
+
+    # Persist user message immediately. Record the image on meta so a reload shows
+    # "(附了一张图)" and the ref survives (best-effort; temp files are transient).
+    user_msg = Message(
+        conversation_id=conv.id, role="user", content=body.message,
+        meta={"image_ref": image_ref} if image_ref else {},
+    )
     session.add(user_msg)
     await session.commit()
 
@@ -259,7 +318,7 @@ async def send_message(
                 async for step in run_turn(
                     session=session, llm=llm, owner_id=user.id, datasets=datasets,
                     history=history, user_message=body.message, max_steps=8,
-                    pipeline_state=pipeline_state,
+                    pipeline_state=pipeline_state, image_ref=image_ref, image_fresh=image_fresh,
                 ):
                     event = {"kind": step.kind, "payload": step.payload}
                     events.append(event)

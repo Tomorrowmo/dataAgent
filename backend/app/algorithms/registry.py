@@ -125,6 +125,62 @@ def _humanize_error(exc: Exception, df: Optional[pd.DataFrame]) -> Optional[str]
     return None
 
 
+def _coerce_params(spec: AlgorithmSpec, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Coerce LLM-supplied params to the types the function actually expects.
+
+    The LLM emits JSON by hand and routinely gets the *container* wrong even
+    when the value is right: `columns: "signal"` instead of `columns:
+    ["signal"]`. That single-string slipped straight through to
+    `for c in columns`, which iterates a str CHARACTER-BY-CHARACTER — so the
+    tool reported `column not found: s` (the first letter of "signal"), the
+    agent had no way to read that as "wrap it in a list", and it burned its
+    3-strike budget re-emitting the same shape.
+
+    Coercing here (rather than in each of the ~19 array-typed builtins) keeps
+    every caller — chat agent, REST run endpoints, template replay — healed by
+    one rule, per the "defensive layers, not per-symptom patches" principle.
+    """
+    schema = spec.params_schema or {}
+    out: Dict[str, Any] = {}
+    for k, v in (params or {}).items():
+        t = (schema.get(k) or {}).get("type") if isinstance(schema.get(k), dict) else None
+        if v is None or t is None:
+            out[k] = v
+            continue
+        try:
+            if t == "object" and isinstance(v, dict) and \
+                    (schema.get(k) or {}).get("values") == "array":
+                # `{col: "mean"}` → `{col: ["mean"]}`. Same container slip as
+                # below, one level down: group_aggregate's `agg` maps a column
+                # to a LIST of function names, and iterating the bare string
+                # yielded 'm' → "agg func 'm' not allowed".
+                out[k] = {
+                    kk: ([p.strip() for p in vv.split(",") if p.strip()] if "," in vv else [vv])
+                    if isinstance(vv, str) else (list(vv) if isinstance(vv, (list, tuple)) else [vv])
+                    for kk, vv in v.items()
+                }
+            elif t == "array" and not isinstance(v, (list, tuple)):
+                # "signal" → ["signal"];  "a, b" → ["a", "b"] (the LLM's other
+                # favourite shorthand). Scalars just get wrapped.
+                if isinstance(v, str):
+                    out[k] = [p.strip() for p in v.split(",") if p.strip()] if "," in v else [v]
+                else:
+                    out[k] = [v]
+            elif t == "array":
+                out[k] = list(v)
+            elif t == "integer" and isinstance(v, str):
+                out[k] = int(float(v.strip()))
+            elif t == "number" and isinstance(v, str):
+                out[k] = float(v.strip())
+            elif t == "boolean" and isinstance(v, str):
+                out[k] = v.strip().lower() in ("true", "1", "yes", "y", "是")
+            else:
+                out[k] = v
+        except (TypeError, ValueError):
+            out[k] = v  # leave it alone; the tool's own error is more informative
+    return out
+
+
 def execute_builtin(
     slug: str,
     df: Optional[pd.DataFrame],
@@ -166,6 +222,8 @@ def execute_builtin(
             params = {k: v for k, v in (params or {}).items() if k in _allowed}
     except (ValueError, TypeError):
         pass
+    # Right shape, wrong container: fix `columns: "signal"` → `["signal"]` etc.
+    params = _coerce_params(_BUILTINS[slug].spec, params)
     started = time.perf_counter()
     try:
         result = fn(df, **(params or {}))

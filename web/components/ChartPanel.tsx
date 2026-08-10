@@ -236,7 +236,20 @@ function renderChart(
 ) {
   const axisProps = { tick: { fontSize: 11 }, stroke: '#94a3b8' } as const;
   const grid = <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />;
-  const x = <XAxis dataKey={xKey} {...axisProps} />;
+  // A numeric x MUST be a number axis. Recharts' default is a CATEGORY axis,
+  // which lays points out in row order and prints ticks unsorted — a scatter of
+  // residual vs quality came out as a shapeless blob with ticks running
+  // -76781, -91569, -70513, … The series/overlay renderers below already pass
+  // type="number"; this (tabular) path was the one that didn't.
+  const xIsNumeric = data.length > 0 && data.every(
+    (d) => d[xKey] === null || d[xKey] === undefined || typeof d[xKey] === 'number',
+  );
+  const plotData = xIsNumeric
+    ? [...data].sort((a, b) => Number(a[xKey] ?? 0) - Number(b[xKey] ?? 0))
+    : data;
+  const x = xIsNumeric
+    ? <XAxis type="number" dataKey={xKey} domain={['auto', 'auto']} {...axisProps} />
+    : <XAxis dataKey={xKey} {...axisProps} />;
   const y = <YAxis {...axisProps} />;
   const tip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />;
   const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
@@ -246,7 +259,7 @@ function renderChart(
       <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
         {grid}{x}{y}<ZAxis range={[24, 24]} />{tip}{legend}
         {yKeys.map((k, i) => (
-          <Scatter key={k} name={k} data={data.map((d) => ({ [xKey]: d[xKey], [k]: d[k] }))}
+          <Scatter key={k} name={k} data={plotData.map((d) => ({ [xKey]: d[xKey], [k]: d[k] }))}
             dataKey={k} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
         ))}
       </ScatterChart>
@@ -254,14 +267,14 @@ function renderChart(
   }
   if (type === 'bar') {
     return (
-      <BarChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+      <BarChart data={plotData} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
         {grid}{x}{y}{tip}{legend}
         {yKeys.map((k, i) => <Bar key={k} dataKey={k} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />)}
       </BarChart>
     );
   }
   return (
-    <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+    <LineChart data={plotData} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
       {grid}{x}{y}{tip}{legend}
       {yKeys.map((k, i) => (
         <Line key={k} type="monotone" dataKey={k} stroke={SERIES_COLORS[i % SERIES_COLORS.length]}

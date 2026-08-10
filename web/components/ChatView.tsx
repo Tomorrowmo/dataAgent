@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square } from 'lucide-react';
+import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X } from 'lucide-react';
 import Markdown from '@/components/Markdown';
 import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
@@ -29,9 +29,14 @@ export default function ChatView({
   pendingAsk,
   onGoSettings,
   onViewDataset,
+  datasetsVersion = 0,
 }: {
   conversationId: number | null;
   onConversationCreated: (id: number) => void;
+  // Bumped by the datasets view whenever it adds/deletes datasets. ChatView
+  // stays mounted while hidden, so without this its picker keeps offering
+  // datasets that no longer exist.
+  datasetsVersion?: number;
   // A prompt forwarded from the datasets view (a clicked suggestion). When its
   // nonce changes we run it on the given dataset.
   pendingAsk?: { prompt: string; datasetId: number; nonce: number } | null;
@@ -55,6 +60,47 @@ export default function ChatView({
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [pendingParser, setPendingParser] = useState<UploadResp['needs_parser'] | null>(null);
+  // Claude-style attachment chip above the input: shows a file the user just
+  // pasted / dragged in, with live upload status. Once the upload lands, the
+  // dataset is added to the conversation's active-set automatically — the chip
+  // is a visual confirmation, NOT a stage-before-send buffer (our uploads
+  // create Datasets immediately). ✕ only clears the chip; the Dataset itself
+  // stays in the header dropdown until GC'd.
+  type StagedAttachment = {
+    name: string;
+    isImage: boolean;
+    previewUrl?: string;   // object URL for image thumb, revoked when cleared
+    uploading: boolean;
+    dataset?: Dataset;
+    error?: string;
+  };
+  const [stagedAttachment, setStagedAttachment] = useState<StagedAttachment | null>(null);
+  function clearStaged() {
+    setStagedAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }
+  // An image attached to the NEXT message for the agent to ANALYZE (chart, plot,
+  // diagram) — distinct from stagedAttachment, which uploads a file as a dataset.
+  const [chatImage, setChatImage] = useState<{ ref?: string; name: string; previewUrl: string; uploading: boolean; error?: string } | null>(null);
+  const chatImageInputRef = useRef<HTMLInputElement>(null);
+  function clearChatImage() {
+    setChatImage((prev) => { if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl); return null; });
+  }
+  async function attachChatImage(file: File) {
+    setError('');
+    const previewUrl = URL.createObjectURL(file);
+    setChatImage((prev) => { if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl); return { name: file.name, previewUrl, uploading: true }; });
+    try {
+      const r = await api.uploadChatImage(file);
+      setChatImage((prev) => prev ? { ...prev, ref: r.ref, uploading: false } : null);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setChatImage((prev) => prev ? { ...prev, uploading: false, error: msg } : null);
+      setError(msg);
+    }
+  }
   const [cleaningDataset, setCleaningDataset] = useState<Dataset | null>(null);
   // Live event trace for the workbench panel. Mirrors the events of the
   // current/most-recent assistant turn so the right-side timeline shows what
@@ -107,12 +153,23 @@ export default function ChatView({
     try {
       const list = await api.listDatasets();
       setDatasets(list);
-      // Auto-select the newest dataset if nothing chosen yet
-      if (activeDatasets.length === 0 && list.length > 0) {
-        setActiveDatasets([list[0].id]);
-      }
+      // Drop selections whose dataset is gone (deleted from the datasets view —
+      // possibly as a cascade that took a whole derived subtree). Leaving a dead
+      // id selected would also send it as the target of the next message.
+      const alive = new Set(list.map((d) => d.id));
+      setActiveDatasets((prev) => {
+        const kept = prev.filter((id) => alive.has(id));
+        if (kept.length === 0 && list.length > 0) return [list[0].id];
+        return kept.length === prev.length ? prev : kept;
+      });
     } catch { /* ignore */ }
   }
+
+  // Re-sync when the datasets view reports a change.
+  useEffect(() => {
+    if (datasetsVersion > 0) refreshDatasets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetsVersion]);
 
   // Keep the pipeline-continuation chip in sync with the active conversation.
   function refreshPipeline(convId: number | null) {
@@ -179,19 +236,40 @@ export default function ChatView({
   async function handleFileUpload(file: File) {
     setError('');
     setUploading(true);
+
+    // Mount the chip immediately so the user sees feedback within one frame,
+    // not after the round-trip. Image files get an inline thumbnail via a
+    // local object URL (released when the chip is cleared).
+    const isImage = /^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+    // Revoke any previous preview before overwriting.
+    setStagedAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return { name: file.name, isImage, previewUrl, uploading: true };
+    });
+
     try {
       const r = await api.uploadDataset(file);
       if (r.status === 'needs_parser' && r.needs_parser) {
         setPendingParser(r.needs_parser);
+        // Parser modal takes over; stagedAttachment can retire.
+        clearStaged();
       } else if (r.status === 'ok' && r.dataset) {
         // A multi-sheet Excel returns one dataset per sheet — add & select all.
         const added = r.datasets && r.datasets.length ? r.datasets : [r.dataset];
         const addedIds = new Set(added.map((x) => x.id));
         setDatasets((d) => [...added, ...d.filter((x) => !addedIds.has(x.id))]);
         setActiveDatasets(added.map((x) => x.id));
+        // Update chip to "attached" — show rows/cols so the user knows the AI
+        // reads the image / file successfully, not just "uploaded".
+        setStagedAttachment((prev) => prev
+          ? { ...prev, uploading: false, dataset: added[0], name: added[0].name }
+          : null);
       }
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg);
+      setStagedAttachment((prev) => prev ? { ...prev, uploading: false, error: msg } : null);
     } finally {
       setUploading(false);
     }
@@ -252,11 +330,19 @@ export default function ChatView({
   async function send(maybeText?: string, dsOverride?: number[]) {
     const userText = (maybeText ?? input).trim();
     if (!userText || busy) return;
+    // Snapshot & clear the attached image up front: it belongs to THIS message.
+    const imgRef = chatImage?.ref ?? null;
+    const imgName = chatImage?.name;
+    clearChatImage();
     const dsIds = dsOverride ?? activeDatasets;
     setError('');
     setBusy(true);
     setInput('');
     setMention(null);
+    // The message is going out — retire the chip. The dataset stays selected
+    // in the header dropdown, so the user still sees what's attached to the
+    // conversation, but the transient "just added" chip clears out.
+    clearStaged();
     // Keep the workbench trace ACCUMULATING across the conversation (don't reset
     // per turn) — just push a 'turn' divider so each turn is distinguishable.
     // Record the start moment so the panel can show a live "elapsed Xs" counter.
@@ -283,7 +369,7 @@ export default function ChatView({
 
     const primary = datasets.find((d) => d.id === dsIds[0]);
     const dsLabel = primary ? primary.name + (dsIds.length > 1 ? ` +${dsIds.length - 1}` : '') : undefined;
-    const userMsg: DisplayMsg = { id: `u_${Date.now()}`, role: 'user', content: userText, datasetLabel: dsLabel };
+    const userMsg: DisplayMsg = { id: `u_${Date.now()}`, role: 'user', content: userText, datasetLabel: imgName ? `🖼 ${imgName}` : dsLabel };
     const pendingMsg: DisplayMsg = {
       id: `a_${Date.now()}`, role: 'assistant', content: '', events: [], pending: true,
     };
@@ -330,9 +416,11 @@ export default function ChatView({
           next[next.length - 1] = updated;
           return next;
         });
-      }, dsIds, ac.signal);
+      }, dsIds, ac.signal, imgRef);
       // The turn may have advanced the cross-turn pipeline head — refresh the chip.
       refreshPipeline(convId);
+      // Digitizing an image can create a new dataset — refresh so it appears.
+      if (imgRef) refreshDatasets();
     } catch (e) {
       // User-initiated stop (终止会话): finalize the pending bubble as "已停止"
       // rather than an error. The backend persists the partial trace on disconnect.
@@ -453,11 +541,25 @@ export default function ChatView({
             lang={lang}
           />
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} msg={m} t={t} liveThought={m.pending ? liveThought : ''} turnStartedAt={m.pending ? turnStartedAt : undefined} />)
+          messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              msg={m}
+              t={t}
+              liveThought={m.pending ? liveThought : ''}
+              turnStartedAt={m.pending ? turnStartedAt : undefined}
+              onSuggest={busy ? undefined : (p) => send(p)}
+            />
+          ))
         )}
         <input
           ref={fileInputRef}
           type="file"
+          // Explicit accept hints the OS picker (esp. mobile) and makes it
+          // clear images are a first-class source, not just data files.
+          // Empty accept-string bug on some Android → list the common ones AND
+          // fall back to */* by not restricting further.
+          accept=".csv,.tsv,.xlsx,.xls,.parquet,.json,.dat,.tec,.txt,image/png,image/jpeg,image/webp,image/gif,image/bmp"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
         />
@@ -469,7 +571,50 @@ export default function ChatView({
         </div>
       )}
 
-      <div className="border-t border-ink-200 bg-white p-4 relative">
+      <div
+        className={`border-t bg-white p-4 relative transition ${
+          dragOver ? 'border-brand-400 ring-2 ring-brand-100 bg-brand-50/40' : 'border-ink-200'
+        }`}
+        // Drop anywhere in the input area (not just on textarea) so a big
+        // drag-target is available for datasets AND screenshots.
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes('Files')) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          // Only clear when leaving the actual container, not its children.
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+          setDragOver(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files?.length) return;
+          e.preventDefault();
+          setDragOver(false);
+          handleFileUpload(e.dataTransfer.files[0]);
+        }}
+      >
+        {stagedAttachment && (
+          <StagedChip
+            att={stagedAttachment}
+            onRemove={clearStaged}
+            onViewDataset={onViewDataset}
+          />
+        )}
+        {chatImage && (
+          <div className="mb-2 inline-flex items-center gap-2 rounded-xl ring-1 ring-brand-200 bg-brand-50/40 pl-1.5 pr-2 py-1.5">
+            <img src={chatImage.previewUrl} alt={chatImage.name} className="w-9 h-9 rounded object-cover" />
+            <div className="text-xs">
+              <div className="text-ink-700 max-w-[180px] truncate">{chatImage.name}</div>
+              <div className="text-[10.5px] text-ink-400">
+                {chatImage.uploading ? '上传中…' : chatImage.error ? '上传失败' : '附图待分析 — 直接提问'}
+              </div>
+            </div>
+            <button onClick={clearChatImage} title="移除图片" className="text-ink-400 hover:text-ink-700 p-0.5">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
         {mention && (() => {
           const matches = datasets
             .filter((d) => d.kind !== 'derived')  // source datasets only — hide the pile of intermediate results
@@ -507,10 +652,40 @@ export default function ChatView({
                 send();
               }
             }}
+            // Paste a screenshot / any file directly from the clipboard.
+            // We do NOT preventDefault when the clipboard has text — that lets
+            // normal text-paste continue as usual.
+            onPaste={(e) => {
+              const items = Array.from(e.clipboardData?.items || []);
+              const fileItem = items.find((it) => it.kind === 'file');
+              if (!fileItem) return;
+              const f = fileItem.getAsFile();
+              if (!f) return;
+              e.preventDefault();
+              // An image pasted into CHAT means "analyze this" — stage it for the
+              // agent. Non-image files (csv/xlsx) still upload as a dataset.
+              if (/^image\//.test(f.type)) attachChatImage(f);
+              else handleFileUpload(f);
+            }}
             rows={2}
             placeholder={t('chat.placeholder')}
             className="flex-1 border border-ink-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50 resize-none"
           />
+          <input
+            ref={chatImageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) attachChatImage(f); e.target.value = ''; }}
+          />
+          <button
+            onClick={() => chatImageInputRef.current?.click()}
+            title="附一张图让 AI 分析(曲线图/示意图/照片)"
+            disabled={busy}
+            className="px-3 py-2 rounded-xl ring-1 ring-ink-200 text-ink-500 hover:bg-ink-50 disabled:opacity-50 self-stretch flex items-center"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
           {busy ? (
             <button
               onClick={stop}
@@ -545,6 +720,70 @@ export default function ChatView({
     </div>
   );
 }
+
+/** Claude-style attachment chip above the textarea. Live status while uploading,
+ *  row×col preview once the vision/parser flow lands, red error state if the
+ *  upload failed. Click ✕ to dismiss (does not delete the persisted dataset). */
+function StagedChip({ att, onRemove, onViewDataset }: {
+  att: {
+    name: string;
+    isImage: boolean;
+    previewUrl?: string;
+    uploading: boolean;
+    dataset?: import('@/lib/api').Dataset;
+    error?: string;
+  };
+  onRemove: () => void;
+  onViewDataset?: (id: number) => void;
+}) {
+  const status = att.error
+    ? { label: att.error, color: 'text-red-600' }
+    : att.uploading
+      ? { label: att.isImage ? '视觉模型识别中…' : '正在解析…', color: 'text-ink-500' }
+      : att.dataset
+        ? { label: `${att.dataset.rows.toLocaleString()} 行 × ${att.dataset.columns} 列 · 已作为当前数据集`, color: 'text-emerald-600' }
+        : { label: '已附加', color: 'text-ink-500' };
+  const clickable = !!att.dataset && !!onViewDataset;
+  return (
+    <div className="mb-2 flex items-start gap-2">
+      <div
+        className={`flex items-center gap-2 max-w-full pr-1 pl-1.5 py-1.5 rounded-xl ring-1 ring-ink-200 bg-white ${
+          clickable ? 'hover:ring-brand-300 cursor-pointer' : ''
+        } ${att.error ? 'ring-red-200 bg-red-50/50' : ''}`}
+        onClick={() => { if (clickable && att.dataset) onViewDataset!(att.dataset.id); }}
+        title={clickable ? '打开数据集' : undefined}
+      >
+        {/* Thumbnail (image preview) or file-type icon */}
+        {att.isImage && att.previewUrl ? (
+          <img
+            src={att.previewUrl}
+            alt=""
+            className="w-9 h-9 rounded-lg object-cover ring-1 ring-ink-200 shrink-0"
+          />
+        ) : (
+          <div className="w-9 h-9 rounded-lg bg-ink-50 grid place-items-center shrink-0">
+            {att.isImage ? <ImageIcon className="w-4 h-4 text-brand-600" /> : <FileText className="w-4 h-4 text-brand-600" />}
+          </div>
+        )}
+        <div className="min-w-0 pr-2">
+          <div className="text-xs font-medium text-ink-700 truncate max-w-[240px]">{att.name}</div>
+          <div className={`text-[11px] flex items-center gap-1.5 ${status.color}`}>
+            {att.uploading && <Loader2 className="w-3 h-3 animate-spin" />}
+            <span className="truncate">{status.label}</span>
+          </div>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="ml-1 w-6 h-6 rounded-md grid place-items-center text-ink-400 hover:text-ink-700 hover:bg-ink-50 shrink-0"
+          title="从输入框移除(不影响数据集)"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 /** Cross-turn pipeline banner: shows that the NEXT message will continue on a
  *  prior turn's processed result (not the original data), with a one-click
@@ -683,7 +922,7 @@ function Welcome({
     <div className="max-w-3xl mx-auto pt-4">
       <h2 className="text-2xl font-semibold mb-1">👋 {t('welcome.hi')}</h2>
 
-      <p className="text-sm text-ink-500 mb-4">{lang === 'zh' ? '把你要分析的数据放进来 —— 连没见过的格式，AI 也能帮你自动读懂。' : 'Bring in the data you want to analyze — even formats it has never seen, AI reads them for you.'}</p>
+      <p className="text-sm text-ink-500 mb-4">{lang === 'zh' ? '把你要分析的数据放进来 —— CSV / Excel、表格截图或照片，甚至没见过的格式，AI 都能帮你自动读懂。' : 'Bring in the data you want to analyze — CSV / Excel, screenshots or photos of tables, even formats we’ve never seen. AI reads them all.'}</p>
 
       {/* Drop zone — always here; the primary "get your data in" action */}
       <button
@@ -694,7 +933,7 @@ function Welcome({
       >
         {uploading ? <Loader2 className="w-8 h-8 text-brand-600 animate-spin" /> : <Upload className="text-brand-600 w-8 h-8" />}
         <div className="font-medium text-base">{uploading ? t('welcome.uploading') : (lang === 'zh' ? '把你要分析的数据拖进来' : 'Drop in the data you want to analyze')}</div>
-        <div className="text-xs text-ink-500">{lang === 'zh' ? 'CSV、Excel，甚至没见过的格式 —— AI 都能自动读出来' : 'CSV, Excel, even unknown formats — AI parses them automatically'}</div>
+        <div className="text-xs text-ink-500">{lang === 'zh' ? 'CSV / Excel · 表格截图 / 照片 · 没见过的格式也自动写解析器' : 'CSV / Excel · table screenshots / photos · unknown formats get an auto-written parser'}</div>
       </button>
 
       {!hasData ? (
@@ -795,7 +1034,7 @@ function Typewriter({ text }: { text: string }) {
   return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
-function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number }) {
+function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest }: { msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void }) {
   if (msg.role === 'user') {
     return (
       <div className="flex gap-3 max-w-3xl mx-auto">
@@ -822,6 +1061,11 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: Displ
     return !((phase === 'llm_call' || phase === 'tool_start') && resolved.has(i));
   });
   const finalEvent = [...events].reverse().find((e) => e.kind === 'final');
+  // Grounded follow-ups the agent proposed for this turn — one click sends one.
+  const rawSug = (finalEvent?.payload as { suggestions?: unknown } | undefined)?.suggestions;
+  const suggestions: string[] = Array.isArray(rawSug)
+    ? rawSug.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
+    : [];
   const errored = Boolean(finalEvent?.payload?.error);
   const cancelled = Boolean(finalEvent?.payload?.cancelled);
   const bubbleClass = errored
@@ -849,6 +1093,23 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt }: { msg: Displ
         {msg.content && (msg.pending
           ? <Typewriter text={msg.content} />
           : <Markdown>{msg.content}</Markdown>)}
+        {!msg.pending && suggestions.length > 0 && onSuggest && (
+          <div className="mt-3 pt-3 border-t border-ink-100/70">
+            <div className="text-[11px] text-ink-400 mb-1.5">接下来可以</div>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSuggest(s)}
+                  className="text-xs px-2.5 py-1 rounded-full ring-1 ring-brand-200 text-brand-700
+                             bg-white/70 hover:bg-brand-50 hover:ring-brand-300 transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

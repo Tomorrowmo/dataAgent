@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
 from ..db.models import Dataset, FormatAdapter, User
-from ..services.datasets import MESH_EXTS, _persist_dataset, build_profile, gc_derived_datasets, ingest_mesh_upload, ingest_tecplot_upload, ingest_upload, load_dataset_df, looks_like_tecplot, save_temp_upload
+from ..services.datasets import MESH_EXTS, _persist_dataset, build_profile, delete_dataset_tree, gc_derived_datasets, ingest_image_upload, ingest_mesh_upload, ingest_tecplot_upload, ingest_upload, load_dataset_df, looks_like_tecplot, save_temp_upload
+from ..services.image_parser import IMAGE_EXTS
 from ..services.format_adapter import (
     generate_cleaner_stream, generate_parser_stream, save_adapter, stage_upload, try_saved_adapter,
 )
@@ -101,6 +102,29 @@ async def upload(
             try: tmp.unlink(missing_ok=True)
             except Exception: pass
             raise HTTPException(400, f"网格文件解析失败({type(e).__name__}): {e}")
+
+    # Path 0.3 — an image of a table (screenshot, phone photo, chart with
+    # embedded grid). Vision LLM extracts CSV, we persist that as a normal
+    # Dataset. Sits before Tecplot / native so a mis-named .png doesn't
+    # cascade through pandas-tries-CSV loops.
+    if extension in IMAGE_EXTS:
+        llm = llm_for(user)
+        if not llm.is_configured:
+            raise HTTPException(
+                400,
+                "Reading images needs an LLM key. Set a vision-capable model "
+                "(e.g. qwen-vl-max on dashscope) in Settings.",
+            )
+        try:
+            dss = await ingest_image_upload(
+                session, owner_id=user.id, image_bytes=data,
+                extension=extension, original_filename=file.filename,
+                llm=llm, display_name=name, description=description,
+            )
+            resp = [DatasetResp.from_orm_(d) for d in dss]
+            return UploadResp(status="ok", dataset=resp[0], datasets=resp)
+        except Exception as e:
+            raise HTTPException(400, f"图片解析失败({type(e).__name__}): {e}")
 
     # Path 0.5 — a Tecplot ASCII export (CFD/CAE probe data). Detected by content
     # (VARIABLES + ZONE), so it works for .dat / .tec / no-extension. Parsed
@@ -882,12 +906,18 @@ async def get_dataset(dataset_id: int, user: User = Depends(current_user), sessi
 
 
 @router.delete("/{dataset_id}")
-async def delete_dataset(dataset_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
-    ds = (await session.execute(
-        select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
-    )).scalar_one_or_none()
-    if ds is None:
+async def delete_dataset(
+    dataset_id: int,
+    dry_run: bool = False,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Delete a dataset and its whole derived subtree (a 中间结果 without its
+    parent is an orphan). `dry_run=true` returns what WOULD go, so the UI can
+    warn before anything is destroyed."""
+    res = await delete_dataset_tree(
+        session, owner_id=user.id, dataset_id=dataset_id, dry_run=dry_run
+    )
+    if not res.get("found"):
         raise HTTPException(404, "dataset not found")
-    await session.execute(delete(Dataset).where(Dataset.id == dataset_id))
-    await session.commit()
-    return {"ok": True}
+    return {"ok": True, **res}

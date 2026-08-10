@@ -19,6 +19,7 @@ PyYAML==6.0.2
 
 # LLM
 httpx==0.28.1
+anthropic==0.117.0
 openai==1.59.3
 
 # Auth

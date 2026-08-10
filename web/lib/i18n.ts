@@ -88,7 +88,7 @@ const DICT: { en: Dict; zh: Dict } = {
     // How
     'how.title': 'How RLab Cortex works',
     'how.step1.t': 'Import & parse data',
-    'how.step1.b': 'CSV, Excel (each worksheet becomes its own table), Parquet, JSON — and for a format we don\'t recognize, the AI writes a parser on the spot. Anything you bring is turned into a clean table with an auto-detected schema + preview.',
+    'how.step1.b': 'CSV, Excel (each worksheet becomes its own table), Parquet, JSON, and images of tables (screenshots or phone photos — a vision model extracts the rows). For any format we still don\'t recognize, the AI writes a parser on the spot. Anything you bring is turned into a clean table with an auto-detected schema + preview.',
     'how.step2.t': 'Chat with the agent',
     'how.step2.b': 'Tell RLab Cortex what you want. It picks the right algorithm from the curated library first.',
     'how.step3.t': 'Add your own tools',
@@ -240,7 +240,7 @@ const DICT: { en: Dict; zh: Dict } = {
     // Datasets
     'ds.upload': 'Upload CSV / XLSX / Parquet',
     'ds.uploading': 'Uploading…',
-    'ds.uploadHint': 'CSV / Excel (multi-sheet → one table per sheet) / Parquet / JSON, or any format (the AI writes a parser). Max 200 MiB, stored as parquet.',
+    'ds.uploadHint': 'CSV / Excel (multi-sheet → one table per sheet) / Parquet / JSON / images of tables (vision LLM extracts rows) — for anything else, the AI writes a parser. Max 200 MiB, stored as parquet.',
     'ds.empty': 'No datasets yet. Upload one to get started.',
     'ds.select': 'Select a dataset to preview.',
     'ds.confirmDelete': 'Delete this dataset and its parquet file?',
@@ -395,7 +395,7 @@ const DICT: { en: Dict; zh: Dict } = {
 
     'how.title': 'RLab Cortex 怎么用',
     'how.step1.t': '导入并解析数据',
-    'how.step1.b': 'CSV / Excel(多个工作表自动各自拆成一张表)/ Parquet / JSON —— 遇到不认识的格式,AI 当场写解析器。各类数据都被解析成规整的表格,自动识别字段类型并预览。',
+    'how.step1.b': 'CSV / Excel(多个工作表自动各自拆成一张表)/ Parquet / JSON,以及表格截图 / 手机拍的照片(视觉模型识别出行列) —— 遇到还不认识的格式,AI 当场写解析器。各类数据都被解析成规整的表格,自动识别字段类型并预览。',
     'how.step2.t': '和 agent 对话',
     'how.step2.b': '告诉 RLab Cortex 你想做什么，它优先从精选算法库里挑一个。',
     'how.step3.t': '上传自有工具',
@@ -540,7 +540,7 @@ const DICT: { en: Dict; zh: Dict } = {
 
     'ds.upload': '上传 CSV / XLSX / Parquet',
     'ds.uploading': '上传中…',
-    'ds.uploadHint': '支持 CSV / Excel(多分页自动拆成多张表)/ Parquet / JSON,或任意格式(AI 现写解析器)。最大 200 MiB,服务器以 parquet 存储。',
+    'ds.uploadHint': '支持 CSV / Excel(多分页自动拆成多张表)/ Parquet / JSON / 表格截图或照片(视觉模型识别行列),其它格式 AI 现写解析器。最大 200 MiB,服务器以 parquet 存储。',
     'ds.empty': '暂无数据集，先上传一份开始使用。',
     'ds.select': '选择一个数据集查看预览。',
     'ds.confirmDelete': '确认删除这个数据集及其 parquet 文件？',

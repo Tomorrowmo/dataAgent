@@ -97,7 +97,20 @@ export const api = {
     if (description) fd.append('description', description);
     return request<UploadResp>('POST', '/datasets', fd);
   },
-  deleteDataset: (id: number) => request<{ ok: boolean }>('DELETE', `/datasets/${id}`),
+  // Attach an image to the NEXT chat message (a chart/plot/diagram to analyze).
+  // Returns a ref passed back to streamChat as image_ref.
+  uploadChatImage: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request<{ ref: string; name: string; ext: string }>('POST', '/chat/upload-image', fd);
+  },
+  // Deleting a dataset takes its whole derived subtree with it; pass dryRun to
+  // find out how much that is before actually destroying anything.
+  deleteDataset: (id: number, dryRun = false) =>
+    request<{
+      ok: boolean; count: number; descendants: number; kept_hit: number;
+      freed_bytes: number; deleted: { id: number; name: string; kind: string; kept: boolean }[];
+    }>('DELETE', `/datasets/${id}${dryRun ? '?dry_run=true' : ''}`),
   /** Keep a derived/intermediate dataset — promote it to a first-class source dataset. */
   promoteDataset: (id: number) => request<Dataset>('POST', `/datasets/${id}/promote`),
   /** Pin/unpin a derived dataset in place so auto-GC won't reclaim it. */
@@ -562,6 +575,7 @@ export async function streamChat(
   onEvent: (e: { kind: string; payload: Record<string, unknown> }) => void,
   dataset_ids?: number[],
   signal?: AbortSignal,
+  image_ref?: string | null,
 ): Promise<void> {
   const token = getToken();
   // SSE must bypass the Next dev rewrites proxy — it BUFFERS streaming responses,
@@ -576,7 +590,7 @@ export async function streamChat(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message, dataset_id, dataset_ids }),
+    body: JSON.stringify({ message, dataset_id, dataset_ids, image_ref: image_ref ?? undefined }),
     signal,
   });
   if (!r.ok || !r.body) {

@@ -52,7 +52,9 @@ class Settings(BaseSettings):
     llm_provider: str = "deepseek"
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
-    deepseek_model: str = "deepseek-chat"
+    # `deepseek-chat` / `deepseek-reasoner` are deprecated 2026-07-24 15:59 UTC;
+    # both fold into deepseek-v4-flash (non-thinking / thinking mode).
+    deepseek_model: str = "deepseek-v4-flash"
 
     sandbox_cpu_seconds: int = 10
     sandbox_memory_mb: int = 512

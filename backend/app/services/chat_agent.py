@@ -7,7 +7,7 @@ Each turn the LLM returns:
   { "thought": "...", "action": "...", "args": {...} }
 
 Actions:
-  - "answer"          : final answer to the user (args.text)
+  - "answer"          : final answer to the user (args.text, optional args.next)
   - "list_tools"      : list available tools (filter by args.category?)
   - "describe_tool"   : args.slug -> the params schema
   - "run_tool"        : args.slug, args.params -> execute against current dataset
@@ -33,19 +33,19 @@ from ..db.models import Algorithm, Dataset, Message
 from ..sandbox import executor as sandbox_executor
 from .codegen import generate_algorithm, parse_meta
 from .datasets import _persist_dataset, load_dataset_df
-from .llm import LLMClient
+from .llm import LLMClient, LLMError
 
 SYSTEM_PROMPT = """You are RLab Cortex, a verifiable data-analysis agent for engineers and scientists. You help users explore, clean, and analyze tabular / time-series data by invoking curated algorithms (preferred) or, when no suitable one exists, generating a new one for the user to approve.
 
 You ALWAYS respond with a single JSON object — nothing outside it. Schema:
 {
   "thought": "<one sentence reasoning>",
-  "action": "answer | list_tools | describe_tool | run_tool | generate_tool | visualize | visualize_batch | generate_viz",
+  "action": "answer | list_tools | describe_tool | run_tool | generate_tool | visualize | visualize_batch | generate_viz | analyze_image",
   "args": { ... }
 }
 
 Action contracts:
-- answer         : args = { "text": "<markdown answer to the user>" }
+- answer         : args = { "text": "<markdown answer to the user>", "next": ["<short follow-up the user can send as-is>", ...] }
 - list_tools     : args = { "category": "<optional filter>" }
 - describe_tool  : args = { "slug": "<algorithm slug>" }
 - run_tool       : args = { "slug": "<algorithm slug>", "params": { ... }, "dataset": "<dataset name, optional — defaults to PRIMARY>" }
@@ -53,12 +53,16 @@ Action contracts:
 - visualize      : args = { "chart_type": "line | scatter | bar", "x": "<column>", "y": ["<column>", ...], "title": "<short title>", "dataset": "<name, optional — defaults to PRIMARY>", "datasets": ["<name>", "<name>"] (optional — overlay the SAME column(s) from 2+ datasets on ONE chart for comparison) }
 - visualize_batch: args = { "chart_type": "line|scatter|bar", "x": "<column>", "y": ["<column>", ...], "per": "dataset | column", "datasets": ["<name>", ...] (optional — defaults to ALL loaded), "title": "<prefix>" }
 - generate_viz   : args = { "description": "<precise spec of the chart to build>", "dataset": "<name, optional — defaults to PRIMARY>" }
+- analyze_image  : args = { "mode": "analyze | digitize", "instruction": "<the user's question / axis meanings, verbatim>", "name": "<dataset name, only for digitize>" }
+    Only usable when the user attached an image THIS message (a system note will say so). `analyze` → the vision model answers the question in prose (its `message` becomes your answer). `digitize` → reads the plotted curve into a NEW dataset the user can then analyze. Pick `digitize` when the user wants the curve turned into data (解析出数据/数字化/横轴是X纵轴是Y…读出数据), `analyze` otherwise. Pass the user's own words as `instruction`.
+- PLOTTING A FORMULA / FUNCTION (画 y=f(x) 的曲线, 画抛物线/正弦/参数曲线, 无数据来源): call `generate_viz` DIRECTLY with the formula and range in the description (e.g. "plot y = -x**2 + 70 for x in [-10, 10]"). NO dataset is required — generate_viz synthesizes the points. Do NOT `generate_tool` to build a dataset first, and do NOT tell the user to select a dataset — there is nothing to select. One call, done.
 
 Guidance:
 - Prefer existing tools. Only call `generate_tool` when nothing in the registry fits.
 - The "Available tools" list below is EXHAUSTIVE — those are the ONLY tools that exist. NEVER name, describe, recommend, or ask for the parameters of a tool whose slug is NOT in that list (do not invent slugs like `fft_frequency_analysis`, `low_pass_filter`, etc.). If the user wants a capability that isn't in the list, say plainly it's not yet in the library and OFFER to build it — or call `generate_tool` to create it — rather than pretending it exists. When you list "available" algorithms, list ONLY real slugs from below.
-- For ANY plotting / charting request (画图, 画曲线, 可视化, "plot", "chart", "show me ... vs ..."), use `visualize`. Pick sensible default columns from the schema (e.g. a time/index column for x). The user gets an INTERACTIVE chart and can change axes, series, and chart type themselves afterwards — so just pick a good starting view; do NOT ask them which columns unless the dataset has no obvious choice. After the chart result, give a one-line `answer` pointing out what to look at.
-- To COMPARE / OVERLAY multiple loaded datasets on one chart (对比, 叠加, "A vs B"), call `visualize` with `datasets`: [the names] and the shared column(s) in `y` — the tool aligns them and draws one series per dataset.
+- For ANY plotting / charting request (画图, 画曲线, 可视化, "plot", "chart", "show me ... vs ..."), use `visualize`. Pick sensible default columns from the schema (e.g. a time/index column for x). The user gets an INTERACTIVE chart and can change axes, series, and chart type themselves afterwards — so just pick a good starting view; do NOT ask them which columns unless the dataset has no obvious choice. After the chart result, INTERPRET it (see the answer-quality rule below) — don't just say "图已生成".
+- DESCRIBE ONLY WHAT WAS ACTUALLY PLOTTED. The chart result's `summary.plotted` lists the exact series drawn (column, min, max, is_flag) and `summary.x_axis` the x column. Your follow-up `answer` MUST match that list: name those columns, and NEVER invent a series, a colour→meaning mapping ("蓝色是原始数据, 红色是剔除后"), or a comparison that isn't in it. If what you described and what got drawn differ, say so and re-plot — a confident caption over the wrong chart is worse than no caption.
+- To COMPARE / OVERLAY multiple loaded datasets on one chart (对比, 叠加, "A vs B"), call `visualize` with `datasets`: [the names] and the shared column(s) in `y` — the tool aligns them and draws one series per dataset. To compare ORIGINAL vs PROCESSED (原始 vs 去噪后/剔除异常后), pass BOTH datasets this way — do NOT plot an indicator column (`*_outlier`, a 0/1 mask) as a second series and call it the processed data: a flag is not a measurement, and `summary.plotted[].is_flag` will expose it.
 - BATCH plotting — when the user wants SEVERAL SEPARATE charts at once (批量出图, 分别出图, 每个文件/每个参数各一张图, "one chart per file/column", "plot all of them separately"), use `visualize_batch` — ONE call produces ALL the charts. Set `per: "dataset"` for one chart per dataset (defaults to every loaded dataset; pass `datasets` to limit), or `per: "column"` for one chart per y-column of a single dataset. NEVER loop `visualize` once per item, and NEVER claim in an `answer` that you produced multiple charts unless you actually called `visualize`/`visualize_batch` THIS turn — emit the action, then interpret its result.
 - When `visualize` CAN'T express the chart you need, use `generate_viz` with a precise description — it WRITES the chart on demand and can render ESSENTIALLY ANY chart type: radar / polar, heatmap, contour, 3D surface/scatter, box, violin, histogram, parallel-coordinates, pie, error bars, raw-points-plus-fitted-curve, custom transforms, anything bespoke. So NEVER tell the user a chart type is "unsupported" or that the system "only supports line/scatter/bar" — if `visualize` can't do it, call `generate_viz`. It's slower than `visualize`, so use `visualize` for plain line/scatter/bar and `generate_viz` for everything else.
 - When the user uploads or selects a dataset, the schema and head are in the system context. Reference exact column names.
@@ -66,8 +70,16 @@ Guidance:
 - COMPUTE-THEN-PLOT: if a chart needs a quantity that ISN'T already a column (envelope, derivative/slope, moving RMS, residual, zero-crossings, marked extrema, …), do NOT force it into `generate_viz` (its sandbox can't import scipy and tends to fail on such charts). FIRST add that quantity as a real column — `run_tool` an existing tool, or `generate_tool` to build one — THEN `visualize` the original column together with the new one. Charting is the LAST step, after the data it needs exists.
 - 极值图 / PEAK-OVERLAY: to draw the extrema ON the signal curve (极值图, 标出峰值/极值), run `mark_peaks` (column=the signal) — it keeps the signal and adds a `<col>_peak` column — then `visualize` with y=[the signal, `<col>_peak`] (or `generate_viz` for line+markers). Use `find_peaks` only when the user just wants to COUNT peaks or a peaks-only table; never try to plot the raw signal FROM a find_peaks result (it has no signal column).
 - RESHAPED-DATA RECOVERY: if a prior pipeline step reshaped the data (find_peaks → peak_index/…, group_aggregate → value2_mean/…), the original columns (signal, value2, …) are NOT in that result. For PLOTTING this is handled automatically (visualize falls back to the original data and the result's `plotted_from` says which data was used — mention it). For a TOOL that needs an original column, set `dataset` to the original dataset by name, or tell the user to click 重置流水线 — do NOT loop re-asking.
-- ACT, don't pre-narrate. When the user asks for a concrete action (画热力图/生成某图, 计算, 检测异常, 运行某算法…), emit that action (visualize / generate_viz / run_tool) IMMEDIATELY. Do NOT first send an `answer` that explains the concept or announces "我将为你生成…" — just do it. Pre-explaining a concept the user already asked for wastes a whole slow LLM round-trip and reads as stalling; the result plus a SHORT interpretation afterward IS the answer.
+- ACT, don't pre-narrate. When the user asks for a concrete action (画热力图/生成某图, 计算, 检测异常, 运行某算法…), emit that action (visualize / generate_viz / run_tool) IMMEDIATELY. Do NOT first send an `answer` that explains the concept or announces "我将为你生成…" — just do it. Pre-explaining a concept the user already asked for wastes a whole slow LLM round-trip and reads as stalling. Terseness applies BEFORE acting, never to the final answer — see the next rule.
+- THE FINAL ANSWER MUST CARRY THE ANALYSIS, not just announce that it ran. "已完成分析,结果如上" / "图已生成" / "共有 3 个异常" are failures: the user then has to interpret the numbers themselves, which is the work they asked YOU to do. A good answer, in the user's language, covers:
+  1. **结论先行** — answer the actual question in the first sentence, with the concrete numbers (real values from the tool result, never invented or rounded away).
+  2. **数字意味着什么** — the engineering/business reading. 563 个异常点 is a number; "只占 0.28%,但集中在 18/256 个测点,说明不是随机噪声" is an answer.
+  3. **值得注意的地方** — anything surprising, counter-intuitive, or that limits the conclusion: a weak correlation, a confound, a tiny sample behind a big-looking effect, a value that is physically implausible. If the data contradicts the obvious interpretation, SAY SO — that is the most valuable thing you can tell the user.
+  4. **下一步** — via `args.next` (see the suggestions rule).
+  Length follows content: a one-number lookup stays short; a multi-step analysis earns several sentences or a small table. Never pad, never restate the steps you took (the 工作台 already shows those), and never claim more certainty than the numbers support.
 - After `run_tool`, you'll receive a tool-result message. ALWAYS interpret the result for the user with a final `answer` action — never leave them hanging on raw numbers.
+- ALWAYS SUGGEST NEXT STEPS. Every final `answer` should carry `args.next`: 2-3 follow-up questions the user could send verbatim, in the user's language, each under 30 characters. They must be GROUNDED in this turn — name the real columns/datasets/results just produced, and propose the natural next move (dig into an anomaly you found, plot what you just computed, apply the same analysis to another column/dataset, save a good pipeline as a template). Never generic filler like "还需要什么帮助吗"; never something the data can't support. Example after finding outlier counts per sensor: {"next": ["画出 CH07.12 的时程曲线", "剔除异常后重新统计", "看看异常集中在哪个时间段"]}.
+- ORDER THE PIPELINE BEFORE YOU START. Row-level work comes FIRST, table-level summaries LAST: 筛选/取子集 → 派生新列 → 分组汇总 → 排序/取前N. Aggregating first is the classic mistake — `group_aggregate` COLLAPSES the table, so the raw columns your filter needs (`q_direct`, `Alpha`, …) no longer exist, and filtering the summary with a row-level condition is either a no-op or an error. If you catch yourself calling group_aggregate and then filtering on an original column, your order is wrong: redo it as filter-then-group. Re-running the same tool with the same params CANNOT produce a different answer — if a step changed nothing, change the PLAN, not the retry count.
 - PIPELINES compose automatically: when a tool outputs a transformed table (filter/normalize/fill_missing/etc. that adds or changes columns), the NEXT `run_tool` in this same turn operates on that transformed result — NOT the original. So for a multi-step request (e.g. 去噪→检测异常→插值→归一化) just call the tools in order; the new columns from step N (e.g. `voltage_v_gauss`) ARE available to step N+1. Read each tool-result's summary for the exact new column names.
 - Each transforming step is auto-saved as an inspectable DERIVED dataset (the tool-result includes `derived_dataset`). In your final answer you MAY tell the user that each stage (去噪后/检测后/…) is viewable in 数据集 → 中间结果.
 - Keep `thought` to ONE sentence. Write `answer.text` as detailed and well-structured as the question deserves — give real interpretation, the relevant numbers, and useful next steps; do NOT artificially truncate an analysis. The reply streams out to the user token-by-token, so a longer answer is fine — they watch it being written. The only thing to cut is EMPTY boilerplate: don't open a simple greeting with a self-introduction or feature tour ("你好,我是 RLab Cortex…") — get straight to the content. Reference numbers from results explicitly.
@@ -232,6 +244,114 @@ def _load_df(ds: Optional[Dataset], working: Dict[int, Any]):
     return load_dataset_df(ds)
 
 
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+
+
+def _param_column_candidates(params: Any) -> List[str]:
+    """Every string in a params blob that could name a column — values AND dict
+    keys (group_aggregate's `agg` maps column → funcs, so the COLUMN is the key),
+    PLUS the bare identifiers inside any string.
+
+    That last part matters for EXPRESSION params: a filter condition arrives as
+    `"Alpha >= -2 and Alpha <= 6"` and a derived column as `"CL / CD"`, so the
+    column name is embedded, never equal to the whole value. Matching only whole
+    values let a query blow up with "name 'Alpha' is not defined" against an
+    upstream aggregate that had dropped the column.
+
+    Over-collects on purpose (`and`, `iqr`, `mean` all get harvested); the caller
+    only acts on names that are REAL columns of the original data, so noise can
+    never trigger anything."""
+    out: List[str] = []
+
+    def walk(v: Any) -> None:
+        if isinstance(v, str):
+            out.append(v)
+            if not v.isidentifier():          # expression → pull the names out
+                out.extend(_IDENT_RE.findall(v))
+        elif isinstance(v, dict):
+            for k, vv in v.items():
+                if isinstance(k, str):
+                    out.append(k)
+                walk(vv)
+        elif isinstance(v, (list, tuple)):
+            for vv in v:
+                walk(vv)
+
+    walk(params or {})
+    return out
+
+
+def _read_frame_for_tool(
+    ds: Optional[Dataset],
+    working: Dict[int, Any],
+    frames: Dict[int, List[Any]],
+    params: Dict[str, Any],
+):
+    """Pick the dataframe a TOOL should run on, un-shadowing the original when a
+    previous step reshaped the table out from under it.
+
+    Same failure `_read_frame_for_viz` fixes, but on the WRITE path — and it bit
+    exactly as that docstring predicted: `group_aggregate` collapsed 120 rows to
+    3 (batch/value1_std/value2_std), so every later step in the turn saw only the
+    aggregate. The AI-generated Cpk tool raised "数据必须包含 value1, value2",
+    the agent retried `group_aggregate` against the shadowed head, and burned its
+    3-strike budget on a table that could never satisfy it.
+
+    Transforms can't take viz's liberal "read from whatever has the columns" rule
+    — silently swapping frames mid-pipeline is exactly the silent-substitution
+    failure we killed before. So the trigger is deliberately narrow: act ONLY when
+    a referenced name is a real column of SOME frame this turn produced and is
+    MISSING from the working head. That case is a guaranteed hard error today, so
+    un-shadowing can only turn a failure into a success — a live pipeline
+    (去噪→归一化, where the columns DO exist in the head) is never touched.
+
+    Falling back to the on-disk ORIGINAL is not enough, and the first cut of this
+    got it wrong: after 派生列 CL/CD → 分组聚合, a step needing both `CL` and the
+    derived `Lift_Drag_Ratio` un-shadowed all the way to disk and threw away the
+    derived column the agent had just computed ("列 Lift_Drag_Ratio 不存在"). So
+    we search this turn's frame HISTORY newest-first for one holding ALL the
+    needed columns, and only then fall back to the original. Never reads another
+    dataset. Returns (df, note); note is set only when we left the working copy,
+    so the step stays visible to the user."""
+    head = _load_df(ds, working)
+    if ds is None or head is None or ds.id not in working:
+        return head, None
+    candidates = _param_column_candidates(params)
+    if not candidates:
+        return head, None
+    history: List[Any] = [f for _, f in frames.get(ds.id, [])]
+    try:
+        original = load_dataset_df(ds)
+    except Exception:
+        original = None
+    pool = history + ([original] if original is not None else [])
+    if not pool:
+        return head, None
+    known: set = set()
+    for f in pool:
+        known |= {str(c) for c in f.columns}
+    # Only names that really ARE columns somewhere this turn count as "needed".
+    needed = [c for c in dict.fromkeys(candidates) if c in known]
+    head_cols = {str(c) for c in head.columns}
+    missing = [c for c in needed if c not in head_cols]
+    if not missing:
+        return head, None
+
+    def _has_all(f) -> bool:
+        fc = {str(c) for c in f.columns}
+        return all(c in fc for c in needed)
+
+    note_cols = "、".join(missing)
+    for label, f in reversed(frames.get(ds.id, [])):
+        if _has_all(f):
+            return f, (f"「{note_cols}」在上一步的结果里已经不存在了,"
+                       f"本步改用更早一步「{label}」的结果运行。")
+    if original is not None and _has_all(original):
+        return original, (f"「{note_cols}」在上一步的结果里已经不存在了,"
+                          f"本步改用「{ds.name}」的原始数据运行。")
+    return head, None  # nothing better available — let the tool's own error speak
+
+
 def _read_frame_for_viz(
     ds: Dataset,
     datasets: List[Dataset],
@@ -341,8 +461,10 @@ async def _execute_action(
     datasets: List[Dataset],
     parsed: Dict[str, Any],
     working: Dict[int, Any],          # 本轮各数据集的"已变换副本"(流水线接力用)
+    frames: Dict[int, List[Any]],     # 本轮每一步的输出快照 [(标签, df)] —— 用于解除遮蔽时回退到"含所需列的最近一帧"
     lineage_state: Dict[int, Any],    # 各数据集的血缘链头部(原始→去噪→…)
     pipeline_state: Dict[str, Any],   # 跨轮流水线状态(由调用方持久化)
+    image_ref: Optional[str] = None,  # 本轮附带的图片路径(若有),供 analyze_image 用
 ) -> Dict[str, Any]:
     action = parsed.get("action", "answer")
     args = parsed.get("args", {}) or {}
@@ -385,7 +507,18 @@ async def _execute_action(
         slug = args.get("slug")
         params = args.get("params", {}) or {}
         ds = _resolve_dataset(datasets, args)   # 选数据集:args.dataset 名/id,默认第一个
-        df = _load_df(ds, working)              # 优先取本轮已变换副本 → 流水线自动接力
+        # 优先取本轮已变换副本 → 流水线自动接力;但上一步若把表重塑掉(如 group_aggregate
+        # 把 120 行压成 3 行),本步要的原始列会被遮蔽 → 回退到磁盘原始数据,见函数注释
+        df, frame_note = _read_frame_for_tool(ds, working, frames, params)
+        # No dataset → a builtin doing `df.columns` raises a raw AttributeError
+        # that leaks to the user. Fail cleanly and tell the agent what to do
+        # instead (this is the tail of the "plot a formula with no data" flow:
+        # the agent shouldn't run_tool a fit on data that doesn't exist).
+        if df is None:
+            return {"status": "error", "error": (
+                "还没有可用的数据集。这个算法需要一份数据才能运行——请先让用户上传或选择一个数据集。"
+                "(如果用户只是想画一个公式曲线 y=f(x),用 generate_viz 直接画,不需要数据集。)"
+            )}
 
         spec = registry.get_builtin(slug)
         if spec:
@@ -399,6 +532,10 @@ async def _execute_action(
             result = registry.execute_code(row.code, df, params)
             label = row.name
 
+        # 换了数据源就必须说出来 —— 静默替换数据是最坏的失败模式
+        if frame_note and result.get("status") == "ok":
+            result.setdefault("summary", {})["ran_on"] = frame_note
+
         # ★流水线三件事(去噪→检测→插值→归一化能自动接力的关键):
         #   1) 把输出写进 working[ds.id] → 同轮下一个 run_tool 自动读到它(轮内组合)
         #   2) 物化成一个 derived dataset 并记血缘 → 用户能在「中间结果」里逐阶段检查
@@ -410,6 +547,9 @@ async def _execute_action(
             try:
                 out_df = pd.read_parquet(result["result_path"])
                 working[ds.id] = out_df
+                # 记一帧:后续步骤若被重塑遮蔽,可回退到"含所需列的最近一帧",
+                # 而不是一路退到磁盘原始数据、把本轮刚算出的派生列丢掉
+                frames.setdefault(ds.id, []).append((label, out_df))
                 parent_id, parent_name = lineage_state.get(ds.id, (ds.id, ds.name))
                 d = await _persist_dataset(
                     session, owner_id=owner_id, df=out_df,
@@ -543,13 +683,57 @@ async def _execute_action(
 
     # ── 动作⑥:AI 现写图表代码 —— visualize 表达不了的图(雷达/热力/3D…) ──
     if action == "generate_viz":
-        ds = _resolve_dataset(datasets, args)
-        if ds is None:
-            return {"status": "error", "error": "no dataset selected for visualization."}
         description = args.get("description", "")
         if not description.strip():
             return {"status": "error", "error": "generate_viz requires a 'description' of the chart to build."}
+        ds = _resolve_dataset(datasets, args)
+        # No dataset is FINE here: plotting a pure formula (y = -x² + 70, a sine
+        # curve, a parametric spiral…) needs no input data — the generated
+        # run(df) synthesizes x/y from the description. Only fall back to a "no
+        # dataset" error path if there's genuinely nothing to draw AND no
+        # formula-like description, which _generate_viz decides.
+        if ds is None:
+            return await _generate_viz(description, None, None, llm)
         return await _generate_viz(description, _viz_frame(ds, working), ds, llm)
+
+    # ── 动作:看图 —— 分析用户附带的图片(问答 or 把曲线数字化成数据集)──
+    if action == "analyze_image":
+        if not image_ref:
+            return {"status": "error", "error": "这条消息没有附带图片。让用户先在输入框里附一张图再问。"}
+        from pathlib import Path as _Path
+        from ..services.image_parser import analyze_image as _vision_analyze, digitize_chart_to_df
+        p = _Path(image_ref)
+        if not p.exists():
+            return {"status": "error", "error": "图片文件已过期,请让用户重新上传。"}
+        img = p.read_bytes()
+        ext = p.suffix.lower() or ".png"
+        instruction = args.get("instruction") or ""
+        mode = str(args.get("mode") or "analyze").lower()
+        try:
+            if mode == "digitize":
+                df = await digitize_chart_to_df(img, extension=ext, instruction=instruction, llm=llm)
+                name = (args.get("name") or "").strip() or "图片解析·曲线数据"
+                d = await _persist_dataset(
+                    session, owner_id=owner_id, df=df, name=name,
+                    filename="digitized_chart.parquet", file_format="image-digitize",
+                    description=f"由用户上传的图片数字化得到:{instruction[:120]}",
+                )
+                await session.commit()
+                return {
+                    "status": "ok",
+                    "summary": {"type": "image_digitize", "dataset_id": d.id, "dataset_name": d.name,
+                                "rows": int(len(df)), "columns": list(df.columns)},
+                    "derived_dataset": {"id": d.id, "name": d.name},
+                    "message": f"已把曲线读成数据集「{d.name}」({len(df)} 行:{', '.join(map(str, df.columns))}),"
+                               f"现在可以对它画图、拟合、跑算法了。",
+                }
+            answer = await _vision_analyze(img, extension=ext, instruction=instruction, llm=llm)
+            return {"status": "ok", "summary": {"type": "image_analysis"}, "meta": {"image_analysis": answer},
+                    "message": answer}
+        except LLMError as e:
+            return {"status": "error", "error": str(e)}
+        except Exception as e:
+            return {"status": "error", "error": f"看图失败: {type(e).__name__}: {str(e)[:200]}"}
 
     # ── 动作⑦:自扩展 —— LLM 写一个新算法 + 自测,通过即注册、本轮可用 ──
     #    这是 RLab Cortex「自扩展可验证 agent」的核心:缺工具就现造,造完即用。
@@ -633,6 +817,11 @@ VIZ_SYSTEM_PROMPT = """You write Python that builds a chart spec from a pandas D
 Define exactly ONE top-level function:
     def run(df, **params) -> dict
 
+`df` MAY BE None. When the schema block says there is no input dataset (e.g. the
+user asked to plot a pure formula like y = -x**2 + 70 over a range), do NOT touch
+df — build x and y yourself with numpy from the formula and range in the
+description, and return the spec from that. numpy is available as np.
+
 Return ONE of these two dict shapes (nothing printed, nothing else):
 
 (A) For a plain LINE / SCATTER / BAR chart — the lightweight series spec:
@@ -691,14 +880,31 @@ def _coerce_series_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
     return spec
 
 
-async def _generate_viz(description: str, df: pd.DataFrame, ds: Dataset, llm: LLMClient) -> Dict[str, Any]:
+async def _generate_viz(
+    description: str, df: Optional[pd.DataFrame], ds: Optional[Dataset], llm: LLMClient,
+) -> Dict[str, Any]:
     """AI-written visualization: the model writes `run(df) -> chart-spec`, we run
     it in the sandbox and hand the spec to the same interactive ChartPanel. Lets
-    the agent build charts the fixed `visualize` tool can't express."""
+    the agent build charts the fixed `visualize` tool can't express.
+
+    `df`/`ds` may be None — plotting a pure formula (y = f(x)) needs no input
+    data, so run(df) synthesizes it from the description. This is the path that
+    kept failing: a formula plot with no dataset used to hit "no dataset
+    selected", and the agent flailed by generating a throwaway dataset."""
     # Build the schema block from the ACTUAL df, not ds.schema_json — otherwise a
     # reshaped working copy gets described by the original schema and the codegen
     # references columns that aren't in the data it's handed.
-    schema_ctx = _format_df_schema(ds.name, df) if df is not None else _format_one_dataset(ds, primary=True)
+    if df is not None and ds is not None:
+        schema_ctx = _format_df_schema(ds.name, df)
+    elif ds is not None:
+        schema_ctx = _format_one_dataset(ds, primary=True)
+    else:
+        schema_ctx = (
+            "(NO input dataset — `df` will be None.) Synthesize the data yourself "
+            "inside run(): read the formula / function / range from the chart "
+            "description, build x and y with numpy, and return the spec. Do NOT "
+            "reference df."
+        )
     prev_err = ""
     for attempt in range(2):
         user = (
@@ -746,6 +952,25 @@ async def _generate_viz(description: str, df: pd.DataFrame, ds: Dataset, llm: LL
     return {"status": "error", "error": f"could not generate a working chart after 2 attempts. Last error: {prev_err[:600]}"}
 
 
+def _is_flag_column(s: pd.Series) -> bool:
+    """True for a 0/1 or boolean INDICATOR column (outlier_detect's `*_outlier`,
+    a mask, a one-hot). Numerically these look plottable, so they used to land in
+    the default y-series next to a physical quantity — a 0/1 step line sharing an
+    axis with Cm (±0.06) or Alpha (−2…10) squashes the real curve flat and turns
+    the tick labels into overlapping mush. They stay SELECTABLE (a user may well
+    want to see where the flags fire); they just stop being an automatic pick."""
+    if pd.api.types.is_bool_dtype(s):
+        return True
+    if not pd.api.types.is_numeric_dtype(s):
+        return False
+    # Exactly TWO distinct values {0,1}. A CONSTANT 0 column is not an indicator
+    # — a physical quantity that happens to be zero for the whole run (altitude
+    # H=0 in a sea-level sweep) was getting mislabelled `is_flag: true`, which
+    # would hand the model a false statement about the data.
+    vals = pd.unique(s.dropna())
+    return len(vals) == 2 and set(np.asarray(vals).ravel().tolist()) == {0, 1}
+
+
 def _build_chart(
     df: pd.DataFrame,
     *,
@@ -787,17 +1012,23 @@ def _build_chart(
             ),
         }
     missing_y = [c for c in requested_y if c not in df.columns]
-    y = valid_y or [c for c in numeric_cols if c != x][:1] or numeric_cols[:1]
+    # Auto-picked series skip indicator columns; an EXPLICIT request still wins.
+    plottable = [c for c in numeric_cols if not _is_flag_column(df[c])] or numeric_cols
+    y = valid_y or [c for c in plottable if c != x][:1] or plottable[:1]
 
     # x defaults to the first non-y numeric column (often time/index); fall back
     # to the row index so we always have an axis.
     if x not in df.columns:
-        x = next((c for c in numeric_cols if c not in y), None)
+        x = next((c for c in plottable if c not in y), None)
 
     # Columns we actually ship: x (if real) + all y + remaining numerics so the
     # user can switch series client-side. Bounded list keeps the payload small.
+    # Flags go LAST: they're still selectable, but the 12-column cap must not
+    # spend its budget on indicator columns and drop real quantities.
+    flags = [c for c in numeric_cols if _is_flag_column(df[c])]
     ship_cols: List[str] = []
-    for c in ([x] if x in df.columns else []) + list(y) + numeric_cols:
+    for c in ([x] if x in df.columns else []) + list(y) + \
+            [c for c in numeric_cols if c not in flags] + flags:
         if c not in ship_cols and c in df.columns:
             ship_cols.append(c)
     ship_cols = ship_cols[:12]
@@ -828,8 +1059,26 @@ def _build_chart(
             "data": data,
             "downsampled_from": n if n > _CHART_MAX_POINTS else None,
         },
-        "summary": {"type": "chart", "points": len(data), "series": list(y),
-                    **({"missing_columns": missing_y} if missing_y else {})},
+        "summary": {
+            "type": "chart", "points": len(data),
+            # GROUNDING: report what was ACTUALLY drawn — axis + per-series range.
+            # The old summary carried only a bare series list, so the model was
+            # free to narrate a chart it never made ("蓝色=原始, 红色=剔除异常后"
+            # over a plot of Cm vs Cm_outlier). Ranges also expose a scale clash,
+            # which is what a flag column silently sharing an axis looks like.
+            "x_axis": x,
+            "series": list(y),
+            "plotted": [
+                {
+                    "column": c,
+                    "min": (None if sub[c].dropna().empty else float(sub[c].min())),
+                    "max": (None if sub[c].dropna().empty else float(sub[c].max())),
+                    "is_flag": bool(c in df.columns and _is_flag_column(df[c])),
+                }
+                for c in y if c in sub.columns
+            ],
+            **({"missing_columns": missing_y} if missing_y else {}),
+        },
     }
 
 
@@ -852,38 +1101,58 @@ def _build_chart_overlay(
     def numcols(df: pd.DataFrame) -> List[str]:
         return [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
 
+    if isinstance(y, str):
+        y = [y]
+    requested = [c for c in (y or [])]
+
     common = set(numcols(frames[0][1]))
     for _, df in frames[1:]:
         common &= set(numcols(df))
     common = [c for c in numcols(frames[0][1]) if c in common]
-    if not common:
-        return {"status": "error", "error": "所选数据集没有共同的数值列,无法叠加对比。"}
 
-    if x not in common:
-        x = common[0]
-    if isinstance(y, str):
-        y = [y]
-    ycols = [c for c in (y or []) if c in common and c != x] or [c for c in common if c != x][:1]
-    if not ycols:
-        return {"status": "error", "error": "没有可叠加的数值列。"}
+    # Columns are resolved PER FRAME. Datasets that measure the same quantity
+    # under different names ("M" here, "x" there) are a completely normal thing
+    # to compare, and demanding a shared column name refused the request
+    # outright — even after the user said the names don't matter. Since each
+    # series already carries its own (x, y) points, nothing about the rendering
+    # needed a common column; only this lookup did.
+    def resolve(df: pd.DataFrame, want: List[str]) -> tuple:
+        nums = numcols(df)
+        ys = [c for c in want if c in nums]
+        if not ys:
+            ys = [c for c in common if c in nums and c != x][:1] or nums[:1]
+        xc = x if (x in nums and x not in ys) else next((c for c in nums if c not in ys), None)
+        return xc, ys
+
+    resolved = [(lbl, df) + resolve(df, requested) for lbl, df in frames]
+    if all(not ys for _, _, _, ys in resolved):
+        return {"status": "error", "error": "所选数据集里没有可叠加的数值列。"}
 
     # Emit INDEPENDENT series — each keeps its own (x, y) points, so series of
     # different lengths / x-grids (e.g. 3 raw points vs a 10-point interpolated
     # curve) coexist on one chart without resampling. The frontend draws each
     # series from its own data array over a shared numeric x-axis.
-    multi_label = len(frames) > 1 or len(ycols) > 1
+    multi_label = len(frames) > 1 or any(len(ys) > 1 for *_, ys in resolved)
     series: List[Dict[str, Any]] = []
-    for lbl, df in frames:
-        sub = df[[x] + ycols].dropna().sort_values(x)
+    for lbl, df, xc, ycols in resolved:
+        if not ycols:
+            continue
+        cols = ([xc] if xc else []) + ycols
+        sub = df[cols].dropna()
+        if xc:
+            sub = sub.sort_values(xc)
         if len(sub) > _CHART_MAX_POINTS:
             idx = np.linspace(0, len(sub) - 1, _CHART_MAX_POINTS).astype(int)
             sub = sub.iloc[idx]
-        xs = sub[x].to_numpy(dtype=float)
+        xs = (sub[xc].to_numpy(dtype=float) if xc
+              else np.arange(len(sub), dtype=float))  # no x column → row position
         for c in ycols:
             ys = sub[c].to_numpy(dtype=float)
             pts = [{"x": float(xx), "y": (None if np.isnan(yy) else float(yy))}
                    for xx, yy in zip(xs, ys)]
             series.append({"label": f"{lbl}:{c}" if multi_label else lbl, "points": pts})
+
+    xs_used = list(dict.fromkeys([xc for _, _, xc, ys in resolved if ys and xc])) or ["行序号"]
 
     return {
         "status": "ok",
@@ -891,13 +1160,21 @@ def _build_chart_overlay(
         "chart": {
             "chart_type": chart_type if chart_type in ("line", "scatter", "bar") else "line",
             "mode": "series",
-            "x_label": x,
+            # Frames may have resolved DIFFERENT x columns; say so rather than
+            # labelling the axis with one frame's column name.
+            "x_label": (xs_used[0] if len(xs_used) == 1 else "各数据集各自的横轴"),
             "title": title or ("叠加对比:" + " / ".join(lbl for lbl, _ in frames)),
             "series": series,
             "overlay": True,
         },
-        "summary": {"type": "chart", "series": [s["label"] for s in series],
-                    "datasets": [lbl for lbl, _ in frames]},
+        "summary": {
+            "type": "chart", "series": [s["label"] for s in series],
+            "datasets": [lbl for lbl, _ in frames],
+            # Which column each dataset actually contributed — the names differ
+            # per dataset here, so the model must not assume they're the same.
+            "plotted": [{"dataset": lbl, "x": xc, "y": ycols}
+                        for lbl, _, xc, ycols in resolved if ycols],
+        },
     }
 
 
@@ -955,6 +1232,8 @@ async def run_turn(
     user_message: str,
     max_steps: int = 8,
     pipeline_state: Optional[Dict[str, Any]] = None,
+    image_ref: Optional[str] = None,
+    image_fresh: bool = False,
 ) -> AsyncIterator[AgentStep]:
     """Execute one chat turn: keep looping until the agent produces an `answer`
     action or exhausts max_steps. Yields a sequence of AgentStep events.
@@ -973,6 +1252,11 @@ async def run_turn(
     # Per-turn working copy of each dataset: a tool that outputs a transformed
     # DataFrame updates it, and the next tool reads it — so a pipeline composes.
     working: Dict[int, Any] = {}
+    # Every frame this turn produced, per dataset: [(step label, df)]. The working
+    # copy is only the LATEST; a reshaping step (聚合) can hide columns an earlier
+    # frame still has, and falling straight back to disk would discard derived
+    # columns computed this turn. See _read_frame_for_tool.
+    frames: Dict[int, List[Any]] = {}
     # Lineage chain head per dataset id — so each materialized stage points at
     # the previous one (原始 → 去噪 → 检测 → …).
     lineage_state: Dict[int, Any] = {}
@@ -1038,6 +1322,17 @@ async def run_turn(
             "The working table now carries those prior stages' columns, and run_tool continues on it:\n"
             + "\n".join(pipeline_notes)
         )
+    if image_ref:
+        system_msg += (
+            "\n\n## 本对话有一张用户上传的图片(确实存在,可分析)\n"
+            "⚠️ 这张图真实存在于本轮上下文里。你**绝对不能**说「没有检测到图片 / 未收到图 / 请重新上传」——"
+            "你看不见它只是因为你是文本模型,`analyze_image` 会用视觉模型替你看。用户问到这张图时,"
+            "直接调 `analyze_image`,把用户的问题原样作为 instruction 传进去。图可能是曲线图、示意图、数据表截图或照片:\n"
+            "- 用户想「读懂/问答」(这是什么、M=3 时激波角多少、看出什么规律) → mode='analyze',回文字答案。\n"
+            "- 用户想「把曲线变成数据/解析出数据/数字化」(横轴是X纵轴是Y,解析出数据) → mode='digitize',"
+            "把曲线读成一份新数据集,之后就能像普通数据一样分析/画图/跑算法。\n"
+            "不要用 parse_image_to_df 或让用户去数据集页上传——图已经在这轮里了。"
+        )
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_msg}]
     messages.extend(history)
     messages.append({"role": "user", "content": user_message})
@@ -1052,10 +1347,57 @@ async def run_turn(
     # weak models facing a vague follow-up). One retry, then a friendly fallback
     # so the user never sees a blank bubble.
     empty_answer_retried = False
+    # An image is attached but the TEXT agent can't see it, so it sometimes
+    # denies the image exists and asks the user to re-upload. We override that
+    # once, forcing analyze_image. This flag stops the override from looping.
+    image_forced = False
     # Circuit-breaker: count failures per (action, slug). When a tool keeps
     # failing the SAME way we escalate a warning, then stop — the #1 cause of
     # "hit step limit with no answer" was the agent re-calling a broken tool.
     fail_counts: Dict[str, int] = {}
+    # …and the other half of "hit step limit with no answer": steps that all
+    # SUCCEED but repeat identically, so the failure counter never fires.
+    repeat_counts: Dict[str, int] = {}
+
+    # ── 新附图 → 确定性地先看一次图 ──────────────────────────────────────
+    # 主对话是文本模型,看不见图,常常不主动调 analyze_image、甚至否认有图。
+    # 只要这轮新附了图,就不问模型意见,直接替它看一次,把结果喂回上下文;
+    # 数字化出的数据集当场加入本轮 datasets,后续 visualize/run_tool 能直接用。
+    if image_ref and image_fresh:
+        _mode = "digitize" if re.search(
+            r"数字化|解析出?.{0,4}数据|读出?.{0,4}数据|横轴.{0,24}纵轴|提取.{0,4}数据点", user_message or ""
+        ) else "analyze"
+        _p = {"action": "analyze_image", "args": {"mode": _mode, "instruction": user_message or ""}}
+        yield AgentStep(kind="tool_call", payload={"action": "analyze_image", "args": _p["args"]})
+        yield AgentStep(kind="progress", payload={"phase": "tool_start", "step": 0,
+            "action": "analyze_image", "msg": "看图中…"})
+        _t = time.monotonic()
+        try:
+            _res = await _execute_action(
+                session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=_p,
+                working=working, frames=frames, lineage_state=lineage_state,
+                pipeline_state=pipeline_state, image_ref=image_ref,
+            )
+        except Exception as e:
+            _res = {"status": "error", "error": f"{type(e).__name__}: {e}"}
+        yield AgentStep(kind="progress", payload={"phase": "tool_done", "step": 0,
+            "action": "analyze_image", "ok": _res.get("status") == "ok",
+            "duration_s": round(time.monotonic() - _t, 2), "msg": "看图完成"})
+        yield AgentStep(kind="tool_result", payload={"action": "analyze_image", "result": _res})
+        messages.append({"role": "user", "content": (
+            "[系统]我已经替你调用视觉模型看了这张图,结果如下(analyze_image):\n"
+            + json.dumps(_llm_result_view(_res), ensure_ascii=False, default=str)[:6000]
+            + "\n\n请基于这个结果回答用户。如果是数字化(digitize),新数据集已经建好并加入当前会话,"
+            "你可以直接对它 visualize / run_tool;不要再说没有图或让用户重新上传。"
+        )})
+        # 数字化成功 → 新数据集设为本轮主数据集,后续画图/算法默认用它。
+        dd = (_res.get("derived_dataset") or {}) if isinstance(_res, dict) else {}
+        if dd.get("id"):
+            newds = (await session.execute(
+                select(Dataset).where(Dataset.id == dd["id"], Dataset.owner_id == owner_id)
+            )).scalar_one_or_none()
+            if newds is not None and all(d.id != newds.id for d in datasets):
+                datasets.insert(0, newds)
 
     # ╔══════════════════════════════════════════════════════════════════════╗
     # ║ 主循环(ReAct):最多 max_steps 步,每步 = 想→做→观察。            ║
@@ -1148,6 +1490,28 @@ async def run_turn(
             return
 
         action = parsed.get("action", "answer")
+
+        # HARD OVERRIDE: an image is attached this turn, but the (text-only) agent
+        # is about to answer that it can't find any image / asks the user to
+        # re-upload. It literally cannot see the image — analyze_image is the only
+        # way to look. Force it once instead of emitting a false "no image" reply.
+        if image_ref and not image_forced and action == "answer":
+            _at = (parsed.get("args", {}) or {}).get("text", "") or ""
+            _denies = re.search(
+                r"(没有|未|尚未|无法|没能).{0,10}(检测|收到|看到|识别|接收|找到).{0,8}图"
+                r"|请.{0,8}(重新)?(上传|拖入).{0,40}图|图片?.{0,6}(过期|无效|丢失)",
+                _at,
+            )
+            if _denies:
+                image_forced = True
+                _msg = user_message or ""
+                _mode = "digitize" if re.search(
+                    r"数字化|解析出?.{0,4}数据|读出?.{0,4}数据|横轴.{0,24}纵轴|提取.{0,4}数据点", _msg
+                ) else "analyze"
+                parsed = {"thought": "图片其实在这轮里,改用 analyze_image 直接看图",
+                          "action": "analyze_image", "args": {"mode": _mode, "instruction": _msg}}
+                action = "analyze_image"
+
         thought = parsed.get("thought", "")
         if thought:
             yield AgentStep(kind="thought", payload={"text": thought, "step": step_no + 1})
@@ -1177,7 +1541,21 @@ async def run_turn(
                     "我没能理解你想要什么 —— 能再说具体点吗?比如想看哪一列、做哪种分析或图表。"
                 )})
                 return
-            yield AgentStep(kind="final", payload={"text": answer_text})
+            # 下一步建议:让用户看完结论就知道还能往哪儿走(而不是对着空输入框发呆)。
+            # 只接受具体、可直接发送的问题,最多 3 条。
+            raw_next = (parsed.get("args", {}) or {}).get("next") or []
+            suggestions: List[str] = []
+            if isinstance(raw_next, str):
+                raw_next = [raw_next]
+            if isinstance(raw_next, (list, tuple)):
+                for s in raw_next:
+                    s = str(s).strip()
+                    if 4 <= len(s) <= 60 and s not in suggestions:
+                        suggestions.append(s)
+            payload: Dict[str, Any] = {"text": answer_text}
+            if suggestions:
+                payload["suggestions"] = suggestions[:3]
+            yield AgentStep(kind="final", payload=payload)
             return
 
         # 阶段5 ── 执行动作:非 answer 的动作都交给 _execute_action 分发器。
@@ -1192,7 +1570,8 @@ async def run_turn(
         try:
             tool_result = await _execute_action(
                 session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
-                working=working, lineage_state=lineage_state, pipeline_state=pipeline_state,
+                working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
+                image_ref=image_ref,
             )
         except Exception as e:
             tdt = time.monotonic() - t1
@@ -1218,6 +1597,39 @@ async def run_turn(
         # stop at 3 — so the agent can't burn the whole step budget re-calling a
         # tool that keeps erroring the same way.
         nudge = ""
+        # 无进展检测:工具是确定性的,所以"同工具+同参数+同结果行数"重复出现 =
+        # 可证明的零进展。失败断路器只数错误,数不到这种"步步成功却在原地打转"
+        # ——先分组再筛聚合表(条件恒真)→再分组…每步都 ok,直到耗光步数。
+        # A repeat of (tool, params, result rows) can only be a no-op: warn on the
+        # 2nd, stop on the 3rd, same leniency as the failure breaker above.
+        if isinstance(tool_result, dict) and tool_result.get("status") == "ok" \
+                and action in ("run_tool", "visualize", "visualize_batch", "generate_viz"):
+            _slug = (parsed.get("args") or {}).get("slug") or action
+            try:
+                _p = json.dumps((parsed.get("args") or {}).get("params") or {},
+                                sort_keys=True, default=str)
+            except Exception:
+                _p = ""
+            rkey = f"{action}:{_slug}:{_p}:{tool_result.get('result_rows')}"
+            repeat_counts[rkey] = repeat_counts.get(rkey, 0) + 1
+            if repeat_counts[rkey] >= 3:
+                yield AgentStep(kind="final", payload={
+                    "text": (
+                        f"「{_slug}」已经用完全相同的参数跑了 {repeat_counts[rkey]} 次、"
+                        f"每次都得到同样的 {tool_result.get('result_rows')} 行结果,"
+                        "说明分析在原地打转,我先停下来避免空转。\n\n"
+                        "常见原因是步骤顺序反了 —— 比如先分组汇总、再想在汇总表上按原始列筛选。"
+                        "可以把顺序明确写进问题(先筛哪些行 → 再按什么分组 → 最后统计什么),或换个问法再试。"
+                    ),
+                    "error": True,
+                })
+                return
+            if repeat_counts[rkey] >= 2:
+                nudge = (
+                    f"\n\n⚠ `{_slug}` 已用完全相同的参数得到完全相同的结果 {repeat_counts[rkey]} 次 —— "
+                    "这一步没有带来任何新信息。不要再重复它。请改变策略:检查步骤顺序"
+                    "(筛选行通常要在分组汇总之前),或直接基于已有结果作答。"
+                )
         if isinstance(tool_result, dict) and tool_result.get("status") == "error":
             _slug = (parsed.get("args") or {}).get("slug") or action
             fkey = f"{action}:{(parsed.get('args') or {}).get('slug') or ''}"

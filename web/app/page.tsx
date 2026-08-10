@@ -2,11 +2,36 @@
 
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2, ShieldCheck, Wrench, Sparkles, BookOpen, Activity, BatteryCharging, Cpu } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import LanguageToggle from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
+import { getToken } from '@/lib/api';
 
 export default function LandingPage() {
   const t = useT();
+  const router = useRouter();
+  // Already-authenticated users skip the marketing page and go straight to
+  // /app. /app's layout re-validates the token — a stale one bounces to
+  // /login, which is what we want anyway.  The check runs client-side only
+  // (localStorage), so SSR still renders the landing page for crawlers and
+  // first-time visitors.
+  const [redirecting, setRedirecting] = useState(false);
+  useEffect(() => {
+    if (getToken()) {
+      setRedirecting(true);
+      router.replace('/app');
+    }
+  }, [router]);
+
+  if (redirecting) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-white">
+        <p className="text-sm text-ink-500">{t('auth.redirecting') || '正在进入…'}</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <header className="sticky top-0 z-30 backdrop-blur bg-white/80 border-b border-ink-200">

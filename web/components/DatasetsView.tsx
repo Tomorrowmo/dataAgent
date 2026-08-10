@@ -16,7 +16,7 @@ const MeshViewer3D = dynamic(() => import('@/components/MeshViewer3D'), { ssr: f
 
 type NeedsParser = NonNullable<UploadResp['needs_parser']>;
 
-export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void }) {
+export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset, onDatasetsChanged }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void; onDatasetsChanged?: () => void }) {
   const t = useT();
   // True after arriving here via "查看完整表格" from a conversation → show a 返回 link.
   const [cameFromChat, setCameFromChat] = useState(false);
@@ -42,6 +42,10 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
         const fresh = d.find((x) => x.id === selected.id);
         setSelected(fresh ?? null);
       }
+      // Every mutation here (upload / delete / promote / keep / GC) ends in a
+      // refresh, so telling the parent from this one place keeps the chat view's
+      // dataset picker in sync without wiring each handler separately.
+      onDatasetsChanged?.();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -125,10 +129,27 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
   }
 
   async function handleDelete(id: number) {
-    if (!confirm(t('ds.confirmDelete'))) return;
     try {
-      await api.deleteDataset(id);
-      if (selected?.id === id) setSelected(null);
+      // Ask the server what the delete would take out BEFORE destroying anything —
+      // a source dataset drags its whole 中间结果 subtree with it.
+      const preview = await api.deleteDataset(id, true);
+      if (preview.descendants > 0) {
+        const mb = (preview.freed_bytes / 1024 / 1024).toFixed(1);
+        const keptWarn = preview.kept_hit > 0
+          ? `\n其中 ${preview.kept_hit} 份是你「保留」过的。`
+          : '';
+        const names = preview.deleted.slice(1, 6).map((d) => `  · ${d.name}`).join('\n');
+        const more = preview.descendants > 5 ? `\n  … 另有 ${preview.descendants - 5} 份` : '';
+        if (!confirm(
+          `删除「${preview.deleted[0].name}」会连同它衍生出的 ${preview.descendants} 份中间结果一起删除,` +
+          `共 ${preview.count} 份,释放约 ${mb} MB。${keptWarn}\n\n${names}${more}\n\n此操作不可撤销。继续?`,
+        )) return;
+      } else if (!confirm(t('ds.confirmDelete'))) {
+        return;
+      }
+      const res = await api.deleteDataset(id);
+      const goneIds = new Set(res.deleted.map((d) => d.id));
+      if (selected && goneIds.has(selected.id)) setSelected(null);
       await refresh();
     } catch (e) {
       setError((e as Error).message);

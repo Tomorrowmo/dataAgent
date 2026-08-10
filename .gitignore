@@ -19,6 +19,8 @@ node_modules/
 out/
 dist/
 .turbo/
+# TS incremental build cache — machine-local paths, causes noise diffs across OSes
+*.tsbuildinfo
 
 # Data — real conversations / uploads, NEVER publish (anchored anywhere, incl. backend/)
 *.db

@@ -1,0 +1,22 @@
+# Normalize text to LF in the repo; checkout uses the platform default.
+* text=auto
+
+# Files that MUST be LF even on a Windows checkout — a stray CR breaks the
+# shebang / heredocs when these run on Linux.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.Dockerfile text eol=lf
+
+# Windows-only launchers stay CRLF.
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Never touch these.
+*.png       binary
+*.jpg       binary
+*.zip       binary
+*.7z        binary
+*.pptx      binary
+*.docx      binary
+*.db        binary

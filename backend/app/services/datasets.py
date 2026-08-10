@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
 from ..db.models import Conversation, Dataset, FlowTemplate
+from .image_parser import IMAGE_EXTS, parse_image_to_df
+from .llm import LLMClient
 
 
 def _read_any(src_path: Path) -> Tuple[pd.DataFrame, str]:
@@ -253,6 +255,37 @@ async def ingest_upload(
         pass
 
     return out
+
+
+async def ingest_image_upload(
+    session: AsyncSession,
+    *,
+    owner_id: int,
+    image_bytes: bytes,
+    extension: str,
+    original_filename: str,
+    llm: LLMClient,
+    display_name: Optional[str] = None,
+    description: str = "",
+) -> List[Dataset]:
+    """Image → table via a vision LLM, then persist as a normal Dataset. Uses
+    the same _persist_dataset path as CSV / Excel so lineage / GC / profiling
+    all behave identically to any other source dataset."""
+    df = await parse_image_to_df(image_bytes, extension=extension, llm=llm)
+
+    stem = display_name or Path(original_filename).stem
+    ds = await _persist_dataset(
+        session,
+        owner_id=owner_id,
+        df=df,
+        name=stem,
+        filename=original_filename,
+        file_format="image-ocr",  # so the UI can badge the origin
+        description=description or f"Extracted from {original_filename} via vision LLM",
+    )
+    await session.commit()
+    await session.refresh(ds)
+    return [ds]
 
 
 # Mesh / field formats read via VTK (pyvista) → points+fields tables. CGNS may
@@ -663,6 +696,77 @@ def _safe_head(df: pd.DataFrame, n: int) -> Any:
         return df.head(n).to_dict(orient="records")
     except Exception:
         return [{c: str(df.iloc[i][c]) for c in df.columns} for i in range(min(n, len(df)))]
+
+
+async def delete_dataset_tree(
+    session: AsyncSession,
+    *,
+    owner_id: int,
+    dataset_id: int,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Delete a dataset AND everything derived from it, recursively.
+
+    A derived dataset is only meaningful relative to its parent — 「去噪后的数据」
+    with the original gone is an orphan the lineage view can't explain. So a
+    delete takes the whole subtree: the target, its children, their children.
+
+    Unlike `gc_derived_datasets` this is an EXPLICIT user action, so it does not
+    spare 留存 (kept) or promoted descendants — the caller asked for this node to
+    go. It does report them, so the UI can say what is about to be lost before
+    committing. `dry_run=True` computes the subtree without deleting anything.
+    """
+    rows = (await session.execute(
+        select(Dataset).where(Dataset.owner_id == owner_id)
+    )).scalars().all()
+    by_id = {d.id: d for d in rows}
+    target = by_id.get(dataset_id)
+    if target is None:
+        return {"deleted": [], "count": 0, "freed_bytes": 0, "dry_run": dry_run, "found": False}
+
+    children: Dict[int, List[Dataset]] = {}
+    for d in rows:
+        if d.derived_from is not None:
+            children.setdefault(d.derived_from, []).append(d)
+
+    # BFS the subtree. `seen` also guards against a cycle in corrupted lineage.
+    victims: List[Dataset] = []
+    seen: set = set()
+    queue: List[Dataset] = [target]
+    while queue:
+        cur = queue.pop(0)
+        if cur.id in seen:
+            continue
+        seen.add(cur.id)
+        victims.append(cur)
+        queue.extend(children.get(cur.id, []))
+
+    freed = 0
+    deleted: List[Dict[str, Any]] = []
+    for d in victims:
+        freed += int(d.size_bytes or 0)
+        deleted.append({"id": d.id, "name": d.name, "kind": d.kind, "kept": bool(d.kept)})
+    # Delete deepest-first so a parent row never disappears before its children.
+    if not dry_run:
+        for d in reversed(victims):
+            try:
+                p = Path(d.storage_path)
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass  # orphaned parquet is harmless; the row is what matters
+            await session.delete(d)
+        await session.commit()
+
+    return {
+        "deleted": deleted,
+        "count": len(deleted),
+        "descendants": len(deleted) - 1,
+        "kept_hit": sum(1 for d in deleted if d["kept"]),
+        "freed_bytes": freed,
+        "dry_run": dry_run,
+        "found": True,
+    }
 
 
 async def gc_derived_datasets(

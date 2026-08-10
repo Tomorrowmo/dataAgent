@@ -5,7 +5,7 @@ import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
-type PresetId = 'deepseek' | 'qwen' | 'openai' | 'custom';
+type PresetId = 'deepseek' | 'qwen' | 'anthropic' | 'openai' | 'custom';
 
 type Preset = {
   id: PresetId;
@@ -22,8 +22,11 @@ const PRESETS: Preset[] = [
     id: 'deepseek',
     label: 'DeepSeek',
     base_url: 'https://api.deepseek.com/v1',
-    default_model: 'deepseek-chat',
-    model_options: ['deepseek-chat', 'deepseek-reasoner'],
+    // deepseek-chat / deepseek-reasoner retire 2026-07-24 15:59 UTC — both are
+    // now modes of deepseek-v4-flash. Kept in the list so existing users can
+    // still see what they had stored, but no longer offered as the default.
+    default_model: 'deepseek-v4-flash',
+    model_options: ['deepseek-v4-flash', 'deepseek-v4-pro'],
     key_hint: 'sk-...',
     docs: 'https://platform.deepseek.com',
   },
@@ -35,6 +38,17 @@ const PRESETS: Preset[] = [
     model_options: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen3-coder-plus', 'qwen-coder-plus'],
     key_hint: 'sk-...',
     docs: 'https://dashscope.console.aliyun.com',
+  },
+  {
+    // Not an OpenAI-compatible endpoint — the backend detects `claude*` /
+    // anthropic.com and routes through the official Anthropic SDK instead.
+    id: 'anthropic',
+    label: 'Claude / Anthropic',
+    base_url: 'https://api.anthropic.com',
+    default_model: 'claude-opus-4-8',
+    model_options: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+    key_hint: 'sk-ant-...',
+    docs: 'https://console.anthropic.com',
   },
   {
     id: 'openai',
