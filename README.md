@@ -58,6 +58,19 @@ npm run dev
 # open http://localhost:3000
 ```
 
+### Run the dev stack on Linux (scripted)
+
+```bash
+bash tools/setup_linux.sh     # venv + deps + .env (with a fresh SECRET_KEY). Once.
+bash tools/start_linux.sh     # backend :8077 + frontend :3000, detached
+bash tools/stop_linux.sh
+# open http://localhost:3000
+```
+
+`setup_linux.sh` defaults to the Tsinghua/npmmirror China mirrors — set `NO_MIRROR=1`
+to use the official registries, or `PYTHON=python3.12` to pin the interpreter.
+`MODE=prod bash tools/start_linux.sh` runs a production build instead of `next dev`.
+
 ### Run as a Docker stack (one command)
 
 ```bash
