@@ -1,0 +1,1487 @@
+[
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 100.07,
+    "internal_resistance_mohm": 25.72
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 100.48,
+    "internal_resistance_mohm": 31.27
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 100.03,
+    "internal_resistance_mohm": 32.63
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 100.27,
+    "internal_resistance_mohm": 35.18
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 100.17,
+    "internal_resistance_mohm": 38.86
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 100.45,
+    "internal_resistance_mohm": 40.42
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 100.33,
+    "internal_resistance_mohm": 43.19
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 100.23,
+    "internal_resistance_mohm": 45.02
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 100.64,
+    "internal_resistance_mohm": 47.84
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 100.12,
+    "internal_resistance_mohm": 49.93
+  },
+  {
+    "cell_id": "A01",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 100.79,
+    "internal_resistance_mohm": 52.72
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 100.19,
+    "internal_resistance_mohm": 30.19
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 99.8,
+    "internal_resistance_mohm": 32.12
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 99.65,
+    "internal_resistance_mohm": 33.21
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 99.68,
+    "internal_resistance_mohm": 37.12
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 100.29,
+    "internal_resistance_mohm": 39.37
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 99.79,
+    "internal_resistance_mohm": 41.32
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 99.91,
+    "internal_resistance_mohm": 42.45
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 100.23,
+    "internal_resistance_mohm": 46.55
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 100.15,
+    "internal_resistance_mohm": 47.25
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 99.85,
+    "internal_resistance_mohm": 52.23
+  },
+  {
+    "cell_id": "A02",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 100.29,
+    "internal_resistance_mohm": 53.86
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 99.76,
+    "internal_resistance_mohm": 31.07
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 100.58,
+    "internal_resistance_mohm": 32.44
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.52,
+    "internal_resistance_mohm": 32.2
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 99.21,
+    "internal_resistance_mohm": 34.97
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.54,
+    "internal_resistance_mohm": 37.65
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 98.27,
+    "internal_resistance_mohm": 42.05
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 97.65,
+    "internal_resistance_mohm": 41.82
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 97.15,
+    "internal_resistance_mohm": 44.34
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 96.66,
+    "internal_resistance_mohm": 46.9
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 97.11,
+    "internal_resistance_mohm": 49.79
+  },
+  {
+    "cell_id": "A03",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 96.44,
+    "internal_resistance_mohm": 51.54
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 99.48,
+    "internal_resistance_mohm": 27.16
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 100.46,
+    "internal_resistance_mohm": 29.8
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.91,
+    "internal_resistance_mohm": 33.55
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 99.32,
+    "internal_resistance_mohm": 34.72
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 99.54,
+    "internal_resistance_mohm": 37.79
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 99.39,
+    "internal_resistance_mohm": 39.64
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 98.74,
+    "internal_resistance_mohm": 43.56
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 98.62,
+    "internal_resistance_mohm": 44.02
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 98.1,
+    "internal_resistance_mohm": 47.76
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 97.83,
+    "internal_resistance_mohm": 51.31
+  },
+  {
+    "cell_id": "A04",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 98.05,
+    "internal_resistance_mohm": 50.65
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 0,
+    "capacity_retention_pct": 99.62,
+    "internal_resistance_mohm": 28.14
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 50,
+    "capacity_retention_pct": 100.15,
+    "internal_resistance_mohm": 30.04
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.15,
+    "internal_resistance_mohm": 31.72
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.29,
+    "internal_resistance_mohm": 33.15
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.13,
+    "internal_resistance_mohm": 39.14
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 250,
+    "capacity_retention_pct": 97.57,
+    "internal_resistance_mohm": 42.18
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 300,
+    "capacity_retention_pct": 97.27,
+    "internal_resistance_mohm": 42.96
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 350,
+    "capacity_retention_pct": 96.9,
+    "internal_resistance_mohm": 46.08
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 400,
+    "capacity_retention_pct": 96.63,
+    "internal_resistance_mohm": 47.04
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 450,
+    "capacity_retention_pct": 95.13,
+    "internal_resistance_mohm": 50.64
+  },
+  {
+    "cell_id": "A05",
+    "group": "A",
+    "temperature_c": 25.0,
+    "c_rate": 2.0,
+    "cycle": 500,
+    "capacity_retention_pct": 95.17,
+    "internal_resistance_mohm": 52.97
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 99.67,
+    "internal_resistance_mohm": 36.92
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 100.06,
+    "internal_resistance_mohm": 39.05
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 99.89,
+    "internal_resistance_mohm": 40.45
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 99.12,
+    "internal_resistance_mohm": 44.75
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 99.32,
+    "internal_resistance_mohm": 47.67
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 98.94,
+    "internal_resistance_mohm": 50.45
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 98.57,
+    "internal_resistance_mohm": 49.73
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 97.82,
+    "internal_resistance_mohm": 52.18
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 98.45,
+    "internal_resistance_mohm": 54.24
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 97.84,
+    "internal_resistance_mohm": 61.03
+  },
+  {
+    "cell_id": "B01",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 98.01,
+    "internal_resistance_mohm": 63.15
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 99.26,
+    "internal_resistance_mohm": 37.82
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 99.55,
+    "internal_resistance_mohm": 38.61
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 100.01,
+    "internal_resistance_mohm": 39.86
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 100.39,
+    "internal_resistance_mohm": 45.36
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 100.06,
+    "internal_resistance_mohm": 45.96
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 99.93,
+    "internal_resistance_mohm": 47.18
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 99.77,
+    "internal_resistance_mohm": 50.87
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 99.56,
+    "internal_resistance_mohm": 54.52
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 99.37,
+    "internal_resistance_mohm": 55.46
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 99.09,
+    "internal_resistance_mohm": 59.1
+  },
+  {
+    "cell_id": "B02",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 99.97,
+    "internal_resistance_mohm": 61.75
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 100.28,
+    "internal_resistance_mohm": 34.87
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 100.28,
+    "internal_resistance_mohm": 37.4
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.2,
+    "internal_resistance_mohm": 41.89
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.18,
+    "internal_resistance_mohm": 45.17
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.03,
+    "internal_resistance_mohm": 46.69
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 97.2,
+    "internal_resistance_mohm": 50.06
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 96.63,
+    "internal_resistance_mohm": 48.87
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 96.8,
+    "internal_resistance_mohm": 52.99
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 95.86,
+    "internal_resistance_mohm": 58.31
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 95.67,
+    "internal_resistance_mohm": 59.26
+  },
+  {
+    "cell_id": "B03",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 95.13,
+    "internal_resistance_mohm": 60.13
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 100.33,
+    "internal_resistance_mohm": 36.91
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 99.58,
+    "internal_resistance_mohm": 34.0
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.45,
+    "internal_resistance_mohm": 41.14
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.82,
+    "internal_resistance_mohm": 44.43
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.65,
+    "internal_resistance_mohm": 46.24
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 97.77,
+    "internal_resistance_mohm": 46.75
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 97.97,
+    "internal_resistance_mohm": 51.09
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 97.55,
+    "internal_resistance_mohm": 53.7
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 97.27,
+    "internal_resistance_mohm": 56.04
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 96.84,
+    "internal_resistance_mohm": 58.81
+  },
+  {
+    "cell_id": "B04",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 96.71,
+    "internal_resistance_mohm": 60.38
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 0,
+    "capacity_retention_pct": 100.19,
+    "internal_resistance_mohm": 36.13
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 50,
+    "capacity_retention_pct": 99.1,
+    "internal_resistance_mohm": 38.94
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 100,
+    "capacity_retention_pct": 98.74,
+    "internal_resistance_mohm": 39.71
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 150,
+    "capacity_retention_pct": 97.74,
+    "internal_resistance_mohm": 43.58
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 200,
+    "capacity_retention_pct": 96.77,
+    "internal_resistance_mohm": 45.26
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 250,
+    "capacity_retention_pct": 95.74,
+    "internal_resistance_mohm": 47.18
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 300,
+    "capacity_retention_pct": 94.98,
+    "internal_resistance_mohm": 50.26
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 350,
+    "capacity_retention_pct": 94.52,
+    "internal_resistance_mohm": 52.85
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 400,
+    "capacity_retention_pct": 94.04,
+    "internal_resistance_mohm": 55.77
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 450,
+    "capacity_retention_pct": 92.95,
+    "internal_resistance_mohm": 57.63
+  },
+  {
+    "cell_id": "B05",
+    "group": "B",
+    "temperature_c": 45.0,
+    "c_rate": 2.0,
+    "cycle": 500,
+    "capacity_retention_pct": 92.07,
+    "internal_resistance_mohm": 60.76
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 100.49,
+    "internal_resistance_mohm": 43.84
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 100.28,
+    "internal_resistance_mohm": 47.0
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 99.32,
+    "internal_resistance_mohm": 47.81
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 99.75,
+    "internal_resistance_mohm": 50.07
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 100.0,
+    "internal_resistance_mohm": 55.05
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 99.5,
+    "internal_resistance_mohm": 55.28
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 98.71,
+    "internal_resistance_mohm": 55.66
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 99.1,
+    "internal_resistance_mohm": 59.41
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 98.33,
+    "internal_resistance_mohm": 61.85
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 98.68,
+    "internal_resistance_mohm": 65.62
+  },
+  {
+    "cell_id": "C01",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 98.38,
+    "internal_resistance_mohm": 66.68
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 0,
+    "capacity_retention_pct": 100.05,
+    "internal_resistance_mohm": 40.6
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 50,
+    "capacity_retention_pct": 100.07,
+    "internal_resistance_mohm": 47.13
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 100,
+    "capacity_retention_pct": 99.89,
+    "internal_resistance_mohm": 45.26
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 150,
+    "capacity_retention_pct": 99.5,
+    "internal_resistance_mohm": 47.38
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 200,
+    "capacity_retention_pct": 98.75,
+    "internal_resistance_mohm": 52.79
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 250,
+    "capacity_retention_pct": 99.15,
+    "internal_resistance_mohm": 53.68
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 300,
+    "capacity_retention_pct": 98.32,
+    "internal_resistance_mohm": 55.48
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 350,
+    "capacity_retention_pct": 98.82,
+    "internal_resistance_mohm": 59.54
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 400,
+    "capacity_retention_pct": 98.8,
+    "internal_resistance_mohm": 63.83
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 450,
+    "capacity_retention_pct": 98.32,
+    "internal_resistance_mohm": 65.06
+  },
+  {
+    "cell_id": "C02",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 0.5,
+    "cycle": 500,
+    "capacity_retention_pct": 98.2,
+    "internal_resistance_mohm": 66.4
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 100.29,
+    "internal_resistance_mohm": 40.77
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 99.99,
+    "internal_resistance_mohm": 46.27
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.3,
+    "internal_resistance_mohm": 47.31
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.51,
+    "internal_resistance_mohm": 52.33
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.87,
+    "internal_resistance_mohm": 52.21
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 98.23,
+    "internal_resistance_mohm": 55.04
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 79.66,
+    "internal_resistance_mohm": 57.34
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 79.23,
+    "internal_resistance_mohm": 60.1
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 78.94,
+    "internal_resistance_mohm": 63.07
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 78.75,
+    "internal_resistance_mohm": 64.82
+  },
+  {
+    "cell_id": "C03",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 79.32,
+    "internal_resistance_mohm": 67.97
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 0,
+    "capacity_retention_pct": 100.01,
+    "internal_resistance_mohm": 40.75
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 50,
+    "capacity_retention_pct": 99.93,
+    "internal_resistance_mohm": 46.42
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 100,
+    "capacity_retention_pct": 99.23,
+    "internal_resistance_mohm": 49.01
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.78,
+    "internal_resistance_mohm": 47.37
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 200,
+    "capacity_retention_pct": 98.22,
+    "internal_resistance_mohm": 50.73
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 250,
+    "capacity_retention_pct": 97.94,
+    "internal_resistance_mohm": 55.25
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 300,
+    "capacity_retention_pct": 97.35,
+    "internal_resistance_mohm": 56.9
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 350,
+    "capacity_retention_pct": 97.29,
+    "internal_resistance_mohm": 58.62
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 400,
+    "capacity_retention_pct": 96.57,
+    "internal_resistance_mohm": 62.1
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 450,
+    "capacity_retention_pct": 96.71,
+    "internal_resistance_mohm": 63.78
+  },
+  {
+    "cell_id": "C04",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 1.0,
+    "cycle": 500,
+    "capacity_retention_pct": 95.82,
+    "internal_resistance_mohm": 66.83
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 0,
+    "capacity_retention_pct": 99.84,
+    "internal_resistance_mohm": 41.6
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 50,
+    "capacity_retention_pct": 99.13,
+    "internal_resistance_mohm": 43.2
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 100,
+    "capacity_retention_pct": 98.35,
+    "internal_resistance_mohm": 46.33
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 150,
+    "capacity_retention_pct": 98.08,
+    "internal_resistance_mohm": 48.88
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 200,
+    "capacity_retention_pct": 96.95,
+    "internal_resistance_mohm": 52.46
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 250,
+    "capacity_retention_pct": 95.68,
+    "internal_resistance_mohm": 53.0
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 300,
+    "capacity_retention_pct": 95.09,
+    "internal_resistance_mohm": 57.8
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 350,
+    "capacity_retention_pct": 94.25,
+    "internal_resistance_mohm": 58.71
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 400,
+    "capacity_retention_pct": 92.76,
+    "internal_resistance_mohm": 61.52
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 450,
+    "capacity_retention_pct": 92.92,
+    "internal_resistance_mohm": 65.03
+  },
+  {
+    "cell_id": "C05",
+    "group": "C",
+    "temperature_c": 60.0,
+    "c_rate": 2.0,
+    "cycle": 500,
+    "capacity_retention_pct": 92.16,
+    "internal_resistance_mohm": 66.61
+  }
+]
