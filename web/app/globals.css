@@ -50,3 +50,18 @@ html, body {
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
 }
+
+/* Wind-tunnel report preview. A report is a DOCUMENT, not a chat bubble, so it
+   inherits prose-tight's table/code rules but takes document-grade spacing and
+   a scrollable table wrapper (the judgement tables are wide). */
+.wt-report :where(h1) { font-size: 1.35rem; margin-top: 0; margin-bottom: 0.75rem; }
+.wt-report :where(h2) { font-size: 1.05rem; margin-top: 1.5rem; margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem; border-bottom: 1px solid #e4e4e7; }
+.wt-report :where(h3) { font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.35rem; }
+.wt-report :where(p) { margin-top: 0.5rem; line-height: 1.75; }
+.wt-report :where(ul, ol) { margin-top: 0.35rem; margin-bottom: 0.35rem; padding-left: 1.4rem; }
+.wt-report :where(li) { margin-top: 0.15rem; line-height: 1.7; }
+.wt-report :where(table) { display: block; overflow-x: auto; max-width: 100%;
+  margin-top: 0.6rem; margin-bottom: 0.6rem; }
+.wt-report :where(blockquote) { border-left: 3px solid #c7d2fe; padding: 0.25rem 0.75rem;
+  margin: 0.75rem 0; color: #52525b; background: #f8fafc; }

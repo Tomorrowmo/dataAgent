@@ -1011,7 +1011,7 @@ function ReportStep({ batchId, result, activeRun, setActiveRun, llmOn }: {
               <textarea value={content} onChange={(e) => setContent(e.target.value)}
                 className="w-full h-[70vh] text-xs font-mono px-3 py-2 rounded-xl border border-ink-200 bg-white" />
             ) : (
-              <div className="rounded-xl border border-ink-200 bg-white p-6 max-h-[75vh] overflow-y-auto prose-sm">
+              <div className="rounded-xl border border-ink-200 bg-white p-6 max-h-[75vh] overflow-y-auto text-sm text-ink-800 prose-tight wt-report">
                 <Markdown>{content}</Markdown>
               </div>
             )}
