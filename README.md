@@ -16,7 +16,8 @@
 6. [Adding your own algorithm](#adding-your-own-algorithm)
 7. [Configuration](#configuration)
 8. [Project layout](#project-layout)
-9. [Business documents](#business-documents)
+9. [Domain application: wind-tunnel quality check](#domain-application-wind-tunnel-quality-check)
+10. [Business documents](#business-documents)
 
 ---
 
@@ -255,11 +256,49 @@ Frontend `web/.env.local`:
 │   ├── nginx.conf           # reverse proxy (SSE-friendly)
 │   ├── deploy.sh            # one-click Linux / cloud deploy
 │   └── deploy.ps1           # Windows / Docker Desktop helper
+├── backend/app/windtunnel/   # 风洞领域模块 (parsers/features/rules/pipeline/report/ai)
+├── backend/app/api/windtunnel.py
+├── web/components/WindTunnelView.tsx + WindTunnelKnowledge.tsx
 └── docs/
+    ├── windtunnel.md        # 风洞应用设计、判据出处与验收证据
     ├── positioning.md       # product positioning + market research synthesis
     ├── business-plan.md     # GTM, pricing, financial plan, fundraising
     └── architecture.md      # technical architecture + threat model
 ```
+
+## Domain application: wind-tunnel quality check
+
+The first vertical built on this platform — a wind-tunnel test-run quality
+checker (风洞试验过程质量检查). It is the worked example of what the platform is
+for: curated, citable checks over domain files, with the two extension surfaces
+a lab actually needs.
+
+- **Rules are data, not code.** A test engineer edits a threshold in the UI; no
+  redeploy, no Python. Each rule binds a *measured feature* to severity bands,
+  so a reading can never be diagnosed by the wrong rule.
+- **New checks by description.** Describe a condition in plain Chinese; the
+  model drafts a rule, you preview it against real runs, then save. If no
+  existing feature can measure it, the model writes a sandboxed extractor
+  instead — same AST validation + smoke test as any AI-generated algorithm.
+- **Honest gaps.** A check whose inputs are missing reports *未评定* with what
+  to supply, never a silent pass.
+
+Entry point: sidebar →「风洞质量检查」. Design, citations and acceptance
+evidence: [docs/windtunnel.md](docs/windtunnel.md).
+
+Verification (all against the customer's real run files):
+
+```bash
+cd backend
+./.venv/Scripts/python.exe wt_smoke_test.py   # 78 offline checks, no server, no LLM
+./.venv/Scripts/python.exe wt_api_test.py     # 61 HTTP checks (idempotent)
+./.venv/Scripts/python.exe wt_ui_test.py      # 27 browser checks + screenshots
+```
+
+The offline suite pins our output to the customer's own production numbers
+(91837: zero-drift 0.0989, return-to-zero 0.1002, MZ load 28.902 % of range,
+and the same pass/fail grade on all five runs) — a rewrite of a QC tool is only
+trustworthy once it reproduces the tool it replaces, digit for digit.
 
 ## Business documents
 

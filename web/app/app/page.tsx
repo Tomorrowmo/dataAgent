@@ -7,10 +7,11 @@ import DatasetsView from '@/components/DatasetsView';
 import AlgorithmsView, { TemplatesView } from '@/components/AlgorithmsView';
 import SettingsView from '@/components/SettingsView';
 import AboutView from '@/components/AboutView';
+import WindTunnelView from '@/components/WindTunnelView';
 import FeedbackButton from '@/components/FeedbackButton';
 import FeedbackInbox from '@/components/FeedbackInbox';
 
-type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'feedback' | 'settings' | 'about';
+type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'windtunnel' | 'feedback' | 'settings' | 'about';
 
 export default function WorkspacePage() {
   const [view, setView] = useState<View>('chat');
@@ -80,6 +81,7 @@ export default function WorkspacePage() {
         )}
         {view === 'algorithms' && <AlgorithmsView />}
         {view === 'templates' && <TemplatesView />}
+        {view === 'windtunnel' && <WindTunnelView />}
         {view === 'feedback' && <FeedbackInbox onJump={jumpTo} />}
         {view === 'settings' && <SettingsView />}
         {view === 'about' && <AboutView />}

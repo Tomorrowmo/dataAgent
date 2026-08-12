@@ -284,7 +284,202 @@ export const api = {
   /** Consult: what do the visible rules say about these column names. */
   applyMappings: (columns: string[]) =>
     request<{ matches: MappingMatch[] }>('POST', '/mappings/apply', { columns }),
+
+  // ── 风洞试验过程质量检查 ────────────────────────────────────────────
+  wtHealth: () => request<{ ok: boolean; llm_configured: boolean; model: string; features: number; seed_rules: number }>('GET', '/wt/health'),
+
+  wtCreateBatch: (files: File[], name?: string) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append('files', f));
+    if (name) fd.append('name', name);
+    return request<WtBatch>('POST', '/wt/batches', fd);
+  },
+  wtListBatches: () => request<WtBatch[]>('GET', '/wt/batches'),
+  wtGetBatch: (id: number) => request<{ batch: WtBatch; result: WtBatchResult | null }>('GET', `/wt/batches/${id}`),
+  wtDeleteBatch: (id: number) => request<{ ok: boolean }>('DELETE', `/wt/batches/${id}`),
+  wtCheck: (id: number, body: { rule_ids?: string[]; tail_contracted?: boolean; balance_ranges?: Record<string, number>; trend_window?: number }) =>
+    request<WtBatchResult>('POST', `/wt/batches/${id}/check`, {
+      rule_ids: body.rule_ids ?? [], tail_contracted: body.tail_contracted ?? false,
+      balance_ranges: body.balance_ranges ?? {}, trend_window: body.trend_window ?? 5,
+    }),
+  wtFrame: (id: number, run_no: string, table = 'ca') =>
+    request<{ run_no: string; table: string; columns: string[]; rows: Record<string, number>[] }>(
+      'GET', `/wt/batches/${id}/frame?run_no=${encodeURIComponent(run_no)}&table=${table}`),
+
+  wtCurve: (id: number, run_no: string, x: string, ys: string[]) =>
+    request<WtCurve>('POST', `/wt/batches/${id}/curve`, { run_no, x, ys }),
+  wtCurveConclusion: (id: number, run_no: string, statistics: WtCurveStat[], meta: Record<string, unknown>) =>
+    request<{ ok: boolean; text?: string; error?: string }>('POST', `/wt/batches/${id}/curve/conclusion`, { run_no, statistics, meta }),
+
+  wtReportSections: () => request<{ sections: { key: string; name: string; desc: string }[] }>('GET', '/wt/report-sections'),
+  wtMakeReport: (id: number, body: { run_no?: string; kind?: string; sections?: string[]; title?: string; author?: string; narratives?: Record<string, string>; include_curve?: boolean }) =>
+    request<{ id: number; run_no: string; kind: string; content: string; filename: string }>('POST', `/wt/batches/${id}/report`, body),
+  wtSaveReport: (rid: number, edited: string) => request<{ ok: boolean }>('PUT', `/wt/reports/${rid}`, { edited }),
+  wtListReports: () => request<WtReportRow[]>('GET', '/wt/reports'),
+  /** Download an exported report.
+   *
+   *  A plain `<a href>` cannot carry the Bearer token, so the anchor form of
+   *  this returned 401 for every real user while looking perfectly fine in
+   *  code review. Fetch it with auth, then hand the browser a blob URL. */
+  wtDownloadReport: async (rid: number, fmt = 'txt') => {
+    const token = getToken();
+    const r = await fetch(`/api/wt/reports/${rid}/export?fmt=${fmt}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!r.ok) throw new Error(`导出失败 HTTP ${r.status}`);
+    const cd = r.headers.get('content-disposition') ?? '';
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const plain = /filename="?([^";]+)"?/i.exec(cd);
+    const name = star ? decodeURIComponent(star[1]) : (plain?.[1] ?? `report.${fmt}`);
+    return { blob: await r.blob(), filename: name };
+  },
+
+  wtFeatures: () => request<{ features: WtFeature[]; catalog_markdown: string; format_doc: string; extractor_contract: string }>('GET', '/wt/features'),
+  wtRules: () => request<{ rules: WtRule[] }>('GET', '/wt/rules'),
+  wtCreateRule: (rule: WtRuleInput) => request<WtRule>('POST', '/wt/rules', rule),
+  wtUpdateRule: (rowId: number, rule: WtRuleInput) => request<WtRule>('PUT', `/wt/rules/${rowId}`, rule),
+  wtDeleteRule: (rowId: number) => request<{ ok: boolean }>('DELETE', `/wt/rules/${rowId}`),
+  wtRestoreDefaultRules: () => request<{ ok: boolean }>('POST', '/wt/rules/restore-defaults', {}),
+  wtDraftRule: (requestText: string) => request<WtDraftResp>('POST', '/wt/rules/draft', { request: requestText }),
+  wtTriage: (requestText: string) => request<{ ok: boolean; matched?: boolean; feature?: string | null; confidence?: number; why?: string; new_feature_brief?: string; error?: string }>('POST', '/wt/rules/triage', { request: requestText }),
+  wtPreviewRule: (rule: WtRuleInput, batch_id: number) =>
+    request<{ ok: boolean; rule: WtRule; preview: { run_no: string; findings: WtFinding[] }[] }>('POST', '/wt/rules/preview', { rule, batch_id }),
+
+  wtGenExtractor: (requestText: string, batch_id?: number, run_no?: string) =>
+    request<WtExtractorGen>('POST', '/wt/extractors/generate', { request: requestText, batch_id: batch_id ?? null, run_no: run_no ?? '' }),
+  wtSaveExtractor: (body: { code: string; name: string; slug: string; description?: string; test_report?: unknown }) =>
+    request<{ ok: boolean; feature_key: string; updated: boolean }>('POST', '/wt/extractors', body),
+  wtListExtractors: () => request<{ extractors: WtExtractor[] }>('GET', '/wt/extractors'),
+
+  wtBalances: () => request<{ units: string[]; balances: WtBalance[] }>('GET', '/wt/balances'),
+  wtAddBalance: (body: { name: string; ranges: Record<string, number>; note?: string }) =>
+    request<WtBalance>('POST', '/wt/balances', body),
+  wtDeleteBalance: (id: number) => request<{ ok: boolean }>('DELETE', `/wt/balances/${id}`),
+  wtImportBalances: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request<{ ok: boolean; added: number; updated: number }>('POST', '/wt/balances/import', fd);
+  },
+
+  wtAsk: (batch_id: number, run_no: string, question: string) =>
+    request<{ ok: boolean; text?: string; error?: string }>('POST', '/wt/ask', { batch_id, run_no, question }),
+  wtSummarize: (batch_id: number, run_no: string) =>
+    request<{ ok: boolean; text?: string; error?: string }>('POST', '/wt/summarize', { batch_id, run_no }),
 };
+
+// ── 风洞领域类型 ────────────────────────────────────────────────────────
+export type WtLevel = 'ok' | 'notice' | 'warning' | 'critical';
+
+export interface WtBatch {
+  id: number; name: string; status: string; error: string;
+  runs: { run_no: string; files: Record<string, string>; meta: Record<string, unknown> }[];
+  config: Record<string, unknown>;
+  created_at: string; checked_at?: string;
+}
+
+export interface WtFinding {
+  rule_id: string; rule_name: string; feature: string; feature_name: string;
+  level: WtLevel; level_label: string; value: number | null; unit: string;
+  verdict: string; action: string; cause: string; impact: string;
+  detail: string; method: string; refs: string[];
+  extras: Record<string, unknown>;
+  status: 'evaluated' | 'unavailable' | 'skipped';
+}
+
+export interface WtFeatureValue {
+  key: string; name: string; unit: string; value: number | null;
+  status: string; detail: string; extras: Record<string, unknown>; method: string;
+}
+
+export interface WtRunResult {
+  run_no: string;
+  meta: Record<string, unknown>;
+  grade: string; level: WtLevel;
+  compared_with: string | null; chain_broken: boolean;
+  counts: Record<string, number>;
+  features: Record<string, WtFeatureValue>;
+  findings: WtFinding[];
+}
+
+export interface WtTrend {
+  feature: string; name: string; unit: string;
+  runs: string[]; values: number[];
+  monotone_run: number; trend: string; flagged: boolean;
+  reference: string; note: string;
+}
+
+export interface WtBatchResult {
+  runs: WtRunResult[];
+  config: Record<string, unknown>;
+  trends: WtTrend[];
+  notes: string[];
+  summary: {
+    run_count: number;
+    totals: Record<string, number>;
+    failed_runs: string[]; warned_runs: string[]; grade: string;
+  };
+}
+
+export interface WtCurveStat {
+  key: string; label: string; n: number;
+  slope_per_deg: number; r2: number;
+  min: { x: number; y: number }; max: { x: number; y: number };
+  range: number; max_nonlinearity: { x: number; deviation: number };
+  monotone: boolean;
+}
+
+export interface WtCurve {
+  ok: boolean; run_no: string; x_key: string; x_label: string;
+  series: { key: string; label: string; x: number[]; y: number[] }[];
+  available_columns: { key: string; label: string }[];
+  flow: Record<string, number>; mach: number | null; model: string;
+  statistics: WtCurveStat[];
+}
+
+export interface WtBand {
+  level: WtLevel; lo: number | null; hi: number | null;
+  verdict: string; action: string; cause: string; impact: string;
+}
+
+export interface WtRule {
+  id?: number; rule_id: string; name: string; feature: string;
+  object: string; note: string; refs: string[]; enabled: boolean;
+  source: string; applies_when_mach: string; bands: WtBand[];
+  builtin_id?: string; changelog?: unknown[]; updated_at?: string;
+}
+
+export type WtRuleInput = Omit<WtRule, 'id' | 'builtin_id' | 'changelog' | 'updated_at'>;
+
+export interface WtFeature {
+  key: string; name: string; unit: string; requires: string[];
+  needs_prev_run: boolean; description: string; method: string;
+}
+
+export interface WtDraftResp {
+  ok: boolean; rule?: WtRule; problems?: string[] | null;
+  reasoning?: string; threshold_source?: string;
+  error?: string; needs_new_feature?: string; next_action?: string;
+}
+
+export interface WtExtractorGen {
+  ok: boolean; code?: string; meta?: { name?: string; slug?: string; description?: string };
+  feature_key?: string; attempts?: number; error?: string;
+  tests?: unknown[]; attempt_log?: unknown[];
+}
+
+export interface WtExtractor {
+  id: number; slug: string; name: string; description: string;
+  feature_key: string; verified: boolean; version: number; code: string;
+}
+
+export interface WtBalance {
+  id: number; name: string; ranges: Record<string, number>; note: string;
+}
+
+export interface WtReportRow {
+  id: number; batch_id: number | null; run_no: string; kind: string;
+  title: string; edited: boolean; updated_at: string;
+}
 
 export type ChangelogEntry = {
   version: string;

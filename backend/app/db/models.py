@@ -271,6 +271,108 @@ class MappingRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Wind-tunnel quality-check domain
+# ══════════════════════════════════════════════════════════════════════════
+class WtBatch(Base):
+    """One import + check session — a set of 车次 uploaded together.
+
+    Runs are batched rather than stored individually because two of the most
+    valuable checks are inherently cross-run: 天平零飘 compares against the
+    previous run, and the trend view needs the whole sequence. A per-file model
+    would have made both of those bolt-ons.
+    """
+
+    __tablename__ = "wt_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    #: Directory under <upload>/windtunnel/ holding the raw ca/pa/da files.
+    storage_dir: Mapped[str] = mapped_column(String(1024), default="")
+    #: [{run_no, files:{ca,pa,da}, meta:{…}}, …]
+    runs: Mapped[list] = mapped_column(JSON, default=list)
+    #: CheckConfig as saved by the user.
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    #: BatchResult.to_dict() from the last successful check.
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="new")  # new|checked|error
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WtRule(Base):
+    """A quality rule as DATA — the whole point of the design.
+
+    Shipped rules are seeded here on first use so a user can edit a threshold
+    the same way they edit one of their own. ``source`` records where it came
+    from (builtin / user / ai) and ``builtin_id`` lets a modified shipped rule
+    still be traced back to the original.
+    """
+
+    __tablename__ = "wt_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rule_id: Mapped[str] = mapped_column(String(120), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    feature: Mapped[str] = mapped_column(String(120), index=True)
+    object_name: Mapped[str] = mapped_column(String(255), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    applies_when_mach: Mapped[str] = mapped_column(String(32), default="")
+    bands: Mapped[list] = mapped_column(JSON, default=list)
+    refs: Mapped[list] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    source: Mapped[str] = mapped_column(String(16), default="user")  # builtin|user|ai
+    builtin_id: Mapped[str] = mapped_column(String(120), default="")
+    #: Free-text audit trail of who changed what and why.
+    changelog: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class WtBalance(Base):
+    """A balance's rated ranges — required by the overload check and available
+    nowhere in a run's own files."""
+
+    __tablename__ = "wt_balances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    ranges: Mapped[dict] = mapped_column(JSON, default=dict)  # {My,Z,Mz,Y,Mx,Q}
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class WtReport(Base):
+    """A generated report — kept editable, because the spec requires the
+    preview to be edited before export and the edit must survive."""
+
+    __tablename__ = "wt_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    batch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("wt_batches.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    run_no: Mapped[str] = mapped_column(String(64), default="")
+    kind: Mapped[str] = mapped_column(String(16), default="report")  # report|shift|summary
+    title: Mapped[str] = mapped_column(String(255), default="")
+    sections: Mapped[list] = mapped_column(JSON, default=list)
+    #: Markdown as generated — kept so a user can revert their edits.
+    content: Mapped[str] = mapped_column(Text, default="")
+    #: Markdown after the user edited the preview. Empty until they touch it.
+    edited: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Message(Base):
     __tablename__ = "messages"
 

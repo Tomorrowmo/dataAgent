@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, Database, FunctionSquare, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Info } from 'lucide-react';
+import { Bot, Database, FunctionSquare, Workflow, Wind, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Info } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -8,7 +8,7 @@ import { api, type Conversation, setToken, OIDC_LOGOUT_URL } from '@/lib/api';
 import LanguageToggle from '@/components/LanguageToggle';
 import { useT } from '@/lib/i18n';
 
-type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'feedback' | 'settings' | 'about';
+type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'windtunnel' | 'feedback' | 'settings' | 'about';
 
 // Per-conversation avatar colour, hashed from the id so each conversation keeps
 // a stable, distinct tint (Notion/Linear style) — makes the list scannable.
@@ -90,6 +90,10 @@ export default function Sidebar({
     { id: 'datasets', label: t('side.datasets'), icon: <Database className="w-5 h-5" /> },
     { id: 'algorithms', label: t('side.algorithms'), icon: <FunctionSquare className="w-5 h-5" /> },
     { id: 'templates', label: '流程模板', icon: <Workflow className="w-5 h-5" /> },
+    // Domain application: the wind-tunnel quality-check workflow gets its own
+    // entry so a test engineer lands straight in it instead of assembling the
+    // same pipeline by hand every entry.
+    { id: 'windtunnel', label: '风洞质量检查', icon: <Wind className="w-5 h-5" /> },
     // Feedback inbox is admin-only — it's the boss's triage queue.
     ...(isAdmin ? [{ id: 'feedback' as View, label: '反馈收件箱', icon: <Inbox className="w-5 h-5" /> }] : []),
     { id: 'settings', label: t('side.settings'), icon: <Settings className="w-5 h-5" /> },
