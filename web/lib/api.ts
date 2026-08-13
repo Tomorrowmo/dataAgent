@@ -361,6 +361,40 @@ export const api = {
     return request<{ ok: boolean; added: number; updated: number }>('POST', '/wt/balances/import', fd);
   },
 
+  // ── 多车次对比（20260225《车次及马赫数绘图》需求）────────────────────
+  wtRuns: (id: number) => request<WtRunList>('GET', `/wt/batches/${id}/runs`),
+  wtMatrix: (id: number) => request<WtMatrix>('GET', `/wt/batches/${id}/matrix`),
+  wtCompareRuns: (id: number, body: {
+    run_nos: string[]; x: string; ys: string[];
+    baseline?: string | null; mode?: string; sort_by?: string[];
+  }) => request<WtCompare>('POST', `/wt/batches/${id}/compare/runs`, body),
+  wtCompareState: (id: number, body: {
+    run_nos: string[]; state_var: string; ys: string[]; alphas: number[];
+    baseline?: string | null; mode?: string;
+    run_nos_2?: string[]; alphas_2?: number[];
+    group_label?: string; group_label_2?: string;
+  }) => request<WtCompare>('POST', `/wt/batches/${id}/compare/state`, body),
+  wtEffectiveness: (id: number, body: { surface: string; alphas: number[]; coeffs?: string[] }) =>
+    request<WtEffectiveness>('POST', `/wt/batches/${id}/compare/effectiveness`, body),
+  wtResponse: (id: number, body: { surface: string; alphas: number[]; coeffs?: string[] }) =>
+    request<WtResponse>('POST', `/wt/batches/${id}/compare/response`, body),
+  wtSymmetry: (id: number, body: { surface: string; alphas: number[]; coeffs?: string[] }) =>
+    request<WtSymmetry>('POST', `/wt/batches/${id}/compare/symmetry`, body),
+  wtRepeatability: (id: number) => request<WtRepeatability>('GET', `/wt/batches/${id}/repeatability`),
+  /** Download the plotted numbers as CSV (BOM'd for Excel on Windows). */
+  wtCompareExport: async (id: number, body: Record<string, unknown>) => {
+    const token = getToken();
+    const r = await fetch(`/api/wt/batches/${id}/compare/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`导出失败 HTTP ${r.status}`);
+    const cd = r.headers.get('content-disposition') ?? '';
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    return { blob: await r.blob(), filename: star ? decodeURIComponent(star[1]) : 'compare.csv' };
+  },
+
   wtAsk: (batch_id: number, run_no: string, question: string) =>
     request<{ ok: boolean; text?: string; error?: string }>('POST', '/wt/ask', { batch_id, run_no, question }),
   wtSummarize: (batch_id: number, run_no: string) =>
@@ -813,4 +847,94 @@ export async function streamChat(
       }
     }
   }
+}
+
+// ── 多车次对比类型 ──────────────────────────────────────────────────────
+export interface WtRunState {
+  M: number | null; BETA: number | null; PHI: number | null;
+  dz: number | null; dy: number | null; dx: number | null; XU?: number | null;
+}
+
+export interface WtRunList {
+  runs: {
+    run_no: string; state: WtRunState; state_text: string;
+    has_da: boolean; n_alpha: number; alpha_range: [number, number] | null;
+  }[];
+  count: number;
+  machs: number[];
+  state_vars: { key: string; label: string }[];
+  columns: { key: string; label: string }[];
+}
+
+export interface WtMatrix {
+  blocks: {
+    label: string; mach: number | null; beta: number | null;
+    run_count: number; runs: string[]; baseline_run: string | null;
+    dz: number[]; dy: number[]; dx: number[];
+  }[];
+  block_count: number;
+  without_baseline: string[];
+  note: string;
+}
+
+export interface WtCompare {
+  ok: boolean; mode: string; baseline: string | null;
+  x_key: string; x_label: string;
+  series: {
+    run_no?: string; coefficient: string; label: string; group?: string;
+    alpha?: number; state?: WtRunState; state_text?: string;
+    x: number[]; y: number[]; runs?: string[];
+  }[];
+  legend?: ({ run_no: string } & WtRunState)[];
+  available_columns: { key: string; label: string }[];
+  notes: string[];
+  two_groups?: boolean;
+}
+
+export interface WtEffectiveness {
+  ok: boolean; surface: string; coefficients: string[]; alphas: number[];
+  rows: {
+    mach: number; beta: number; alpha: number; surface: string;
+    deflection: number; run_no: string; baseline_run: string;
+    coefficient: string; value: number; baseline_value: number;
+    delta: number; derivative_per_deg: number;
+  }[];
+  notes: string[]; method: string;
+}
+
+export interface WtResponse {
+  ok: boolean; surface: string; method: string;
+  blocks: {
+    mach: number; beta: number; alpha: number; coefficient: string;
+    baseline_run: string; deflections: number[]; deltas: number[]; runs: string[];
+    linear_slope_per_deg: number | null; linear_range_deg: number;
+    max_deflection: number; saturation_ratio: number | null;
+  }[];
+}
+
+export interface WtSymmetry {
+  ok: boolean; surface: string; k_mad: number;
+  median_asymmetry: number; robust_sigma: number;
+  pairs: {
+    mach: number; beta: number; alpha: number; coefficient: string;
+    deflection: number; run_pos: string; run_neg: string;
+    delta_pos: number; delta_neg: number; sum: number;
+    asymmetry: number; flagged: boolean; score: number | null;
+  }[];
+  flagged: WtSymmetry['pairs'];
+  method: string; note: string;
+}
+
+export interface WtRepeatability {
+  groups: { label: string; runs: string[]; n: number; sd: Record<string, number> }[];
+  pooled_sd: Record<string, number>;
+  pooled_2sd: Record<string, number>;
+  pooled_dof: Record<string, number>;
+  outliers: { run_no: string; group: string; coefficient: string; note: string }[];
+  singleton_runs: string[];
+  group_count: number;
+  repeated_group_count: number;
+  notes: string[];
+  reference: string;
+  table: { coefficient: string; s_r: number; two_s_r: number; dof: number }[];
 }

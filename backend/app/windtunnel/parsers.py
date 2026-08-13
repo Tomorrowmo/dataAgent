@@ -394,6 +394,17 @@ class DaFile:
     flow: Dict[str, float] = field(default_factory=dict)
     model_name: str = ""
     mach: Optional[float] = None
+    #: "list" (machine-readable 59-column export) | "printed" (report table)
+    layout: str = ""
+    #: Model attitude / control-surface state for this run — the thing that
+    #: distinguishes one run from another in a comparison plot, and therefore
+    #: what a multi-run legend must show. Keys: PHI, BETA, dz, dy, dx, XU.
+    state: Dict[str, float] = field(default_factory=dict)
+    #: Derivatives printed in the header (CNa, MZG1a, …) — the tunnel's own
+    #: values, useful as an independent cross-check on our fitted slopes.
+    derivatives: Dict[str, float] = field(default_factory=dict)
+    #: Reference geometry: Sr, Lcp, Lmx/Lmy/Lmz, L, D, Xg1…Zg2
+    geometry: Dict[str, float] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -419,6 +430,111 @@ class DaFile:
         return out
 
 
+def _parse_da_printed(lines: Sequence[str], out: DaFile) -> DaFile:
+    """The PRINTED report layout — what the tunnel actually files.
+
+    A ``da`` file in production is not the machine-readable 59-column export
+    but a paginated report::
+
+                      TABLE    2     CONTINUED
+              No.246490    M= 1.74  XU=   8
+              Φ=    0.00  β=    0.00   δz=  0.0  δy=  0.0  δx=  0.0
+              CNa= 0.09655 MZG1a=-0.06177
+              Sr=0.0163060
+              Po=187218.1   P8=  35647.9  q8= 75636.2  To=286.0  1.0E-6*Re=27.14
+
+              ALPHA        CN        CZ       CAF      MXG1      MYG1      MZG1
+               -2.0  -0.12520   0.00306   0.12675  -0.00017   0.00278   0.08402
+               …
+              ALPHA      MXG2      MYG2      MZG2        CA       CAB        CL
+               …
+
+    Several blocks, each keyed on ALPHA, are stitched back into one table. The
+    blocks are discovered by shape (a non-numeric header line starting with an
+    angle column, followed by numeric rows of the same width) rather than by
+    matching literal header text, so a run with a different coefficient set
+    still parses.
+    """
+    text = "\n".join(lines)
+    out.layout = "printed"
+
+    def grab(pattern: str) -> Optional[float]:
+        m = re.search(pattern, text)
+        if not m:
+            return None
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+
+    out.mach = grab(r"\bM=\s*(-?[\d.]+)")
+    for key, pat in (("XU", r"\bXU=\s*(-?[\d.]+)"), ("PHI", r"Φ=\s*(-?[\d.]+)"),
+                     ("BETA", r"β=\s*(-?[\d.]+)"), ("dz", r"δz=\s*(-?[\d.]+)"),
+                     ("dy", r"δy=\s*(-?[\d.]+)"), ("dx", r"δx=\s*(-?[\d.]+)")):
+        v = grab(pat)
+        if v is not None:
+            out.state[key] = v
+    for m in re.finditer(r"\b([A-Za-z][A-Za-z0-9]*a)=\s*(-?[\d.]+)", text):
+        try:
+            out.derivatives[m.group(1)] = float(m.group(2))
+        except ValueError:
+            continue
+    for key in ("Sr", "Lmx", "Lmy", "Lmz", "Lcp", "L", "D",
+                "Xg1", "Yg1", "Zg1", "Xg2", "Yg2", "Zg2"):
+        v = grab(rf"\b{key}\s*=\s*(-?[\d.]+)")
+        if v is not None:
+            out.geometry[key] = v
+    for key, pat in (("Po", r"\bPo=\s*(-?[\d.]+)"), ("P8", r"\bP8=\s*(-?[\d.]+)"),
+                     ("q8", r"\bq8=\s*(-?[\d.]+)"), ("To", r"\bTo=\s*(-?[\d.]+)"),
+                     ("Re", r"1\.0E-6\*Re=\s*(-?[\d.]+)")):
+        v = grab(pat)
+        if v is not None:
+            out.flow[key] = v
+    m = re.search(r"No\.\s*(\d+)", text)
+    if m and not out.run_no:
+        out.run_no = m.group(1)
+
+    # ── stitch the ALPHA-keyed blocks ───────────────────────────────────
+    by_alpha: Dict[float, Dict[str, float]] = {}
+    order: List[float] = []
+    columns: List[str] = []
+    i = 0
+    while i < len(lines):
+        toks = _tokens(lines[i])
+        is_header = (
+            len(toks) >= 2
+            and all(_floats(t) is None for t in toks)   # no token parses as a number
+            and toks[0].upper() in ("ALPHA", "AM", "AT", "BETA", "PHI", "MA")
+        )
+        if not is_header:
+            i += 1
+            continue
+        rows, end = _collect_numeric_rows(lines, i + 1, min_cols=len(toks))
+        rows = [r for r in rows if len(r) == len(toks)]
+        if not rows:
+            i += 1
+            continue
+        for name in toks[1:]:
+            if name not in columns:
+                columns.append(name)
+        for r in rows:
+            a = r[0]
+            if a not in by_alpha:
+                by_alpha[a] = {}
+                order.append(a)
+            for name, v in zip(toks[1:], r[1:]):
+                by_alpha[a][name] = v
+        i = max(end, i + 1)
+
+    if not by_alpha:
+        return out
+    out.columns = ["ALPHA"] + columns
+    for a in order:
+        row = [a] + [by_alpha[a].get(c, 0.0) for c in columns]
+        out.rows.append(row)
+    return out
+
+
 def parse_da(path: Path | str) -> DaFile:
     text = read_text(path)
     lines = text.splitlines()
@@ -434,7 +550,10 @@ def parse_da(path: Path | str) -> DaFile:
             header_idx = i + 1
             break
     if header_idx < 0 or header_idx >= len(lines):
-        return out
+        # Not the machine-readable export — fall back to the printed report,
+        # which is the layout the tunnel actually archives.
+        return _parse_da_printed(lines, out)
+    out.layout = "list"
 
     out.columns = _tokens(lines[header_idx])
     for j in range(header_idx + 1, len(lines)):
@@ -465,6 +584,19 @@ def parse_da(path: Path | str) -> DaFile:
         ma = out.series("M")
         if ma:
             out.mach = ma[0]
+    # The list export carries the run's state as ordinary columns (constant
+    # down the sweep). Lift them into `state` so both layouts expose the same
+    # thing — a comparison legend must not care which layout it came from.
+    for key, col in (("PHI", "PHI"), ("BETA", "BETA"),
+                     ("dz", "D5"), ("dy", "D6"), ("dx", "D7"), ("D8", "D8")):
+        vals = out.series(col)
+        if vals:
+            out.state.setdefault(key, vals[0])
+    for name in out.columns:
+        if name.endswith("a") and len(name) > 2:
+            vals = out.series(name)
+            if vals:
+                out.derivatives.setdefault(name, vals[0])
     return out
 
 
@@ -501,6 +633,11 @@ class RunBundle:
             "balance_type": self.pa.balance_type if self.pa else "",
             "balance_formula": self.pa.balance_formula if self.pa else "",
             "model": self.da.model_name if self.da else "",
+            # Model attitude / control deflections. Needed by anything that must
+            # know whether two runs are the same configuration — the comparison
+            # views, and the trend detector's decision on whether a cross-run
+            # trend is even interpretable.
+            "state": dict(self.da.state) if (self.da and self.da.state) else {},
             "is_force_test": bool(self.pa and self.pa.is_force_test),
             "n_blow_points": len(self.ca.blow_rows) if self.ca else 0,
             "warnings": self.warnings + (self.pa.warnings if self.pa else []),

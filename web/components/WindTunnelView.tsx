@@ -18,25 +18,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronRight, CircleSlash, Download,
-  FileText, FolderUp, Info, Loader2, MessageSquare, Play, RefreshCw, Sparkles,
+  FileText, FolderUp, Info, Layers, Loader2, MessageSquare, Play, RefreshCw, Sparkles,
   Trash2, TrendingUp, Wind, XCircle,
 } from 'lucide-react';
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import Markdown from '@/components/Markdown';
+import WindTunnelCompare from '@/components/WindTunnelCompare';
 import WindTunnelKnowledge, { LevelChip } from '@/components/WindTunnelKnowledge';
 import {
   api, type WtBatch, type WtBatchResult, type WtCurve, type WtFinding,
   type WtLevel, type WtRule, type WtRunResult,
 } from '@/lib/api';
 
-type Step = 'import' | 'result' | 'curve' | 'report' | 'kb';
+type Step = 'import' | 'result' | 'curve' | 'compare' | 'report' | 'kb';
 
 const STEPS: { id: Step; n: string; label: string; icon: React.ReactNode }[] = [
   { id: 'import', n: '①', label: '数据导入', icon: <FolderUp className="w-4 h-4" /> },
   { id: 'result', n: '②', label: '运算结果查看', icon: <CheckCircle2 className="w-4 h-4" /> },
   { id: 'curve', n: '③', label: '气动曲线绘制', icon: <BarChart3 className="w-4 h-4" /> },
+  // 20260225《车次及马赫数绘图》— comparison is the mode the work actually
+  // lives in, so it gets a step of its own rather than a tab inside ③.
+  { id: 'compare', n: '③b', label: '多车次对比', icon: <Layers className="w-4 h-4" /> },
   { id: 'report', n: '④', label: '质量检查报告', icon: <FileText className="w-4 h-4" /> },
   { id: 'kb', n: '⑤', label: '知识库管理', icon: <Sparkles className="w-4 h-4" /> },
 ];
@@ -202,6 +206,7 @@ export default function WindTunnelView() {
           <CurveStep batchId={batchId} result={result} activeRun={activeRun}
             setActiveRun={setActiveRun} llmOn={llmOn} />
         )}
+        {step === 'compare' && <WindTunnelCompare batchId={batchId} />}
         {step === 'report' && (
           <ReportStep batchId={batchId} result={result} activeRun={activeRun}
             setActiveRun={setActiveRun} llmOn={llmOn} />

@@ -124,11 +124,23 @@ class BalanceLibrary:
         return [e.to_dict() for e in sorted(self.entries.values(), key=lambda x: x.name)]
 
 
-#: Shipped seed — the public template the customer provided. Enough to make the
-#: overload check produce a real verdict on the 91836–91840 demo runs.
+#: Shipped seed.
+#:
+#: ``N628E`` comes from the public template the customer supplied.
+#:
+#: ``N636CB01`` was RECOVERED, not guessed. The customer's own analysis note
+#: (``246490_修改数值.txt``) reports the load-to-range percentage for every unit
+#: on run 246490; dividing the measured peak load from that run's ``pa`` file by
+#: those percentages yields 10 / 150 / 20 / 350 / 4 / 50 — clean round design
+#: values, as rated ranges always are. Re-applying them to run 246492 reproduces
+#: that run's independently reported percentages to within 0.05 %, so the
+#: recovery is verified rather than assumed. Replace with the tunnel's official
+#: library entry when it is available; the note field records the provenance so
+#: nobody mistakes it for a measured constant.
 SEED_BALANCE_TEXT = """\
-# 天平载荷库(公开模板)  name  My  Z  Mz  Y  Mx  Q
-N628E   3.0   40   5.0   270   2.0   30   来自甲方公开模板
+# 天平载荷库  name  My  Z  Mz  Y  Mx  Q
+N628E      3.0    40    5.0    270   2.0   30   来自甲方公开模板
+N636CB01   10.0   150   20.0   350   4.0   50   由甲方分析报告的载荷占比反推,246492独立验证(±0.05%),待官方载荷库核对
 """
 
 

@@ -36,7 +36,7 @@ from app.windtunnel.balance import BalanceLibrary, default_library  # noqa: E402
 from app.windtunnel.features import FEATURE_SPECS, extract_features  # noqa: E402
 from app.windtunnel.frames import bundle_to_frame, wide_table  # noqa: E402
 from app.windtunnel.parsers import (  # noqa: E402
-    detect_kind, detect_run_no, parse_ca, parse_da, parse_pa,
+    detect_kind, detect_run_no, load_bundle, parse_ca, parse_da, parse_pa,
 )
 from app.windtunnel.pipeline import (  # noqa: E402
     CheckConfig, check_batch, curve_data, curve_statistics, load_batch,
@@ -47,6 +47,12 @@ from app.windtunnel.report import (  # noqa: E402
 from app.windtunnel.rules import Band, Rule, evaluate  # noqa: E402
 from app.windtunnel.seed_rules import seed_rules  # noqa: E402
 from app.windtunnel.units import MMH2O_PER_MPA, mach_from_pressure_ratio  # noqa: E402
+from app.windtunnel import compare as CMP  # noqa: E402
+from app.windtunnel.repeatability import analyse_repeatability  # noqa: E402
+from app.windtunnel.trend import hampel, mann_kendall, nelson_runs  # noqa: E402
+
+TESTDATA = Path(os.environ.get("WT_TESTDATA",
+                               r"d:/Git/Personal/WTDataAgent/FromC/testdata"))
 
 FROMC = Path(os.environ.get(
     "WT_FROMC",
@@ -187,10 +193,16 @@ def t_fixed_defects() -> None:
           ex.available and ex.value == 0.0, f"{ex.value}")
 
     # (3) honest unavailable: legacy crashed with IndexError, swallowed as
-    #     "PA 分析失败", indistinguishable from a parsing bug.
-    lo = r.features["balance_load_ratio"]
+    #     "PA 分析失败", indistinguishable from a parsing bug. N636CB01 is now
+    #     in the shipped library, so provoke the condition with an empty one.
+    empty_lib = BalanceLibrary()
+    lo = extract_features(bundles[0], None, keys=["balance_load_ratio"],
+                          library=empty_lib)["balance_load_ratio"]
     check("天平不在载荷库时报未评定并给出补齐方式（甲方脚本崩溃）",
           lo.status == "unavailable" and "载荷库" in lo.detail, lo.detail[:50])
+    lo_ok = r.features["balance_load_ratio"]
+    check("载荷库中有该天平时正常评定", lo_ok.status == "ok",
+          f"{lo_ok.value:.4f}% (N636CB01)")
 
     zd = r.features["balance_zero_drift"]
     check("无上一车次时零飘报未评定，绝不默认为正常",
@@ -312,6 +324,14 @@ def t_trend() -> None:
              + [p for p in PA_DIR.iterdir() if p.is_file()])
     res = check_batch(load_batch(files), config=CheckConfig(trend_window=3))
     check("产出多条特征序列", len(res.trends) >= 10, f"{len(res.trends)} 条")
+    analysed = [t for t in res.trends if t.get("analysed") is not False]
+    short = [t for t in res.trends if t.get("analysed") is False]
+    check("5 个零点类特征全部完成趋势判定",
+          len(analysed) >= 5 and all(not t["state_dependent"] for t in analysed),
+          f"{len(analysed)} 条已判定")
+    check("样本不足的分组如实说明而非静默丢弃",
+          all(t["headline"] for t in short),
+          f"{len(short)} 条注明原因，例：" + (short[0]["headline"][:44] if short else "—"))
     zd = next((t for t in res.trends if t["feature"] == "balance_zero_drift"), None)
     check("零飘序列只含有值的车次（首车次不参与）",
           zd is not None and "91836" not in zd["runs"], str(zd["runs"]) if zd else "")
@@ -363,13 +383,186 @@ test_cases = [{"df": pd.DataFrame({"run_no": ["t"]*3, "table": ["ca"]*3,
           fv2.detail[:60])
 
 
+def _matrix_bundles():
+    files = [p for sub in ("ca", "da", "temp") for p in (TESTDATA / sub).iterdir()
+             if p.is_file()]
+    return load_batch(files)
+
+
+def t_printed_da() -> None:
+    section("11. da 打印式格式（生产环境真实格式）")
+    d = parse_da(TESTDATA / "da" / "da246490")
+    check("识别为打印式布局", d.layout == "printed", d.layout)
+    check("三个分块拼接成 19 列 x 10 行",
+          len(d.columns) == 19 and len(d.rows) == 10,
+          f"{len(d.columns)}x{len(d.rows)}")
+    check("解析出模型状态 PHI/BETA/dz/dy/dx",
+          {"PHI", "BETA", "dz", "dy", "dx"} <= set(d.state), str(d.state))
+    check("解析出风洞自带导数 CNa", close(d.derivatives.get("CNa", 0), 0.09655, 1e-6))
+    check("解析出来流条件", close(d.flow.get("Po", 0), 187218.1, 0.1))
+    lst = parse_da(INPUT_DIR / "da246490")
+    same = all(abs(a - b) < 1e-12
+               for c in ("CN", "CAF", "CZ", "CAB", "CA", "CD", "CLF", "CDF", "XCP")
+               if c in d.columns and c in lst.columns
+               for a, b in zip(d.series(c), lst.series(c)))
+    check("与机读 59 列格式逐位一致", same, "两种布局同一车次系数完全相同")
+    bad = [q.name for q in sorted((TESTDATA / "da").iterdir()) if not parse_da(q).ok]
+    check("130 个真实 da 文件全部解析成功", not bad, str(bad[:5]))
+
+
+def t_recovered_balance() -> None:
+    section("12. N636CB01 天平量程（由甲方报告占比反推）")
+    lib = default_library()
+    e = lib.lookup("N636CB01")
+    check("已内置", e is not None)
+    if e:
+        check("量程为整数设计值",
+              e.ranges == {"My": 10.0, "Z": 150.0, "Mz": 20.0,
+                           "Y": 350.0, "Mx": 4.0, "Q": 50.0}, str(e.ranges))
+        check("注明出处（非实测常数）", "反推" in e.note, e.note[:40])
+    for run, want in (("246490", {"Y": 61.076, "Mz": 28.71, "Q": 34.032}),
+                      ("246492", {"Y": 25.248, "Mz": 37.52, "Q": 39.461})):
+        b = load_bundle([TESTDATA / "ca" / ("ca" + run), TESTDATA / "temp" / ("pa" + run),
+                         TESTDATA / "da" / ("da" + run)])
+        fv = extract_features(b, None, keys=["balance_load_ratio"], library=lib)
+        per = fv["balance_load_ratio"].extras["per_unit"]
+        ok = all(abs(per[u] - v) < 0.02 for u, v in want.items())
+        check(run + " 各单元占比复现甲方报告", ok,
+              " ".join(f"{u}={per[u]:.3f}%(报告{v})" for u, v in want.items()))
+
+
+def t_trend_stats() -> None:
+    section("13. 趋势统计量（Mann-Kendall / Hampel / Nelson）")
+    rising = [float(i) for i in range(20)]
+    mk = mann_kendall(rising)
+    check("单调序列被判为显著上升", mk["significant"] and mk["direction"] == "上升",
+          f"z={mk['z']} p={mk['p']}")
+    check("Sen 斜率等于真实斜率", close(mk["sen_slope_per_run"], 1.0, 1e-9))
+    flat = [1.0, 1.2, 0.9, 1.1, 1.0, 1.05, 0.95, 1.02, 0.98, 1.01]
+    check("平稳序列不被判为趋势", not mann_kendall(flat)["significant"])
+    spiked = flat[:5] + [9.0] + flat[5:]
+    hp = hampel(spiked, k=3.0)
+    check("Hampel 命中人为插入的尖峰",
+          any(o["index"] == 5 for o in hp["outliers"]), str(hp["outliers"]))
+    check("Hampel 不误报平稳序列", not hampel(flat, k=3.0)["outliers"])
+    nl = nelson_runs([float(i) for i in range(130)], window=7)
+    check("Nelson 报告实测与随机期望", nl["observed"] > 0 and nl["expected"] < 0.2,
+          f"实测 {nl['observed']} / 期望 {nl['expected']}")
+
+
+def t_trend_on_matrix() -> None:
+    section("14. 130 车次上的趋势判定（防误报回归）")
+    res = check_batch(_matrix_bundles(), library=default_library())
+    trends = res.trends
+    not_analysed = [t for t in trends if t.get("analysed") is False]
+    analysed = [t for t in trends if t.get("analysed") is not False]
+    flagged = [t for t in trends if t["flagged"]]
+    check("状态相关量在多构型批次中不做趋势判定",
+          len(not_analysed) >= 10 and all(t["state_dependent"] for t in not_analysed),
+          f"{len(not_analysed)} 条未判定")
+    check("未判定项写明理由",
+          all("不做趋势判定" in t["headline"] for t in not_analysed))
+    check("仅零点类量参与全批次趋势",
+          all(not t["state_dependent"] for t in analysed), f"{len(analysed)} 条")
+    check("告警数量远低于早期实现（曾 15/17 全报）",
+          len(flagged) <= 5, f"{len(flagged)}/{len(trends)} 条告警")
+    rz = next((t for t in trends if t["feature"] == "balance_return_zero"), None)
+    check("统计显著但工程可忽略的漂移被明确标注",
+          rz is not None and "工程上可忽略" in rz["headline"],
+          (rz["headline"][-45:] if rz else ""))
+
+
+def t_compare() -> None:
+    section("15. 多车次对比引擎")
+    bs = _matrix_bundles()
+    sel = [b for b in bs if CMP.run_state(b)["M"] == 1.741
+           and CMP.run_state(b)["BETA"] == 0
+           and (CMP.run_state(b)["dy"] or 0) == 0 and (CMP.run_state(b)["dx"] or 0) == 0]
+    check("筛出 Ma1.741/beta0 的 dz 系列 7 个车次", len(sel) == 7, str(len(sel)))
+
+    r = CMP.curves_by_run(sel, x="ALPHA", ys=["CN"], sort_by=["dz"])
+    dzs = [l["dz"] for l in r["legend"]]
+    check("按舵偏角排序", dzs == sorted(dzs), str(dzs))
+    check("图例携带完整状态", all({"M", "BETA", "PHI", "dz", "dy", "dx"} <= set(l)
+                                  for l in r["legend"]))
+
+    polar = CMP.curves_by_run(sel[:1], x="CN", ys=["CD"])
+    check("以 CN 为横轴（阻力极曲线）", polar["ok"] and polar["x_key"] == "CN")
+
+    d = CMP.curves_by_run(sel, x="ALPHA", ys=["CN"], baseline="246490", mode="delta",
+                          sort_by=["dz"])
+    at0 = {}
+    for s_ in d["series"]:
+        for x, y in zip(s_["x"], s_["y"]):
+            if abs(x) < 1e-9:
+                at0[s_["state"]["dz"]] = y
+    vals = [at0[k] for k in sorted(at0)]
+    check("dCN 随 dz 单调递增", all(vals[i] < vals[i + 1] for i in range(len(vals) - 1)),
+          " ".join(f"{k:+g}:{at0[k]:+.4f}" for k in sorted(at0)))
+    check("基准车次自身差量恒为 0", abs(at0[0.0]) < 1e-12)
+
+    baselines = [b for b in bs
+                 if all((CMP.run_state(b).get(k) or 0) == 0 for k in ("dz", "dy", "dx"))
+                 and CMP.run_state(b)["BETA"] == 0]
+    m = CMP.curves_by_state(baselines, state_var="M", ys=["CAF"], alphas=[0.0])
+    pts = dict(zip(m["series"][0]["x"], m["series"][0]["y"]))
+    check("跨声速阻力上升（CAF Ma0.8 -> Ma1.05）", pts[1.05] > 1.8 * pts[0.8],
+          f"{pts[0.8]:.4f} -> {pts[1.05]:.4f}")
+
+    eff = CMP.control_effectiveness(bs, surface="dz", alphas=[0.0], coeffs=["CN"])
+    by = {}
+    for row in eff["rows"]:
+        by.setdefault(row["mach"], []).append(row["derivative_per_deg"])
+    avg = {k: sum(v) / len(v) for k, v in by.items()}
+    check("舵效随马赫数下降（超声速 < 跨声速）", avg[1.741] < avg[1.05],
+          " ".join(f"Ma{k:g}:{v:+.5f}" for k, v in sorted(avg.items())))
+
+    resp = CMP.deflection_response(bs, surface="dz", alphas=[0.0], coeffs=["CN"])
+    check("舵偏响应为描述性输出（无告警阈值）",
+          "不设告警阈值" in resp["method"] and len(resp["blocks"]) == 12)
+
+    sym = CMP.symmetry_check(bs, surface="dz", alphas=[0.0, 2.0, 4.0], coeffs=["CN"])
+    check("对称性判异与同批次水平比而非与 0 比",
+          "与本批次全部" in sym["method"] and len(sym["flagged"]) < 0.2 * len(sym["pairs"]),
+          f"{len(sym['flagged'])}/{len(sym['pairs'])} 命中，中位数 {sym['median_asymmetry']:.1%}")
+
+    header, rows_ = CMP.export_rows(d)
+    check("导出表格结构正确", len(header) == len(d["series"]) + 1 and len(rows_) > 5,
+          f"{len(header)} 列 x {len(rows_)} 行")
+    check("CSV 含状态注释行", "# " in CMP.to_csv(d))
+
+
+def t_repeatability_honest() -> None:
+    section("16. 重复性（参数矩阵无重复车次时必须如实报告）")
+    rep = analyse_repeatability(_matrix_bundles()).to_dict()
+    check("识别出 130 个各不相同的状态", rep["group_count"] == 130, str(rep["group_count"]))
+    check("重复组数为 0，不编造精度指标",
+          rep["repeated_group_count"] == 0 and not rep["pooled_sd"])
+    check("说明原因", any("只做了一次" in n for n in rep["notes"]), str(rep["notes"])[:80])
+    one = load_bundle([TESTDATA / "ca" / "ca246490", TESTDATA / "temp" / "pa246490",
+                       TESTDATA / "da" / "da246490"])
+    twin = load_bundle([TESTDATA / "ca" / "ca246490", TESTDATA / "temp" / "pa246490",
+                        TESTDATA / "da" / "da246490"])
+    twin.run_no = "246490B"
+    rep2 = analyse_repeatability([one, twin]).to_dict()
+    check("给定重复车次时能算出 s_r（此处两份相同数据 -> s_r=0）",
+          rep2["repeated_group_count"] == 1 and rep2["pooled_sd"].get("CN") == 0.0,
+          f"CN s_r={rep2['pooled_sd'].get('CN')}")
+
+
 def main() -> int:
     if not INPUT_DIR.exists():
         print(f"找不到测试数据目录：{INPUT_DIR}\n请设置环境变量 WT_FROMC 指向 FromC 下的场景目录。")
         return 2
-    for fn in (t_units, t_parsers, t_customer_ground_truth, t_fixed_defects,
-               t_rule_engine, t_balance_library, t_frames_and_curves,
-               t_report, t_trend, t_custom_extractor):
+    suites = [t_units, t_parsers, t_customer_ground_truth, t_fixed_defects,
+              t_rule_engine, t_balance_library, t_frames_and_curves,
+              t_report, t_trend, t_custom_extractor]
+    if TESTDATA.exists():
+        suites += [t_printed_da, t_recovered_balance, t_trend_stats,
+                   t_trend_on_matrix, t_compare, t_repeatability_honest]
+    else:
+        print("（跳过 130 车次相关用例：找不到 " + str(TESTDATA) + "）")
+    for fn in suites:
         try:
             fn()
         except Exception as e:  # noqa: BLE001

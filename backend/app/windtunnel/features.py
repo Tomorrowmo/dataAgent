@@ -51,6 +51,16 @@ class FeatureSpec:
     #: True when the value can only be produced by comparing with the previous
     #: run (balance zero drift). Callers must supply ``prev``.
     needs_prev_run: bool = False
+    #: Does the value legitimately change with the test condition (Mach, model
+    #: attitude, control deflection)?
+    #:
+    #: This decides whether a cross-run trend means anything. On the customer's
+    #: 130-run entry, 底压与大气压差值 is 95 % explained by Mach alone (1958 →
+    #: 8288 mmH2O from Ma 0.8 to 1.74), so a "significant downward trend" over
+    #: the run sequence measures the TEST SCHEDULE, not equipment drift. Only
+    #: quantities read with no flow — the zeros — are comparable straight
+    #: across an entry; everything else must be trended WITHIN a Mach group.
+    state_dependent: bool = True
     description: str = ""
     #: How the number is obtained — shown in the report so a reviewer can audit
     #: the verdict without reading source.
@@ -101,12 +111,14 @@ _spec(
     requires=["ca"], needs_prev_run=True,
     description="本车次初零与上一车次初零在六个天平单元上的最大差值。",
     method="max over units of |zero_start(this)[u] - zero_start(prev)[u]|",
+    state_dependent=False,
 )
 _spec(
     key="balance_zero_near_17", name="天平零点接近满码(17)的最大接近度", unit="码",
     requires=["ca"],
     description="任一天平单元初零绝对值与 17 的接近程度，用于识别信号线断。",
     method="max over units of |zero_start[u]| where ||zero_start[u]|-17| < 1",
+    state_dependent=False,
 )
 _spec(
     key="balance_code_jump", name="天平最大跑码跳动量", unit="码",
@@ -125,6 +137,7 @@ _spec(
     requires=["ca"],
     description="试验前后两次零点读数在六个单元上的最大差值。",
     method="max over units of |zero_start[u] - zero_end[u]|",
+    state_dependent=False,
 )
 _spec(
     key="base_pressure_lr_diff", name="左右底压差最大值", unit="mmH2O",
@@ -137,6 +150,7 @@ _spec(
     requires=["ca"],
     description="五个压力传感器初零读数与其平均值的最大偏差。",
     method="max over sensors of |p0[i] - mean(p0)|, MPa→mmH2O",
+    state_dependent=False,
 )
 _spec(
     key="mach_deviation", name="实际与名义马赫数最大偏差", unit="-",
@@ -193,6 +207,7 @@ _spec(
     key="total_temp_zero_diff", name="总温与室温零点差", unit="degC",
     requires=["ca"], description="试验前总温传感器与室温传感器读数之差。",
     method="|To - t| on the pre-run zero row",
+    state_dependent=False,
 )
 
 

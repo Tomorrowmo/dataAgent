@@ -282,6 +282,15 @@ a lab actually needs.
   instead — same AST validation + smoke test as any AI-generated algorithm.
 - **Honest gaps.** A check whose inputs are missing reports *未评定* with what
   to supply, never a silent pass.
+- **Comparison is the main mode.** A 130-run entry is analysed by *comparing* —
+  run series sorted by control deflection, drag polars, increments against a
+  baseline run, coefficient-versus-Mach at chosen angles of attack, control
+  effectiveness and ±deflection symmetry. See §10 of the design doc.
+- **Detectors that do not cry wolf.** Trend flags are Mann–Kendall + Hampel +
+  a calibrated Nelson rule, gated on whether the quantity can legitimately vary
+  with the test condition and on whether the drift matters against the rule's
+  own limit. The naive "longest monotone run" rule flagged 15 of 17 features on
+  the real entry; the current one flags 4, each meaningful.
 
 Entry point: sidebar →「风洞质量检查」. Design, citations and acceptance
 evidence: [docs/windtunnel.md](docs/windtunnel.md).
@@ -290,9 +299,11 @@ Verification (all against the customer's real run files):
 
 ```bash
 cd backend
-./.venv/Scripts/python.exe wt_smoke_test.py   # 78 offline checks, no server, no LLM
-./.venv/Scripts/python.exe wt_api_test.py     # 61 HTTP checks (idempotent)
-./.venv/Scripts/python.exe wt_ui_test.py      # 27 browser checks + screenshots
+./.venv/Scripts/python.exe wt_smoke_test.py       # 120 offline checks, no server, no LLM
+./.venv/Scripts/python.exe wt_api_test.py         # 61 HTTP checks (idempotent)
+./.venv/Scripts/python.exe wt_matrix_test.py      # 38 checks on the real 130-run entry
+./.venv/Scripts/python.exe wt_ui_test.py          # 27 browser checks + screenshots
+./.venv/Scripts/python.exe wt_compare_ui_test.py  # 17 browser checks on the comparison view
 ```
 
 The offline suite pins our output to the customer's own production numbers

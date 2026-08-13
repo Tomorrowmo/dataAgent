@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .balance import BalanceLibrary, default_library
 from .features import FEATURE_SPECS, FeatureValue, extract_features
@@ -46,8 +46,9 @@ class CheckConfig:
     #: Per-batch override of the balance rated ranges, when the balance is not
     #: in the library and the user types them in.
     balance_ranges: Dict[str, float] = field(default_factory=dict)
-    #: Nelson-rule window for the cross-run trend flag.
-    trend_window: int = 5
+    #: Nelson run-rule window for the cross-run trend flag (Nelson's own value
+    #: is 7; see app.windtunnel.trend for why a smaller window over-fires).
+    trend_window: int = 7
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -212,7 +213,8 @@ def check_batch(
                          f"{prev.run_no if prev else '—'}。")
 
     batch = BatchResult(runs=results, config=cfg, notes=notes)
-    batch.trends = build_trends(results, window=cfg.trend_window)
+    batch.trends = build_trends(results, window=cfg.trend_window,
+                                rules=active_rules(cfg, rules))
     return batch
 
 
@@ -224,58 +226,152 @@ def load_batch(paths: Sequence[Path | str]) -> List[RunBundle]:
 # ══════════════════════════════════════════════════════════════════════════
 #  Cross-run trend
 # ══════════════════════════════════════════════════════════════════════════
-_NELSON_REF = ("Nelson, L.S. (1984), 'The Shewhart Control Chart — Tests for "
-               "Special Causes', Journal of Quality Technology 16(4), rule 3；"
-               "Western Electric Statistical Quality Control Handbook (1956)")
+def _first_threshold(rules: Optional[Sequence[Rule]], feature: str) -> Optional[float]:
+    """Smallest magnitude at which the rule set stops calling a value normal.
 
-
-def build_trends(results: Sequence[RunResult], *, window: int = 5) -> List[Dict[str, Any]]:
-    """Per-feature series across the batch, with a monotone-run flag.
-
-    The point of this view is the thing no single-run check can see: a
-    quantity that is still inside limits but has moved in one direction for
-    several consecutive runs. That is the classic "special cause" signature.
+    Used as the yardstick for PRACTICAL significance. A drift can be
+    statistically certain and still be irrelevant: on this entry the balance
+    return-to-zero trend is significant at p=0.0005, yet the whole 130-run
+    drift is 0.00024 码 against a first-alarm threshold of 0.003 — 8 % of the
+    limit. Reporting that as an alarm trains the operator to ignore alarms.
     """
+    if not rules:
+        return None
+    edges: List[float] = []
+    for r in rules:
+        if r.feature != feature or not r.enabled:
+            continue
+        for b in r.bands:
+            if b.level == "ok":
+                continue
+            for v in (b.lo, b.hi):
+                if v is not None and abs(v) > 0:
+                    edges.append(abs(v))
+    return min(edges) if edges else None
+
+
+def build_trends(
+    results: Sequence[RunResult],
+    *,
+    window: int = 7,
+    alpha: float = 0.05,
+    hampel_k: float = 3.0,
+    rules: Optional[Sequence[Rule]] = None,
+    practical_fraction: float = 0.1,
+) -> List[Dict[str, Any]]:
+    """Per-feature series across the batch, with statistically honest flags.
+
+    See :mod:`app.windtunnel.trend` for why this is a Mann–Kendall /
+    Hampel / calibrated-Nelson combination rather than "longest monotone run".
+    In short: on the customer's real 130-run entry the naive rule flagged 15 of
+    17 features, because a long random series always contains some monotone
+    stretch. An alarm that always fires is worse than none.
+    """
+    from .trend import analyse_series
+
     if not results:
         return []
     keys = sorted({k for r in results for k in r.features})
     out: List[Dict[str, Any]] = []
+
+    def mach_of(r: RunResult) -> Optional[float]:
+        m = r.meta.get("mach")
+        return round(float(m), 3) if m else None
+
+    machs = sorted({m for m in (mach_of(r) for r in results) if m is not None})
+    multi_mach = len(machs) > 1
+
+    # Does the model configuration itself change across the batch? Grouping by
+    # Mach alone is NOT enough: inside one Mach block this entry sweeps the
+    # elevator from −25° to +25°, which moves the balance loads by an order of
+    # magnitude. Trending a load-driven quantity over that measures the
+    # deflection schedule, exactly as trending it over the Mach sweep measured
+    # the Mach schedule. When the configuration varies, a state-dependent
+    # quantity gets NO trend verdict — its series is still returned for
+    # plotting, and the user is pointed at the comparison view, where the
+    # configuration is held fixed on purpose.
+    config_keys = set()
+    for r in results:
+        st = r.meta.get("state") if isinstance(r.meta.get("state"), dict) else {}
+        if not st:
+            continue          # state unknown (no da file) — cannot claim it differs
+        config_keys.add(tuple(st.get(k) for k in ("BETA", "dz", "dy", "dx")))
+    config_varies = len(config_keys) > 1
+
     for key in keys:
         spec = FEATURE_SPECS.get(key)
-        pts = [(r.run_no, r.features[key].value)
-               for r in results if key in r.features and r.features[key].available]
-        if len(pts) < 2:
+        name = spec.name if spec else key
+        unit = spec.unit if spec else ""
+        dependent = spec.state_dependent if spec else True
+
+        if dependent and config_varies:
+            pts = [(r.run_no, r.features[key].value)
+                   for r in results if key in r.features and r.features[key].available]
+            if len(pts) >= 2:
+                out.append({
+                    "feature": key, "name": name, "unit": unit,
+                    "runs": [rn for rn, _ in pts],
+                    "values": [round(v, 8) for _, v in pts],
+                    "scope": "全批次", "state_dependent": True, "analysed": False,
+                    "flagged": False, "trend": "未判定", "monotone_run": 0,
+                    "outlier_runs": [], "reference": "",
+                    "headline": (
+                        f"本批次包含 {len(config_keys)} 种模型状态（侧滑角/舵偏角不同），"
+                        f"{name}本身就随状态变化，跨车次趋势无法与试验计划区分，"
+                        f"故不做趋势判定。请在「多车次对比」中固定状态后比较。"),
+                    "note": "",
+                    "scope_note": "状态相关量 + 多构型批次 → 不做趋势判定（避免把试验计划当成设备漂移）",
+                    "mann_kendall": {}, "hampel": {}, "nelson": {},
+                })
             continue
-        vals = [v for _, v in pts]
-        rising = falling = 1
-        best_rise = best_fall = 1
-        for i in range(1, len(vals)):
-            if vals[i] > vals[i - 1]:
-                rising += 1
-                falling = 1
-            elif vals[i] < vals[i - 1]:
-                falling += 1
-                rising = 1
-            else:
-                rising = falling = 1
-            best_rise = max(best_rise, rising)
-            best_fall = max(best_fall, falling)
-        run_len = max(best_rise, best_fall)
-        flagged = run_len >= window and len(vals) >= window
-        out.append({
-            "feature": key,
-            "name": spec.name if spec else key,
-            "unit": spec.unit if spec else "",
-            "runs": [rn for rn, _ in pts],
-            "values": [round(v, 6) for v in vals],
-            "monotone_run": run_len,
-            "trend": ("上升" if best_rise >= best_fall else "下降") if flagged else "无显著趋势",
-            "flagged": flagged,
-            "reference": _NELSON_REF if flagged else "",
-            "note": (f"连续 {run_len} 个车次单调"
-                     f"{'上升' if best_rise >= best_fall else '下降'}，"
-                     f"达到趋势判据窗口({window})，建议在超限前介入。") if flagged else "",
-        })
+
+        # A state-dependent quantity in a single-configuration batch may still
+        # only be trended within one Mach.
+        groups: List[Tuple[str, List[RunResult]]]
+        if dependent and multi_mach:
+            groups = [(f"Ma={m:g}", [r for r in results if mach_of(r) == m]) for m in machs]
+        else:
+            groups = [("全批次", list(results))]
+
+        for scope, subset in groups:
+            pts = [(r.run_no, r.features[key].value)
+                   for r in subset if key in r.features and r.features[key].available]
+            if len(pts) < 4:
+                # Say so rather than dropping the series. A quantity that
+                # silently vanishes from the trend view is indistinguishable
+                # from one that was checked and found clean.
+                if pts:
+                    out.append({
+                        "feature": key, "name": name, "unit": unit,
+                        "runs": [rn for rn, _ in pts],
+                        "values": [round(v, 8) for _, v in pts],
+                        "scope": scope, "state_dependent": dependent,
+                        "analysed": False, "flagged": False,
+                        "trend": "未判定", "monotone_run": 0, "outlier_runs": [],
+                        "reference": "",
+                        "headline": (f"{scope} 内只有 {len(pts)} 个可用车次，"
+                                     f"少于趋势检验所需的 4 个，未做判定。"),
+                        "note": "", "scope_note": "样本不足，未做趋势判定",
+                        "mann_kendall": {}, "hampel": {}, "nelson": {},
+                    })
+                continue
+            rep = analyse_series(
+                key, name, unit, [rn for rn, _ in pts], [v for _, v in pts],
+                alpha=alpha, hampel_k=hampel_k, nelson_window=window,
+                practical_limit=_first_threshold(rules, key),
+                practical_fraction=practical_fraction,
+            )
+            d = rep.to_dict()
+            d["scope"] = scope
+            d["state_dependent"] = dependent
+            d["analysed"] = True
+
+            d["scope_note"] = (
+                "零点类量与试验状态无关，可在全批次上直接比较。" if not dependent else
+                (f"本量随试验状态变化，趋势仅在同一马赫数分组（{scope}）内有意义。"
+                 if multi_mach else "本批次为单一马赫数，可直接比较。")
+            )
+            out.append(d)
     return out
 
 
