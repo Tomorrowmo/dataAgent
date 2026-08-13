@@ -17,7 +17,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, BarChart3, CheckCircle2, ChevronRight, CircleSlash, Download,
+  AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
+  ChevronRight as ChevronRightIcon, ChevronUp, CircleSlash, Download,
   FileText, FolderTree, FolderUp, Info, Layers, Loader2, MessageSquare, Play, RefreshCw, Sparkles,
   Trash2, TrendingUp, Wind, XCircle,
 } from 'lucide-react';
@@ -485,32 +486,142 @@ function ImportStep(props: {
 // ══════════════════════════════════════════════════════════════════════════
 //  run picker shared by ②③④
 // ══════════════════════════════════════════════════════════════════════════
-function RunList({ result, activeRun, setActiveRun }: {
+/**
+ * Run picker for steps ②③④.
+ *
+ * It used to render every run as a card in the left column. That is fine for
+ * five runs and unusable for the customer's real entry of 130: the list alone
+ * ran several screens tall and pushed every control below it out of sight —
+ * the axis pickers, the report options, the buttons. Nothing was broken, but
+ * the panel could not be operated.
+ *
+ * So the run is a COMPACT BAR by default — previous / current / next, plus the
+ * current run's verdict — and the full list is opened only when the user wants
+ * to browse. Everything below stays where it is. The expanded list is bounded
+ * and scrolls inside itself, carries a search box and severity filters, and
+ * offers "jump to next problem run", which is what a reviewer actually does on
+ * a long entry.
+ */
+function RunPicker({ result, activeRun, setActiveRun }: {
   result: WtBatchResult | null; activeRun: string; setActiveRun: (s: string) => void;
 }) {
-  if (!result) return null;
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [only, setOnly] = useState<'all' | 'problem' | 'unavailable'>('all');
+
+  const runs = result?.runs ?? [];
+  const idx = Math.max(0, runs.findIndex((r) => r.run_no === activeRun));
+  const cur = runs[idx];
+
+  const filtered = useMemo(() => runs.filter((r) => {
+    if (q && !r.run_no.includes(q)) return false;
+    if (only === 'problem') return r.counts.critical > 0 || r.counts.warning > 0;
+    if (only === 'unavailable') return r.counts.unavailable > 0;
+    return true;
+  }), [runs, q, only]);
+
+  // Open on the current run so a 130-row list does not start at the top.
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector('[data-active="1"]')
+      ?.scrollIntoView({ block: 'center' });
+  }, [open]);
+
+  if (!result || !cur) return null;
+  const step = (d: number) => {
+    const n = runs[Math.min(runs.length - 1, Math.max(0, idx + d))];
+    if (n) setActiveRun(n.run_no);
+  };
+  const nextProblem = () => {
+    const bad = (r: WtRunResult) => r.counts.critical > 0 || r.counts.warning > 0;
+    const after = runs.slice(idx + 1).find(bad) ?? runs.find(bad);
+    if (after) setActiveRun(after.run_no);
+  };
+  const problemCount = runs.filter((r) => r.counts.critical > 0 || r.counts.warning > 0).length;
+
   return (
-    <div className="space-y-1.5">
-      <div className="text-xs font-medium text-ink-600 mb-1">车次</div>
-      {result.runs.map((r) => (
-        <button key={r.run_no} onClick={() => setActiveRun(r.run_no)}
-          className={`w-full text-left rounded-lg border px-3 py-2 transition ${
-            r.run_no === activeRun ? 'border-brand-300 bg-brand-50/50' : 'border-ink-200 bg-white hover:border-ink-300'}`}>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-ink-800">{r.run_no}</span>
-            <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ring-1 ${gradeStyle(r.grade)}`}>
-              {r.grade}
-            </span>
-          </div>
-          <div className="text-[10px] text-ink-400 mt-1 flex gap-2">
-            {r.counts.critical > 0 && <span className="text-red-600">严重 {r.counts.critical}</span>}
-            {r.counts.warning > 0 && <span className="text-amber-600">警告 {r.counts.warning}</span>}
-            {r.counts.notice > 0 && <span className="text-sky-600">关注 {r.counts.notice}</span>}
-            {r.counts.unavailable > 0 && <span>未评定 {r.counts.unavailable}</span>}
-            <span className="text-emerald-600">正常 {r.counts.ok}</span>
-          </div>
+    <div className="rounded-xl border border-ink-200 bg-white">
+      <div className="px-2.5 py-2 flex items-center gap-1.5">
+        <span className="text-xs text-ink-500 shrink-0">车次</span>
+        <button onClick={() => step(-1)} disabled={idx <= 0}
+          title="上一个车次" className="p-1 rounded text-ink-400 hover:bg-ink-100 disabled:opacity-30">
+          <ChevronLeft className="w-4 h-4" />
         </button>
-      ))}
+        <select value={activeRun} onChange={(e) => setActiveRun(e.target.value)}
+          className="flex-1 min-w-0 text-sm font-mono px-1.5 py-1 rounded border border-ink-200 bg-white">
+          {runs.map((r) => (
+            <option key={r.run_no} value={r.run_no}>
+              {r.run_no}　{r.grade}
+            </option>
+          ))}
+        </select>
+        <button onClick={() => step(1)} disabled={idx >= runs.length - 1}
+          title="下一个车次" className="p-1 rounded text-ink-400 hover:bg-ink-100 disabled:opacity-30">
+          <ChevronRightIcon className="w-4 h-4" />
+        </button>
+        <span className="text-[10px] text-ink-400 shrink-0 tabular-nums">{idx + 1}/{runs.length}</span>
+      </div>
+
+      <div className="px-2.5 pb-2 flex items-center gap-1.5 flex-wrap">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded ring-1 ${gradeStyle(cur.grade)}`}>
+          {cur.grade}
+        </span>
+        {cur.counts.critical > 0 && <span className="text-[10px] text-red-600">严重 {cur.counts.critical}</span>}
+        {cur.counts.warning > 0 && <span className="text-[10px] text-amber-600">警告 {cur.counts.warning}</span>}
+        {cur.counts.notice > 0 && <span className="text-[10px] text-sky-600">关注 {cur.counts.notice}</span>}
+        {cur.counts.unavailable > 0 && <span className="text-[10px] text-ink-500">未评定 {cur.counts.unavailable}</span>}
+        <span className="text-[10px] text-emerald-600">正常 {cur.counts.ok}</span>
+        {problemCount > 0 && (
+          <button onClick={nextProblem}
+            className="ml-auto text-[10px] text-brand-600 hover:underline shrink-0"
+            title={`本批次 ${problemCount} 个车次有警告及以上`}>
+            跳到下一个异常 ({problemCount})
+          </button>
+        )}
+      </div>
+
+      <button onClick={() => setOpen(!open)}
+        className="w-full px-2.5 py-1.5 border-t border-ink-100 text-[11px] text-ink-500 hover:bg-ink-50 flex items-center justify-center gap-1">
+        {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        {open ? '收起车次列表' : `展开车次列表（${runs.length}）`}
+      </button>
+
+      {open && (
+        <div className="border-t border-ink-100">
+          <div className="p-2 flex items-center gap-1.5">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索车次号"
+              className="flex-1 min-w-0 text-xs px-2 py-1 rounded border border-ink-200" />
+            {([['all', '全部'], ['problem', '异常'], ['unavailable', '未评定']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setOnly(k)}
+                className={`px-1.5 py-1 rounded text-[11px] shrink-0 ${only === k
+                  ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : 'text-ink-500 border border-ink-200'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Bounded so the panel can never push the controls off screen again. */}
+          <div ref={listRef} className="max-h-[34vh] overflow-y-auto">
+            {filtered.map((r) => (
+              <button key={r.run_no} data-active={r.run_no === activeRun ? '1' : '0'}
+                onClick={() => setActiveRun(r.run_no)}
+                className={`w-full text-left px-2.5 py-1.5 border-b border-ink-50 flex items-center gap-2 ${
+                  r.run_no === activeRun ? 'bg-brand-50/60' : 'hover:bg-ink-50'}`}>
+                <span className="font-mono text-xs text-ink-800">{r.run_no}</span>
+                <span className="ml-auto flex items-center gap-1.5 text-[10px]">
+                  {r.counts.critical > 0 && <span className="text-red-600">严{r.counts.critical}</span>}
+                  {r.counts.warning > 0 && <span className="text-amber-600">警{r.counts.warning}</span>}
+                  {r.counts.unavailable > 0 && <span className="text-ink-400">未{r.counts.unavailable}</span>}
+                  <span className={`px-1 py-0.5 rounded ring-1 ${gradeStyle(r.grade)}`}>{r.grade}</span>
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <div className="text-xs text-ink-400 p-4 text-center">没有符合条件的车次</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -596,8 +707,8 @@ function ResultStep({ result, run, activeRun, setActiveRun, batchId, llmOn }: {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
-      <div className="xl:col-span-1 space-y-4">
-        <RunList result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
+      <div className="xl:col-span-1 space-y-3">
+        <RunPicker result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
         <div className="rounded-lg border border-ink-200 bg-white p-3">
           <div className="text-xs font-medium text-ink-700 mb-1.5">批次汇总</div>
           <div className={`text-sm px-2 py-1 rounded ring-1 inline-block ${gradeStyle(result.summary.grade)}`}>
@@ -805,8 +916,8 @@ function CurveStep({ batchId, result, activeRun, setActiveRun, llmOn }: {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
-      <div className="xl:col-span-1 space-y-4">
-        <RunList result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
+      <div className="xl:col-span-1 space-y-3">
+        <RunPicker result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
         <div className="rounded-lg border border-ink-200 bg-white p-3 space-y-3">
           <label className="block text-xs text-ink-600">
             横轴参数
@@ -1014,8 +1125,8 @@ function ReportStep({ batchId, result, activeRun, setActiveRun, llmOn }: {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
-      <div className="xl:col-span-1 space-y-4">
-        <RunList result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
+      <div className="xl:col-span-1 space-y-3">
+        <RunPicker result={result} activeRun={activeRun} setActiveRun={setActiveRun} />
         <div className="rounded-lg border border-ink-200 bg-white p-3 space-y-3">
           <div className="text-xs text-ink-600">
             报告类型

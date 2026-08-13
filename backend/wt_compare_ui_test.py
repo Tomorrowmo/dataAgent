@@ -60,7 +60,11 @@ def main() -> int:
         expect(page.get_by_role("heading", name="风洞试验过程质量检查")).to_be_visible()
         page.get_by_role("button", name="多车次对比").click()
         page.wait_for_selector("text=对比绘图", timeout=30000)
-        page.wait_for_timeout(2500)
+        # Loading 130 runs + the coverage cross-check takes a moment; wait for
+        # the count to land instead of guessing a sleep.
+        page.wait_for_function(
+            "() => /共 [1-9]\d* 个车次/.test(document.body.innerText)", timeout=120000)
+        page.wait_for_timeout(500)
         body = page.inner_text("body")
         check("进入多车次对比", "对比绘图" in body and "状态矩阵" in body)
         check("加载 130 个车次", "共 130 个车次" in body, body[body.find("共 "):body.find("共 ") + 22])

@@ -124,8 +124,11 @@ def main() -> int:
         check("91837 判为不合格（与甲方跟班记录一致）", "不合格" in body)
 
         print("\n=== ② 运算结果查看 ===")
-        page.get_by_role("button", name="91837", exact=False).first.click()
-        page.wait_for_timeout(600)
+        # The run list is now a compact picker (a <select> plus an expandable
+        # list) — a 130-run entry made the old per-run card list push every
+        # control off screen.
+        page.locator("select").first.select_option("91837")
+        page.wait_for_timeout(800)
         body = page.inner_text("body")
         check("天平零飘 0.0989 显示在界面上", "0.098912" in body or "0.0989" in body,
               "界面读数")
@@ -143,6 +146,21 @@ def main() -> int:
             page.wait_for_timeout(400)
             check("多车次趋势面板出现", "多车次趋势" in page.inner_text("body"))
         shot(page, "05-trend")
+
+        # The picker must not bury the controls, whatever the run count.
+        page.mouse.wheel(0, -6000)
+        page.wait_for_timeout(300)
+        check("车次选择器紧凑，批次汇总仍在首屏",
+              "批次汇总" in page.inner_text("body") and "展开车次列表" in page.inner_text("body"))
+        page.get_by_role("button", name="展开车次列表", exact=False).click()
+        page.wait_for_timeout(500)
+        # placeholder text never appears in innerText — check the element.
+        check("展开后可搜索与按异常筛选",
+              page.get_by_placeholder("搜索车次号").count() > 0
+              and "跳到下一个异常" in page.inner_text("body"),
+              f"搜索框 {page.get_by_placeholder('搜索车次号').count()} 个")
+        page.get_by_role("button", name="收起车次列表").click()
+        page.wait_for_timeout(300)
 
         print("\n=== ③ 气动曲线绘制 ===")
         page.get_by_role("button", name="气动曲线绘制").click()
