@@ -48,6 +48,8 @@ from ..windtunnel.features import FEATURE_SPECS
 from ..windtunnel.frames import bundle_to_frame, frame_schema_hint, wide_table
 from ..windtunnel.knowledge import EXTRACTOR_CONTRACT, FILE_FORMAT_DOC, feature_catalog
 from ..windtunnel.parsers import BALANCE_UNITS, detect_kind, detect_run_no, group_by_run, load_bundle
+from ..windtunnel.plan import coverage as plan_coverage
+from ..windtunnel.plan import parse_plan, plan_state_matches, PlanEntry
 from ..windtunnel.pipeline import (
     CheckConfig,
     check_batch,
@@ -236,6 +238,7 @@ async def create_batch(
 
     d = _batch_dir(user.id, b.id)
     saved: List[Path] = []
+    plan_files: List[Path] = []
     rejected: List[str] = []
     for f in files:
         fname = Path(f.filename or "").name
@@ -258,6 +261,13 @@ async def create_batch(
             except zipfile.BadZipFile:
                 rejected.append(fname + "（压缩包损坏）")
             continue
+        # A 车次表 spreadsheet is not a run file but IS meaningful — it says
+        # what was supposed to be flown, which is the only way to notice a
+        # missing run. Previously it was silently rejected as junk.
+        if fname.lower().endswith((".xlsx", ".xls")):
+            (d / fname).write_bytes(data)
+            plan_files.append(d / fname)
+            continue
         if detect_kind(fname) is None:
             rejected.append(fname)
             continue
@@ -275,6 +285,12 @@ async def create_batch(
         })
     b.storage_dir = str(d)
     b.runs = runs
+    for pf in plan_files:
+        tbl = parse_plan(pf)
+        if tbl.ok:
+            b.plan = tbl.to_dict()
+            break
+        rejected.append(f"{pf.name}（不是可识别的车次表）")
     b.name = name or (f"{runs[0]['run_no']}~{runs[-1]['run_no']}" if len(runs) > 1
                       else (runs[0]["run_no"] if runs else "空批次"))
     if rejected:
@@ -508,6 +524,54 @@ async def state_matrix(
         "without_baseline": [b_["label"] for b_ in out if not b_["baseline_run"]],
         "note": "没有 δ 全零基准车次的区块无法计算舵效增量与差量对比。",
     }
+
+
+@router.get("/batches/{batch_id}/coverage")
+async def plan_coverage_api(
+    batch_id: int, user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Plan vs actual: what was scheduled, what arrived, what is missing.
+
+    Also cross-checks each run's parsed state against the plan. A disagreement
+    means either the file carries the wrong state or the plan is stale — and
+    neither side can reveal it alone.
+    """
+    b = await _get_batch(session, user, batch_id)
+    if not b.plan:
+        return {"ok": False,
+                "error": "本批次没有导入车次表。把 车次表.xlsx 和数据一起拖进来即可。"}
+    entries = [PlanEntry(run_no=e["run_no"], mach=e.get("mach"),
+                         state=e.get("state") or {}, cell_runs=e.get("cell_runs") or [],
+                         note=e.get("note", ""), row_label=e.get("row_label", ""))
+               for e in (b.plan.get("entries") or [])]
+    from ..windtunnel.plan import PlanTable
+    tbl = PlanTable(entries=entries, not_flown=b.plan.get("not_flown") or [],
+                    machs=b.plan.get("machs") or [], notes=b.plan.get("notes") or [],
+                    source=b.plan.get("source", ""), sheet=b.plan.get("sheet", ""))
+    bundles = _bundles_of(b)
+    cov = plan_coverage(tbl, [x.run_no for x in bundles])
+
+    by_run = {x.run_no: x for x in bundles}
+    mismatches = []
+    for e in entries:
+        x = by_run.get(e.run_no)
+        if x is None:
+            continue
+        st = wt_compare.run_state(x)
+        if not plan_state_matches(e, st, x.mach):
+            mismatches.append({
+                "run_no": e.run_no, "plan": e.state, "plan_mach": e.mach,
+                "actual": st, "actual_mach": x.mach,
+                "note": (f"车次 {e.run_no} 的文件状态与车次表不一致，"
+                         f"请核对是文件写错还是计划表未更新。"),
+            })
+    cov["state_mismatches"] = mismatches
+    cov["plan_source"] = tbl.source
+    cov["ok"] = True
+    if not mismatches and cov["present_count"]:
+        cov["state_check"] = (f"{cov['present_count']} 个车次的文件状态与车次表逐项一致。")
+    return cov
 
 
 class CompareRunsReq(BaseModel):

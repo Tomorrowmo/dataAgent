@@ -38,6 +38,19 @@ PASSED: List[str] = []
 FAILED: List[str] = []
 
 
+
+def _client(base: str) -> httpx.Client:
+    """HTTP client that survives uvicorn's keep-alive timeout.
+
+    A long request (the AI narration takes ~10 s) leaves the pool's other
+    connections idle past uvicorn's 5 s keep-alive, so the server closes them.
+    Reusing one then fails with WinError 10054 mid-write. `retries` on the
+    transport re-establishes the connection instead — this is a client-pool
+    artefact, not a server fault, and a real browser handles it the same way.
+    """
+    return httpx.Client(base_url=base, timeout=600.0,
+                        transport=httpx.HTTPTransport(retries=3))
+
 def check(name: str, cond: bool, detail: str = "") -> None:
     (PASSED if cond else FAILED).append(name if cond else f"{name}: {detail}")
     print(f"  [{'PASS' if cond else 'FAIL'}] {name}" + (f"  — {detail}" if detail else ""))
@@ -51,7 +64,7 @@ def main() -> int:
     if not DATA.exists():
         print(f"找不到测试数据：{DATA}")
         return 2
-    c = httpx.Client(base_url=BASE, timeout=600.0)
+    c = _client(BASE)
 
     section("0. 登录并清理上一轮残留")
     r = c.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})

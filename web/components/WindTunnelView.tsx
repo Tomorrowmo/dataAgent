@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronRight, CircleSlash, Download,
-  FileText, FolderUp, Info, Layers, Loader2, MessageSquare, Play, RefreshCw, Sparkles,
+  FileText, FolderTree, FolderUp, Info, Layers, Loader2, MessageSquare, Play, RefreshCw, Sparkles,
   Trash2, TrendingUp, Wind, XCircle,
 } from 'lucide-react';
 import {
@@ -72,6 +72,7 @@ export default function WindTunnelView() {
   const [err, setErr] = useState('');
   const [llmOn, setLlmOn] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dirRef = useRef<HTMLInputElement>(null);
 
   const batch = useMemo(() => batches.find((b) => b.id === batchId) ?? null, [batches, batchId]);
   const run = useMemo<WtRunResult | null>(
@@ -104,19 +105,89 @@ export default function WindTunnelView() {
       .catch(() => setResult(null));
   }, [batchId]);
 
-  async function upload(files: FileList | null) {
-    if (!files || !files.length) return;
+  /** Walk a dropped directory tree. `dataTransfer.files` is EMPTY for a folder
+   *  drop — only `items[].webkitGetAsEntry()` sees it — so without this, dragging
+   *  a folder did nothing at all and said nothing either. The tunnel's data is
+   *  organised as ca/ da/ temp/, so folder drops are the normal case, not an
+   *  edge case. */
+  async function filesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
+    const entries: FileSystemEntry[] = [];
+    for (const item of Array.from(dt.items ?? [])) {
+      const e = item.webkitGetAsEntry?.();
+      if (e) entries.push(e);
+    }
+    if (!entries.some((e) => e.isDirectory)) return Array.from(dt.files ?? []);
+
+    const out: File[] = [];
+    const readDir = (dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> =>
+      new Promise((resolve) => {
+        const reader = dir.createReader();
+        const acc: FileSystemEntry[] = [];
+        const step = () => reader.readEntries((batch) => {
+          if (!batch.length) { resolve(acc); return; }
+          acc.push(...batch);
+          step();               // readEntries returns at most 100 per call
+        }, () => resolve(acc));
+        step();
+      });
+    const walk = async (entry: FileSystemEntry): Promise<void> => {
+      if (entry.isFile) {
+        const f = await new Promise<File | null>((resolve) =>
+          (entry as FileSystemFileEntry).file(resolve, () => resolve(null)));
+        if (f) out.push(f);
+      } else if (entry.isDirectory) {
+        for (const child of await readDir(entry as FileSystemDirectoryEntry)) {
+          await walk(child);
+        }
+      }
+    };
+    for (const e of entries) await walk(e);
+    return out;
+  }
+
+  /** ``ca246490`` / ``pa91837模板(公开)`` / a zip / the 车次表 spreadsheet —
+   *  same rule the backend uses. The plan table is not run data but it IS
+   *  meaningful: it is the only thing that can show a MISSING run. */
+  const looksLikeRunFile = (name: string) =>
+    /^(ca|pa|da)\d{3,}/i.test(name)
+    || /\.(zip|xlsx|xls)$/i.test(name);
+
+  async function upload(files: FileList | File[] | null) {
+    const all = files ? Array.from(files) : [];
+    if (!all.length) {
+      // Never fail silently. An import that quietly does nothing is worse than
+      // an error, because the user has no idea whether it worked.
+      setErr('没有读到任何文件。如果你拖的是文件夹，请用「选择文件夹」按钮，'
+           + '或把文件夹里的文件一起拖进来。');
+      return;
+    }
+    // Pre-filter on the client: a picked directory usually carries plenty of
+    // unrelated files, and shipping them all just to have the server reject
+    // them wastes the upload. Say how many were skipped rather than dropping
+    // them quietly.
+    const list = all.filter((f) => looksLikeRunFile(f.name));
+    const skipped = all.length - list.length;
+    if (!list.length) {
+      setErr(`选中的 ${all.length} 个文件里没有识别到车次文件。`
+           + '车次文件应形如 ca246490 / pa246490 / da246490（无扩展名），或是一个 .zip 包。');
+      return;
+    }
     setBusy('upload'); setErr('');
+    setProgress([`正在上传 ${list.length} 个车次文件`
+                 + (skipped ? `（已跳过 ${skipped} 个无关文件）` : '') + '…']);
     try {
-      const b = await api.wtCreateBatch(Array.from(files));
+      const b = await api.wtCreateBatch(list);
       // Switch to the new batch FIRST. Listing is a second round-trip; doing it
       // before the switch left the view (and 开始检查) pointing at the previous
       // batch for the duration of that request.
       setBatchId(b.id);
       setResult(null);
       if (b.error) setErr(b.error);
+      setProgress([`已导入 ${b.runs.length} 个车次`
+                   + (skipped ? `（跳过 ${skipped} 个无关文件）` : '')
+                   + '，请在下方勾选检查项后点「开始检查」。']);
       await loadBatches();
-    } catch (e) { setErr(String(e)); } finally { setBusy(''); }
+    } catch (e) { setErr(String(e)); setProgress([]); } finally { setBusy(''); }
   }
 
   async function startCheck() {
@@ -188,7 +259,9 @@ export default function WindTunnelView() {
             tailContracted={tailContracted} setTailContracted={setTailContracted}
             busy={busy} progress={progress}
             onUploadClick={() => fileRef.current?.click()}
-            onDrop={upload} onStart={startCheck}
+            onPickFolder={() => dirRef.current?.click()}
+            onDropTransfer={async (dt) => upload(await filesFromDataTransfer(dt))}
+            onStart={startCheck}
             onDelete={async (id) => {
               if (!confirm('删除该批次及其上传的原始文件？')) return;
               await api.wtDeleteBatch(id);
@@ -218,6 +291,12 @@ export default function WindTunnelView() {
 
       <input ref={fileRef} data-testid="wt-file-input" type="file" multiple className="hidden"
         onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+      {/* Directory picker. `webkitdirectory` is non-standard but is what every
+          Chromium/WebKit browser implements; React needs it spelled this way. */}
+      <input ref={dirRef} data-testid="wt-dir-input" type="file" multiple className="hidden"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {...({ webkitdirectory: '', directory: '' } as any)}
+        onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
     </div>
   );
 }
@@ -231,12 +310,13 @@ function ImportStep(props: {
   selected: Set<string>; setSelected: (s: Set<string>) => void;
   tailContracted: boolean; setTailContracted: (b: boolean) => void;
   busy: string; progress: string[];
-  onUploadClick: () => void; onDrop: (f: FileList | null) => void;
+  onUploadClick: () => void; onPickFolder: () => void;
+  onDropTransfer: (dt: DataTransfer) => void;
   onStart: () => void; onDelete: (id: number) => void; onGoKb: () => void;
 }) {
   const { batches, batchId, setBatchId, batch, rules, selected, setSelected,
-    tailContracted, setTailContracted, busy, progress, onUploadClick, onDrop,
-    onStart, onDelete, onGoKb } = props;
+    tailContracted, setTailContracted, busy, progress, onUploadClick, onPickFolder,
+    onDropTransfer, onStart, onDelete, onGoKb } = props;
   const [dragging, setDragging] = useState(false);
 
   const toggle = (id: string) => {
@@ -251,19 +331,30 @@ function ImportStep(props: {
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); onDrop(e.dataTransfer.files); }}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); onDropTransfer(e.dataTransfer); }}
           className={`rounded-xl border-2 border-dashed p-8 text-center transition ${
             dragging ? 'border-brand-400 bg-brand-50' : 'border-ink-200 bg-white'}`}>
           <FolderUp className="w-8 h-8 mx-auto text-ink-300 mb-2" />
-          <div className="text-sm text-ink-700">把本车次的 ca / pa / da 文件拖进来，或</div>
-          <button onClick={onUploadClick} disabled={busy === 'upload'}
-            className="mt-2 px-4 py-1.5 rounded-lg bg-brand-600 text-white text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
-            {busy === 'upload' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderUp className="w-4 h-4" />}
-            选择文件
-          </button>
+          <div className="text-sm text-ink-700">把车次文件或整个文件夹拖进来，或</div>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <button onClick={onUploadClick} disabled={busy === 'upload'}
+              className="px-4 py-1.5 rounded-lg bg-brand-600 text-white text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
+              {busy === 'upload' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderUp className="w-4 h-4" />}
+              选择文件
+            </button>
+            <button onClick={onPickFolder} disabled={busy === 'upload'}
+              className="px-4 py-1.5 rounded-lg border border-brand-300 text-brand-700 text-sm inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="选一个目录，其下所有子目录里的车次文件都会被导入">
+              <FolderTree className="w-4 h-4" /> 选择文件夹
+            </button>
+          </div>
           <div className="text-[11px] text-ink-400 mt-2 leading-relaxed">
             文件无扩展名，按 <code className="font-mono">ca/pa/da + 车次号</code> 前缀自动识别并分组；
             GBK 编码自动处理；也支持整包 .zip 一次导入。<br />
+            <span className="text-ink-500">数据按 ca/ da/ temp/ 分目录存放时，直接选最外层目录即可</span>
+            —— 会递归读取全部子目录，不匹配前缀的文件自动忽略并列出。<br />
+            <span className="text-ink-500">目录里如果有「车次表.xlsx」会一并读入</span>
+            ，用于核对计划与实到、找出缺失车次。<br />
             多个连续车次一起导入时，天平零飘会自动按车次链逐次比对。
           </div>
         </div>

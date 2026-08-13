@@ -364,6 +364,8 @@ export const api = {
   // ── 多车次对比（20260225《车次及马赫数绘图》需求）────────────────────
   wtRuns: (id: number) => request<WtRunList>('GET', `/wt/batches/${id}/runs`),
   wtMatrix: (id: number) => request<WtMatrix>('GET', `/wt/batches/${id}/matrix`),
+  /** Plan vs actual — only the 车次表 can show a run that is missing. */
+  wtCoverage: (id: number) => request<WtCoverage>('GET', `/wt/batches/${id}/coverage`),
   wtCompareRuns: (id: number, body: {
     run_nos: string[]; x: string; ys: string[];
     baseline?: string | null; mode?: string; sort_by?: string[];
@@ -937,4 +939,22 @@ export interface WtRepeatability {
   notes: string[];
   reference: string;
   table: { coefficient: string; s_r: number; two_s_r: number; dof: number }[];
+}
+
+export interface WtCoverage {
+  ok: boolean;
+  error?: string;
+  planned?: number;
+  present?: string[];
+  present_count?: number;
+  missing?: { run_no: string; mach: number | null; label: string; note: string }[];
+  superseded?: { run_no: string; mach: number | null; label: string; replaced_by: string[]; note: string }[];
+  unplanned?: string[];
+  not_flown_count?: number;
+  machs?: number[];
+  notes?: string[];
+  headline?: string;
+  state_mismatches?: { run_no: string; plan: Record<string, number | null>; actual: Record<string, number | null>; note: string }[];
+  state_check?: string;
+  plan_source?: string;
 }

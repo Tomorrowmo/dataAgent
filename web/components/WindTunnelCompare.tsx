@@ -26,8 +26,8 @@ import {
   ScatterChart, Tooltip, XAxis, YAxis, ZAxis,
 } from 'recharts';
 import {
-  api, type WtCompare, type WtEffectiveness, type WtMatrix, type WtResponse,
-  type WtRunList, type WtSymmetry,
+  api, type WtCompare, type WtCoverage, type WtEffectiveness, type WtMatrix,
+  type WtResponse, type WtRunList, type WtSymmetry,
 } from '@/lib/api';
 
 const COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2',
@@ -44,6 +44,7 @@ export default function WindTunnelCompare({ batchId }: { batchId: number | null 
   const [pane, setPane] = useState<Pane>('chart');
   const [runs, setRuns] = useState<WtRunList | null>(null);
   const [matrix, setMatrix] = useState<WtMatrix | null>(null);
+  const [cov, setCov] = useState<WtCoverage | null>(null);
   const [sel, setSel] = useState<string[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
@@ -79,6 +80,7 @@ export default function WindTunnelCompare({ batchId }: { batchId: number | null 
       const [r, m] = await Promise.all([api.wtRuns(batchId), api.wtMatrix(batchId)]);
       setRuns(r);
       setMatrix(m);
+      api.wtCoverage(batchId).then(setCov).catch(() => setCov(null));
     } catch (e) { setErr(String(e)); }
   }, [batchId]);
 
@@ -471,6 +473,60 @@ export default function WindTunnelCompare({ batchId }: { batchId: number | null 
       {/* ── 状态矩阵 ── */}
       {pane === 'matrix' && matrix && (
         <div className="space-y-3">
+          {/* Plan vs actual. Nothing in the run files can tell you a run is
+              missing — only the 车次表 can. */}
+          {cov?.ok ? (
+            <div className="rounded-xl border border-ink-200 bg-white p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-ink-800">计划与实到核对</span>
+                <span className="text-[11px] text-ink-400">来源：{cov.plan_source}</span>
+              </div>
+              <div className="text-xs text-ink-700">{cov.headline}</div>
+              {cov.state_check && (
+                <div className="text-[11px] text-emerald-700">✓ {cov.state_check}</div>
+              )}
+              {!!cov.missing?.length && (
+                <div className="text-xs">
+                  <div className="font-medium text-amber-800 mb-0.5">计划内但没有数据</div>
+                  <ul className="list-disc pl-4 space-y-0.5 text-ink-600">
+                    {cov.missing.map((m) => (
+                      <li key={m.run_no}>
+                        <span className="font-mono">{m.run_no}</span>
+                        （Ma={m.mach ?? '?'}，{m.label}）{m.note ? ` — ${m.note}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!cov.superseded?.length && (
+                <div className="text-xs">
+                  <div className="font-medium text-ink-700 mb-0.5">重做前的废弃车次（属正常）</div>
+                  <ul className="list-disc pl-4 space-y-0.5 text-ink-500">
+                    {cov.superseded.map((m) => (
+                      <li key={m.run_no}>{m.note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!cov.state_mismatches?.length && (
+                <div className="text-xs">
+                  <div className="font-medium text-red-700 mb-0.5">文件状态与车次表不一致</div>
+                  <ul className="list-disc pl-4 space-y-0.5 text-ink-600">
+                    {cov.state_mismatches.map((m) => <li key={m.run_no}>{m.note}</li>)}
+                  </ul>
+                </div>
+              )}
+              {!!cov.notes?.length && (
+                <div className="text-[11px] text-ink-500">
+                  车次表备注：{cov.notes.join('；')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[11px] text-ink-400">
+              {cov?.error ?? '未导入车次表，无法核对计划与实到。'}
+            </div>
+          )}
           <p className="text-xs text-ink-500">
             {matrix.block_count} 个 (Ma, β) 区块。{matrix.note}
             {matrix.without_baseline.length > 0 && (

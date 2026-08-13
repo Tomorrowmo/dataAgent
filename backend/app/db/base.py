@@ -75,6 +75,14 @@ async def init_db() -> None:
             if "pipeline_state" not in conv_cols:
                 await conn.execute(text("ALTER TABLE conversations ADD COLUMN pipeline_state JSON DEFAULT '{}'"))
 
+            # Test plan attached to a wind-tunnel batch.
+            try:
+                wt_cols = await conn.run_sync(_existing_cols, "wt_batches")
+                if wt_cols and "plan" not in wt_cols:
+                    await conn.execute(text("ALTER TABLE wt_batches ADD COLUMN plan JSON DEFAULT '{}'"))
+            except Exception:  # table not created yet on a fresh DB — create_all handles it
+                pass
+
             # Free-form canvas layout on flow_templates.
             tpl_cols = await conn.run_sync(_existing_cols, "flow_templates")
             if "graph" not in tpl_cols:

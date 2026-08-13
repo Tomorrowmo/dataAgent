@@ -292,6 +292,9 @@ class WtBatch(Base):
     storage_dir: Mapped[str] = mapped_column(String(1024), default="")
     #: [{run_no, files:{ca,pa,da}, meta:{…}}, …]
     runs: Mapped[list] = mapped_column(JSON, default=list)
+    #: The 车次表 (test plan) if one was uploaded with the batch. Holds what was
+    #: SUPPOSED to be flown — the only way to see a condition that is missing.
+    plan: Mapped[dict] = mapped_column(JSON, default=dict)
     #: CheckConfig as saved by the user.
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     #: BatchResult.to_dict() from the last successful check.
