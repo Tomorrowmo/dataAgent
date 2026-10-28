@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}damos 日记本{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+           margin: 0; background: #f5f6f8; color: #222; }
+    header { background: #2b3a55; color: #fff; padding: 12px 24px;
+             display: flex; align-items: center; justify-content: space-between; }
+    header .brand { font-weight: 600; }
+    header .right { display: flex; align-items: center; gap: 16px; font-size: 14px; }
+    header a { color: #cdd7ea; text-decoration: none; }
+    .container { max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .btn { display: inline-block; padding: 6px 14px; border-radius: 6px; border: none;
+           background: #2b6cb0; color: #fff; cursor: pointer; text-decoration: none; font-size: 14px; }
+    .btn.gray { background: #888; }
+    .btn.danger { background: #c0392b; }
+    input[type=text], textarea { width: 100%; padding: 8px; border: 1px solid #ccc;
+            border-radius: 6px; font-size: 14px; font-family: inherit; }
+    textarea { min-height: 180px; }
+    label { display: block; margin: 12px 0 4px; font-size: 14px; color: #555; }
+    .entry-title { font-size: 16px; font-weight: 600; margin: 0; }
+    .entry-title a { color: #2b3a55; text-decoration: none; }
+    .entry-meta { color: #999; font-size: 12px; margin-top: 4px; }
+    .muted { color: #999; }
+    code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; }
+    pre.content { white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="brand">📔 damos 日记本（OIDC 演示）</span>
+    {% if user %}
+    <span class="right">
+      <span>{{ user.name or user.email or user.id }}{% if user.is_admin %} · 管理员{% endif %}</span>
+      <a href="{{ url_for('logout') }}">登出</a>
+    </span>
+    {% endif %}
+  </header>
+  <div class="container">
+    {% block body %}{% endblock %}
+  </div>
+</body>
+</html>

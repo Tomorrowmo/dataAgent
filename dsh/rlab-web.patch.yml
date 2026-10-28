@@ -1,0 +1,16 @@
+# RLab Cortex 浏览器半 —— 只在 Web 组合上叠加。
+#
+# 为 algo_run 与 wt_findings 提供专门的工具视图。默认的通用工具行会把所有内容
+# 摊成一段文本，而这个领域里「已评定但不合格」和「未评定」必须一眼可分——把
+# 未评定读成合格，正是风洞模块要防的那个失效。
+#
+# 与 rlab.patch.yml 分开，是因为 loader 会 import 每个条目的 Node 半，不管当前
+# 组合有没有前端。headless 里叠这个会直接启动失败（包没装），所以两层分开：
+#
+#   dsh --profile headless --patch rlab.patch.yml                          # 只要工具
+#   dsh --profile web      --patch rlab.patch.yml --patch rlab-web.patch.yml
+#
+# 用前先把 @rlab/dsh-client-ui-dataagent 装进该 profile。
+- insert:
+    - id: client-ui-dataagent
+      name: '@rlab/dsh-client-ui-dataagent'

@@ -56,6 +56,17 @@ class Settings(BaseSettings):
     # both fold into deepseek-v4-flash (non-thinking / thinking mode).
     deepseek_model: str = "deepseek-v4-flash"
 
+    # ── Skill packs (用户自带技能包:一份 SKILL.md + 可执行工具) ──────────────
+    # 安装目录:<skills_dir>/<owner_id>/<slug>/  —— 每个用户互相隔离。
+    skills_dir: str = "./data/skills"
+    # 技能包工具的墙钟超时。比普通算法宽:技能包常做重活(读整目录、跑求解器后处理)。
+    skill_timeout_seconds: int = 120
+    skills_max_pack_mb: int = 64
+    skills_max_files: int = 2000
+    # runtime: "command" 允许技能包直接跑自带可执行程序 —— 这是真正的信任边界:
+    # 那段代码不过静态检查、不受 import 白名单约束。默认关闭,需显式打开且仅管理员可装。
+    skills_allow_command_runtime: bool = False
+
     sandbox_cpu_seconds: int = 10
     sandbox_memory_mb: int = 512
     sandbox_timeout_seconds: int = 30
@@ -66,6 +77,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def skills_path(self) -> Path:
+        p = Path(self.skills_dir).resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
     @property
     def upload_path(self) -> Path:

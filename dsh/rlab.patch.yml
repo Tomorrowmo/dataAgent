@@ -1,0 +1,17 @@
+# RLab Cortex 叠加层 —— 迁移第 2 阶段
+#
+# 把数据分析工具插进任意 dsh profile，不改 dsh 一行代码。这是刻意的：dsh 自己声明
+# 处于开发者预览、会有破坏性变更，树外插件 + patch 叠加让升级只需要重跑构建，而不是
+# 每次都解合并冲突。
+#
+# 用法：
+#   dsh --profile headless --patch <此文件> "把 3 号数据集用 savgol 滤一下"
+#
+# baseUrl 必须是回环地址——计算面 sidecar 没有认证，绑到可路由地址就等于把一个
+# 无鉴权的数据面公开出去，插件加载时会直接拒绝。
+- insert:
+    - id: tool-dataagent
+      name: '@rlab/dsh-tool-dataagent'
+      config:
+        baseUrl: http://127.0.0.1:8078
+        timeoutMs: 120000

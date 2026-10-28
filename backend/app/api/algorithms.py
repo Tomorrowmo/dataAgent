@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..algorithms import registry
+from ..algorithms.lookup import latest_algorithm
 from ..db.models import Algorithm, Dataset, Run, User
 from ..sandbox import executor as sandbox_executor
 from ..sandbox.validator import validate_algorithm_code
@@ -16,6 +17,38 @@ from ..services.datasets import _persist_dataset, load_dataset_df
 from .deps import current_user, get_db, llm_for
 
 router = APIRouter(prefix="/algorithms", tags=["algorithms"])
+
+#: `Algorithm.returns` is a String(32) column, so a META that declares `returns`
+#: as anything else reaches SQLite as an unbindable object and the request dies
+#: with an unhandled 500. AI-authored META does this readily — describing the
+#: output shape as a dict is a natural thing to write — so the field is checked
+#: here and reported as an actionable 400 instead.
+_RETURNS_MAX = 32
+
+
+def _meta_str(meta: Dict[str, Any], key: str, limit: int) -> Optional[str]:
+    """Read a META field that must be a short string, or explain why it isn't.
+
+    Returning ``None`` means "absent, use the default". A wrong *type* is an
+    error rather than something to coerce: silently turning a dict into
+    ``"dataframe"`` would drop what the author meant and leave them wondering
+    why the saved algorithm disagrees with its own source.
+    """
+    if key not in meta or meta[key] is None:
+        return None
+    value = meta[key]
+    if not isinstance(value, str):
+        raise HTTPException(
+            400,
+            f"META['{key}'] 必须是字符串，收到 {type(value).__name__}。"
+            f"例如 returns 应写 'dataframe' / 'scalar' / 'figure'，"
+            f"输出结构的说明请放进 description。",
+        )
+    value = value.strip()
+    if len(value) > limit:
+        raise HTTPException(
+            400, f"META['{key}'] 过长（{len(value)} 字符，上限 {limit}）。")
+    return value or None
 
 
 class AlgoSummary(BaseModel):
@@ -256,26 +289,35 @@ async def save_algorithm(
     except Exception as e:
         raise HTTPException(400, f"could not extract META: {e}") from e
 
-    slug = (body.slug or meta.get("slug") or "").strip()
+    slug = (body.slug or _meta_str(meta, "slug", 120) or "").strip()
     if not slug:
         raise HTTPException(400, "slug is required (provide in body or in META)")
 
+    # Checked before the row is built so a malformed META fails as a 400 naming
+    # the field, not as a database binding error.
+    returns = _meta_str(meta, "returns", _RETURNS_MAX) or "dataframe"
+    meta_name = _meta_str(meta, "name", 255)
+    meta_category = _meta_str(meta, "category", 64)
+    meta_params = meta.get("params_schema")
+    if meta_params is not None and not isinstance(meta_params, dict):
+        raise HTTPException(
+            400,
+            f"META['params_schema'] 必须是对象，收到 {type(meta_params).__name__}。")
+
     # If same slug already exists for this user, bump version.
-    existing = (await session.execute(
-        select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == user.id)
-    )).scalar_one_or_none()
+    existing = await latest_algorithm(session, slug, user.id)
     version = (existing.version + 1) if existing else 1
 
     row = Algorithm(
         owner_id=user.id,
         slug=slug,
-        name=body.name or meta.get("name") or slug,
-        category=body.category or meta.get("category") or "custom",
-        description=body.description or meta.get("description") or "",
+        name=body.name or meta_name or slug,
+        category=body.category or meta_category or "custom",
+        description=body.description or str(meta.get("description") or ""),
         source=body.source,
         code=body.code,
-        params_schema=body.params_schema if body.params_schema is not None else (meta.get("params_schema") or {}),
-        returns=meta.get("returns") or "dataframe",
+        params_schema=body.params_schema if body.params_schema is not None else (meta_params or {}),
+        returns=returns,
         is_public=body.is_public,
         is_verified=bool(body.test_report.get("all_tests_passed", False)) if body.test_report else False,
         test_report=body.test_report or {},
@@ -340,9 +382,7 @@ async def confirm_generated(
     """User's decision on an AI-generated tool the agent auto-registered (as a
     draft) and used this turn: keep it in the library (optionally with edited
     name / description / params schema), or discard (delete) it."""
-    row = (await session.execute(
-        select(Algorithm).where(Algorithm.slug == body.slug, Algorithm.owner_id == user.id)
-    )).scalar_one_or_none()
+    row = await latest_algorithm(session, body.slug, user.id)
     if row is None:
         raise HTTPException(404, "tool not found (maybe already discarded)")
     if body.keep:
@@ -385,9 +425,7 @@ async def refine_tool(
         raise HTTPException(400, "no LLM key configured. Set a key in Settings.")
     if not body.instruction.strip():
         raise HTTPException(400, "refine requires an instruction")
-    row = (await session.execute(
-        select(Algorithm).where(Algorithm.slug == body.slug, Algorithm.owner_id == user.id)
-    )).scalar_one_or_none()
+    row = await latest_algorithm(session, body.slug, user.id)
     if row is None:
         raise HTTPException(404, "tool not found")
 
@@ -450,7 +488,7 @@ async def suggest_params(
     if spec:
         name, desc, schema = spec.name, spec.description, spec.params_schema
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await latest_algorithm(session, body.slug)
         if row is None:
             raise HTTPException(404, "algorithm not found")
         name, desc, schema = row.name, row.description, row.params_schema or {}
@@ -530,7 +568,7 @@ async def explain_error(
     if spec:
         name, desc, schema = spec.name, spec.description, spec.params_schema
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await latest_algorithm(session, body.slug)
         name, desc, schema = (row.name, row.description, row.params_schema or {}) if row else (body.slug, "", {})
 
     ds_ctx = ""
@@ -586,7 +624,7 @@ async def explain_result(
     if spec:
         name, desc = spec.name, spec.description
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await latest_algorithm(session, body.slug)
         name, desc = (row.name, row.description) if row else (body.slug, "")
 
     ds_ctx = ""
@@ -643,7 +681,7 @@ async def run_to_dataset(
         res = registry.execute_builtin(body.slug, df, body.params)
         label = spec.name
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await latest_algorithm(session, body.slug)
         if row is None:
             raise HTTPException(404, "algorithm not found")
         res = registry.execute_code(row.code, df, body.params)
@@ -691,9 +729,7 @@ async def run_algorithm(
         result = registry.execute_builtin(body.slug, df, body.params)
         algo_id = None
     else:
-        row = (await session.execute(
-            select(Algorithm).where(Algorithm.slug == body.slug)
-        )).scalar_one_or_none()
+        row = await latest_algorithm(session, body.slug)
         if row is None:
             raise HTTPException(404, "algorithm not found")
         if row.owner_id not in (None, user.id) and not row.is_public:

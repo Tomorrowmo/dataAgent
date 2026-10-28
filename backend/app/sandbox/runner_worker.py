@@ -85,12 +85,22 @@ def main() -> int:
     raw = sys.stdin.read()
     req = json.loads(raw)
 
-    mode: str = req.get("mode", "algorithm")  # "algorithm" | "parser"
-    code: str = req["code"]
+    mode: str = req.get("mode", "algorithm")  # "algorithm" | "parser" | "skill"
+    code: str = req.get("code", "")
     params: Dict[str, Any] = req.get("params", {}) or {}
     input_path: str = req.get("input_path", "")
     output_path: str = req.get("output_path", "")
     parser_file: str = req.get("parser_file", "")  # input file for parser mode
+    # ── skill mode ───────────────────────────────────────────────────────────
+    # A skill pack is real code on disk, often several modules. So instead of
+    # exec-ing one string we put the pack root on sys.path and import it, then
+    # call the declared entry point. `probe` imports WITHOUT calling — used at
+    # install time to prove the entry point resolves before anything runs.
+    pack_dir: str = req.get("pack_dir", "")
+    entry_module: str = req.get("entry_module", "")
+    entry_func: str = req.get("entry_func", "")
+    needs_data: bool = bool(req.get("needs_data", True))
+    probe: bool = bool(req.get("probe", False))
     cpu_seconds: int = int(req.get("cpu_seconds", 10))
     memory_mb: int = int(req.get("memory_mb", 512))
 
@@ -160,17 +170,43 @@ def main() -> int:
         }
         ns: Dict[str, Any] = {"__builtins__": safe_builtins, "__name__": "__sandbox__"}
         with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-            exec(compile(code, "<algorithm>", "exec"), ns, ns)
-            if mode == "parser":
-                if "parse" not in ns or not callable(ns["parse"]):
-                    raise RuntimeError("parser must define a top-level `parse(path)` function")
-                if not parser_file:
-                    raise RuntimeError("parser_file path missing in sandbox request")
-                result = ns["parse"](parser_file, **params)
+            if mode == "skill":
+                # A skill pack is the user own code, installed deliberately and
+                # statically checked at install time. Restricted builtins do not
+                # apply to imported modules anyway, so isolation here is the
+                # subprocess itself: no network (patched above), a wall-clock
+                # timeout, and the installer check over every file in the pack.
+                import importlib
+
+                if not pack_dir or not os.path.isdir(pack_dir):
+                    raise RuntimeError(f"skill pack directory not found: {pack_dir}")
+                sys.path.insert(0, pack_dir)
+                os.chdir(pack_dir)  # so open("assets/x.csv") inside the pack works
+                module = importlib.import_module(entry_module)
+                fn = getattr(module, entry_func, None)
+                if fn is None or not callable(fn):
+                    raise RuntimeError(
+                        f"skill module `{entry_module}` has no callable `{entry_func}` "
+                        "(check the `entry` field in skill.yaml: `module:function`)"
+                    )
+                if probe:
+                    result = {"probe": "ok", "entry": f"{entry_module}:{entry_func}"}
+                elif needs_data:
+                    result = fn(df, **params)
+                else:
+                    result = fn(**params)
             else:
-                if "run" not in ns or not callable(ns["run"]):
-                    raise RuntimeError("algorithm must define a top-level `run(df, **params)` function")
-                result = ns["run"](df, **params)
+                exec(compile(code, "<algorithm>", "exec"), ns, ns)
+                if mode == "parser":
+                    if "parse" not in ns or not callable(ns["parse"]):
+                        raise RuntimeError("parser must define a top-level `parse(path)` function")
+                    if not parser_file:
+                        raise RuntimeError("parser_file path missing in sandbox request")
+                    result = ns["parse"](parser_file, **params)
+                else:
+                    if "run" not in ns or not callable(ns["run"]):
+                        raise RuntimeError("algorithm must define a top-level `run(df, **params)` function")
+                    result = ns["run"](df, **params)
 
         summary = _summarize(result)
 

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h3 style="margin-top:0;">{{ '编辑日记' if entry else '新建日记' }}</h3>
+  <form method="post">
+    <label>标题</label>
+    <input type="text" name="title" required value="{{ entry['title'] if entry else '' }}">
+    <label>内容</label>
+    <textarea name="content" required>{{ entry['content'] if entry else '' }}</textarea>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn gray" href="{{ url_for('index') }}">取消</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

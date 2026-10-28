@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..algorithms.lookup import latest_algorithm
 from ..core.config import get_settings
 from ..db.models import Algorithm, User, WtBalance, WtBatch, WtReport, WtRule
 from ..windtunnel import ai as wt_ai
@@ -1149,9 +1150,7 @@ async def save_extractor(
     slug = req.slug.strip()
     if not slug:
         raise HTTPException(400, "slug 不能为空")
-    dup = (await session.execute(
-        select(Algorithm).where(Algorithm.owner_id == user.id, Algorithm.slug == slug)
-    )).scalar_one_or_none()
+    dup = await latest_algorithm(session, slug, user.id)
     if dup is not None:
         dup.code = req.code
         dup.name = req.name

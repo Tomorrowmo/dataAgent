@@ -389,3 +389,53 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+
+class SkillPack(Base):
+    """A user-authored SKILL PACK: knowledge (SKILL.md) + executable tools.
+
+    This is the "user brings their own expertise" boundary. An algorithm is a
+    single callable; a skill pack is a whole capability — the prose that says
+    WHEN and HOW to use it, plus one or more tools (python modules inside the
+    pack, or a bundled executable) that do the work.
+
+    The row is a POINTER + INDEX: the files live on disk under
+    <skills_dir>/<owner_id>/<slug>/, and everything the chat agent needs to
+    decide *whether to open this pack* (description / when_to_use / triggers /
+    tool one-liners) is denormalized here so a turn costs one cheap query and
+    the full SKILL.md body is only read on demand (progressive disclosure).
+    """
+
+    __tablename__ = "skill_packs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    slug: Mapped[str] = mapped_column(String(120), index=True)  # e.g. "battery-health"
+    name: Mapped[str] = mapped_column(String(255))
+    version: Mapped[str] = mapped_column(String(32), default="0.1.0")
+    description: Mapped[str] = mapped_column(Text, default="")
+    # The single most important field for routing: plain language "use this when…".
+    when_to_use: Mapped[str] = mapped_column(Text, default="")
+    triggers: Mapped[list] = mapped_column(JSON, default=list)  # keyword hints
+    category: Mapped[str] = mapped_column(String(64), default="skill")
+
+    root: Mapped[str] = mapped_column(String(1024), default="")  # install directory
+    manifest: Mapped[dict] = mapped_column(JSON, default=dict)   # normalized manifest
+    tools: Mapped[list] = mapped_column(JSON, default=list)      # normalized tool specs
+    doc_chars: Mapped[int] = mapped_column(Integer, default=0)   # size of SKILL.md body
+    files: Mapped[list] = mapped_column(JSON, default=list)      # relative file list
+
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "sandbox" = python tools, static-checked + subprocess isolated (default).
+    # "command" = the pack ships its own executable; NOT statically checkable.
+    trust: Mapped[str] = mapped_column(String(16), default="sandbox")
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # all checks passed
+    install_report: Mapped[dict] = mapped_column(JSON, default=dict)   # every install stage
+    checksum: Mapped[str] = mapped_column(String(64), default="")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )

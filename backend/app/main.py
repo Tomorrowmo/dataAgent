@@ -98,6 +98,7 @@ def _warmup(app: "FastAPI") -> None:
         from .api import feedback as feedback_api
         from .api import mappings as mappings_api
         from .api import oidc as oidc_api
+        from .api import skills as skills_api
         from .api import templates as templates_api
         from .api import windtunnel as windtunnel_api
 
@@ -112,6 +113,7 @@ def _warmup(app: "FastAPI") -> None:
         app.include_router(algorithms_api.router, prefix="/api")
         app.include_router(chat_api.router, prefix="/api")
         app.include_router(templates_api.router, prefix="/api")
+        app.include_router(skills_api.router, prefix="/api")
         app.include_router(feedback_api.router, prefix="/api")
         app.include_router(mappings_api.router, prefix="/api")
         app.include_router(windtunnel_api.router, prefix="/api")

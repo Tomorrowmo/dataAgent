@@ -1,0 +1,30 @@
+# 开发环境 LLM 叠加层。
+#
+# 现有部署用的是一个 OpenAI 兼容端点（阿里云 DashScope compatible-mode）而不是
+# DeepSeek 官方端点，模型是 qwen-plus。dsh 的 deepseek 适配器就是走 chat-completions
+# 的，换端点只是配置问题——这正是 ctx.llm 作为能力 seam 的意义。
+#
+# 不含任何密钥：key 只通过 apiKeyEnv 指向的环境变量解析（DEEPSEEK_API_KEY）。
+#
+# thinking: disabled —— qwen-plus 不认 DeepSeek 的 reasoning_effort 字段，锁掉思考
+# 档位可以避免把它序列化进请求。
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    baseURL: https://dashscope.aliyuncs.com/compatible-mode/v1
+    thinking: disabled
+    # 适配器默认输出上限是 256000（按 DeepSeek 自家模型定的），qwen-plus 只接受
+    # [1, 32768]，不改就会在第一次请求上以 INVALID_REQUEST 失败。
+    maxTokens: 8192
+    models:
+      - id: qwen-plus
+        name: Qwen Plus
+        description: OpenAI 兼容端点上的开发用模型
+        maxTokens: 8192
+        contextWindow: 131072
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-official
+    model: qwen-plus

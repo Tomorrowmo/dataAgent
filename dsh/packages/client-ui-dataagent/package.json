@@ -1,0 +1,50 @@
+{
+  "name": "@rlab/dsh-client-ui-dataagent",
+  "description": "Browser half of RLab Cortex: keyed tool views for the data-analysis and wind-tunnel tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "bundle": "tsdown"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-client-runtime": "link:../../../../../GitBubProj/DeepseekHarness/packages/client/runtime",
+    "@deepseek-ai/dsh-client-ui-slots": "link:../../../../../GitBubProj/DeepseekHarness/packages/client/ui-slots",
+    "@deepseek-ai/dsh-client-ui-tool": "link:../../../../../GitBubProj/DeepseekHarness/packages/client/ui-tool",
+    "@deepseek-ai/dsh-client-ui-layout": "link:../../../../../GitBubProj/DeepseekHarness/packages/client/ui-layout"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "typescript": "^5.7.0"
+  }
+}

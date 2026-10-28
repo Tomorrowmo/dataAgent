@@ -401,7 +401,171 @@ export const api = {
     request<{ ok: boolean; text?: string; error?: string }>('POST', '/wt/ask', { batch_id, run_no, question }),
   wtSummarize: (batch_id: number, run_no: string) =>
     request<{ ok: boolean; text?: string; error?: string }>('POST', '/wt/summarize', { batch_id, run_no }),
+
+  // ── 技能包(用户自带的方法 + 执行程序)────────────────────────────────
+  listSkills: () => request<SkillPack[]>('GET', '/skills'),
+  getSkill: (slug: string) => request<SkillDetail>('GET', `/skills/${encodeURIComponent(slug)}`),
+  skillDoc: (slug: string, file?: string) =>
+    request<SkillDoc>('GET', `/skills/${encodeURIComponent(slug)}/doc${file ? `?file=${encodeURIComponent(file)}` : ''}`),
+  /** Install from a zip OR a server-side folder path. dry_run 只验不装。 */
+  installSkill: (opts: { file?: File; path?: string; enable?: boolean; allowCommand?: boolean; dryRun?: boolean }) => {
+    const fd = new FormData();
+    if (opts.file) fd.append('file', opts.file);
+    if (opts.path) fd.append('path', opts.path);
+    fd.append('enable', String(opts.enable ?? true));
+    fd.append('allow_command', String(opts.allowCommand ?? false));
+    fd.append('dry_run', String(opts.dryRun ?? false));
+    return request<SkillInstallResp>('POST', '/skills/install', fd);
+  },
+  setSkillEnabled: (slug: string, enabled: boolean, is_public?: boolean) =>
+    request<SkillPack>('POST', `/skills/${encodeURIComponent(slug)}/enable`, { enabled, is_public }),
+  deleteSkill: (slug: string) =>
+    request<{ ok: boolean }>('DELETE', `/skills/${encodeURIComponent(slug)}`),
+  runSkillTool: (slug: string, tool: string, body: { dataset_id?: number | null; params?: Record<string, unknown>; save_as?: string }) =>
+    request<SkillRunResult>('POST', `/skills/${encodeURIComponent(slug)}/tools/${encodeURIComponent(tool)}/run`, body),
+  /** 按所选数据集的真实列名推荐参数(确定性,不调 LLM)。 */
+  suggestSkillParams: (slug: string, tool: string, dataset_id: number | null) =>
+    request<SkillSuggestion>('POST', `/skills/${encodeURIComponent(slug)}/tools/${encodeURIComponent(tool)}/suggest`, { dataset_id }),
+  skillSpec: () => request<{ ok: boolean; content: string; error?: string }>('GET', '/skills/spec'),
+  /** 教系统一条列映射:「这份数据里的 X 列就是<某个量>」。教一次,以后任何包都认。 */
+  teachColumnMapping: (body: { pattern: string; role: string; label?: string; note?: string; match_type?: string }) =>
+    request<{ id: number; pattern: string; role: string; label: string }>('POST', '/mappings', {
+      match_type: 'normalized', ...body,
+    }),
+  /** 一键装(或只验)内置示例包 —— 新手不用先自己写一个。 */
+  installSkillExample: (example = 'battery-health', dryRun = false) => {
+    const fd = new FormData();
+    fd.append('example', example);
+    fd.append('dry_run', String(dryRun));
+    return request<SkillInstallResp>('POST', '/skills/install-example', fd);
+  },
+  /** Download an example pack as a zip (needs the Bearer token → fetch + blob). */
+  downloadSkillTemplate: async (example = 'battery-health') => {
+    const token = getToken();
+    const r = await fetch(`/api/skills/template?example=${encodeURIComponent(example)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!r.ok) throw new Error(`下载失败 HTTP ${r.status}`);
+    return { blob: await r.blob(), filename: `${example}.zip` };
+  },
 };
+
+// ── 技能包类型 ──────────────────────────────────────────────────────────
+export interface SkillTool {
+  slug: string;
+  name: string;
+  description: string;
+  runtime: 'python' | 'command';
+  needs_data: boolean;
+  params_schema: Record<string, { type?: string; description?: string; required?: boolean; default?: unknown; enum?: unknown[] }>;
+  returns: string;
+}
+
+export interface SkillPack {
+  id: number;
+  slug: string;
+  name: string;
+  version: string;
+  description: string;
+  when_to_use: string;
+  triggers: string[];
+  category: string;
+  enabled: boolean;
+  is_public: boolean;
+  is_verified: boolean;
+  /** sandbox=检查过的 python;script=通用包自带脚本;command=自带可执行程序 */
+  trust: 'sandbox' | 'script' | 'command';
+  doc_chars: number;
+  tool_count: number;
+  tools: SkillTool[];
+  files: string[];
+  root: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SkillDoc {
+  skill?: string;
+  name?: string;
+  content: string;
+  truncated?: boolean;
+  references?: string[];
+  file?: string;
+  error?: string;
+}
+
+export interface SkillDetail extends SkillPack {
+  install_report: SkillInstallReport;
+  manifest: Record<string, unknown>;
+  doc: SkillDoc;
+}
+
+export interface SkillInstallStage {
+  stage: string;
+  ok: boolean;
+  detail: string;
+  data: Record<string, unknown>;
+}
+
+/** 「这个包到底能不能用」的结论,安装和试运行都会带上。 */
+export interface SkillVerdict {
+  installable: boolean;
+  blockers: string[];
+  gives: string;
+  knowledge_only: boolean;
+  doc_chars: number;
+  tools_total: number;
+  tools_ok: string[];
+  tools_failed: string[];
+  command_tools: string[];
+  self_check_passed: boolean;
+  warnings: string[];
+  fixes: string[];
+}
+
+export interface SkillInstallReport {
+  ok: boolean;
+  stages: SkillInstallStage[];
+  warnings: string[];
+  duration_s: number;
+  verified?: boolean;
+  verdict?: SkillVerdict;
+  manifest?: Record<string, unknown>;
+}
+
+export interface SkillInstallResp {
+  ok: boolean;
+  skill: SkillPack | null;
+  report: SkillInstallReport;
+}
+
+/** 推荐参数的结果:填什么、为什么、这份数据到底合不合适。 */
+export interface SkillSuggestion {
+  params: Record<string, unknown>;
+  options: Record<string, string[]>;
+  explanations: Record<string, string>;
+  missing: string[];
+  fit: 'good' | 'partial' | 'mismatch';
+  note: string;
+  columns: string[];
+  /** 没认出来的量:界面据此提供「告诉系统哪一列是它」的入口(教一次,以后都认)。 */
+  teachable: { param: string; role: string; wanted: string; label: string }[];
+  /** 这次推荐用到的、之前教过的映射规则 role。 */
+  used_rules: string[];
+}
+
+export interface SkillRunResult {
+  status: 'ok' | 'error';
+  error: string;
+  duration_ms: number;
+  summary: Record<string, unknown>;
+  logs: string;
+  result_rows: number;
+  hint?: string;
+  /** 例如:这个包已停用,AI 不会主动用它,本次是手动触发。 */
+  warning?: string;
+  derived_dataset?: { id: number; name: string; rows: number; columns: number };
+}
 
 // ── 风洞领域类型 ────────────────────────────────────────────────────────
 export type WtLevel = 'ok' | 'notice' | 'warning' | 'critical';

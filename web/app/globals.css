@@ -65,3 +65,23 @@ html, body {
   margin-top: 0.6rem; margin-bottom: 0.6rem; }
 .wt-report :where(blockquote) { border-left: 3px solid #c7d2fe; padding: 0.25rem 0.75rem;
   margin: 0.75rem 0; color: #52525b; background: #f8fafc; }
+
+/* 技能包说明书。和风洞报告同一个道理:它是一份 DOCUMENT。
+   之前这里用的是 `prose prose-sm` —— 但本项目没装 @tailwindcss/typography,
+   那两个类什么都不做,于是整份 SKILL.md 塌成一堵没有层级的文字墙。 */
+.skill-doc { max-width: 74ch; }
+.skill-doc :where(h1) { font-size: 1.3rem; margin-top: 0; margin-bottom: 0.6rem; font-weight: 650; }
+.skill-doc :where(h2) { font-size: 1.05rem; margin-top: 1.6rem; margin-bottom: 0.5rem;
+  font-weight: 600; padding-bottom: 0.25rem; border-bottom: 1px solid #e4e4e7; }
+.skill-doc :where(h3) { font-size: 0.95rem; margin-top: 1.1rem; margin-bottom: 0.3rem; font-weight: 600; }
+.skill-doc :where(p) { margin-top: 0.6rem; line-height: 1.8; }
+.skill-doc :where(ul, ol) { margin-top: 0.4rem; margin-bottom: 0.4rem; padding-left: 1.4rem; }
+.skill-doc :where(li) { margin-top: 0.25rem; line-height: 1.75; }
+.skill-doc :where(li > p) { margin-top: 0.2rem; }
+.skill-doc :where(strong) { font-weight: 650; color: #27272a; }
+.skill-doc :where(table) { display: block; overflow-x: auto; max-width: 100%;
+  margin-top: 0.7rem; margin-bottom: 0.7rem; font-size: 0.9em; }
+.skill-doc :where(blockquote) { border-left: 3px solid #c0c6e8; padding: 0.3rem 0.8rem;
+  margin: 0.8rem 0; color: #52525b; background: #f7f8fc; }
+.skill-doc :where(hr) { margin: 1.5rem 0; border-color: #e4e4e7; }
+.skill-doc :where(code) { font-size: 0.88em; }

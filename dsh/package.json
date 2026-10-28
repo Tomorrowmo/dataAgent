@@ -1,0 +1,15 @@
+{
+  "name": "@rlab/dsh-workspace",
+  "description": "RLab Cortex plugins for DeepSeek Harness — kept out of the dsh tree on purpose",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "tsc -b packages/tool-dataagent",
+    "clean": "tsc -b --clean packages/tool-dataagent"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

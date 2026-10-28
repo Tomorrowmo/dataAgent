@@ -1,0 +1,160 @@
+{
+  "_about": {
+    "purpose": "风洞模块的验收契约。数字来自甲方跟班记录与真实车次文件，与实现无关。任何重写（换框架、换前端、换语言）都必须让本文件全绿，这是「能力一个不缺」唯一可验证的定义。",
+    "authority": "甲方 20260129 跟班记录 + FromC 真实车次文件",
+    "frozen_at": "2026-08-17",
+    "frozen_from": "wt_api_test.py / wt_matrix_test.py 在 feat/windtunnel-quality-check 分支上的通过态",
+    "consumed_by": "wt_contract_test.py",
+    "rule": "只增不改。数字若需变更，必须先说明甲方口径变了，而不是实现算出了别的结果。"
+  },
+
+  "template_batch": {
+    "_about": "5 个连续车次 91836~91840，甲方模板数据，含 ca/pa/da 三类文件。",
+    "min_files": 12,
+    "run_count": 5,
+    "run_nos": ["91836", "91837", "91838", "91839", "91840"],
+
+    "grades": {
+      "_about": "甲方跟班记录的判级。startswith 语义用于「合格」「合格(需关注)」这类带后缀的等级。",
+      "91836": { "match": "startswith", "value": "合格", "source": "甲方记录：优秀" },
+      "91837": { "match": "equals", "value": "不合格", "source": "甲方记录：不合格" },
+      "91838": { "match": "equals", "value": "不合格", "source": "甲方记录：不合格" },
+      "91839": { "match": "startswith", "value": "合格", "source": "甲方记录：优秀" },
+      "91840": { "match": "startswith", "value": "合格", "source": "甲方记录：优秀" }
+    },
+
+    "measurements": {
+      "_about": "逐位对齐甲方生产数字。tol 是绝对容差。path 从 run 对象根部开始。",
+      "91837_zero_drift": {
+        "run_no": "91837",
+        "path": ["features", "balance_zero_drift", "value"],
+        "expect": 0.0989,
+        "tol": 0.0005,
+        "label": "天平零飘",
+        "source": "甲方记录同值"
+      },
+      "91837_return_zero": {
+        "run_no": "91837",
+        "path": ["features", "balance_return_zero", "value"],
+        "expect": 0.1002,
+        "tol": 0.0005,
+        "label": "不回零",
+        "source": "甲方记录同值"
+      },
+      "91837_mz_load_ratio": {
+        "run_no": "91837",
+        "path": ["features", "balance_load_ratio", "extras", "per_unit", "Mz"],
+        "expect": 28.902,
+        "tol": 0.01,
+        "label": "MZ 载荷占量程比 (%)",
+        "source": "甲方记录同值"
+      }
+    },
+
+    "honest_gaps": {
+      "_about": "诚实缺口：输入不足时必须报未评定，绝不能默认判正常。这是产品最核心的信任承诺。",
+      "91836_zero_drift_unavailable": {
+        "run_no": "91836",
+        "path": ["features", "balance_zero_drift", "status"],
+        "expect": "unavailable",
+        "reason": "首车次没有前一车次可比，零飘无从算起"
+      }
+    },
+
+    "comparison_chain": {
+      "_about": "零飘是车次间比对量，比对链必须按车次号顺序正确串起，错位会让每个读数都归错车次。",
+      "91837": "91836",
+      "91838": "91837",
+      "91839": "91838",
+      "91840": "91839"
+    },
+
+    "min_trend_series": 5
+  },
+
+  "real_run": {
+    "_about": "真实车次 246490，含 da 文件，用于曲线与超量程未评定路径。",
+    "run_no": "246490",
+    "file_count": 3,
+    "grade_domain": ["合格", "合格(需关注)", "有条件合格", "不合格"],
+
+    "load_ratio_unavailable_before_balance": {
+      "path": ["features", "balance_load_ratio", "status"],
+      "expect": "unavailable",
+      "reason": "天平 N636CB01 不在载荷库中，量程未知则占比不可算——必须报未评定而非编造"
+    },
+    "load_ratio_ok_after_balance": {
+      "path": ["features", "balance_load_ratio", "status"],
+      "expect": "ok",
+      "reason": "补录天平量程后同一项应转为可评定，证明未评定是缺输入而非缺能力"
+    },
+    "balance_entry": {
+      "name": "N636CB01",
+      "ranges": { "My": 16.25, "Z": 273.16, "Mz": 19.91, "Y": 349.33, "Mx": 20.38, "Q": 147.64 },
+      "note": "按 pa 文件天平标定矩阵主对角线量级录入，仅用于连通性验证"
+    },
+
+    "curve": {
+      "x": "ALPHA",
+      "ys": ["CAF", "CN", "CZ", "CAB", "MX", "MY", "MZ"],
+      "series_count": 7,
+      "cn_linearity_min": 0.99,
+      "cn_slope_vs_da_tolerance_pct": 5.0,
+      "_note": "CN 对攻角在线性段应高度线性；斜率须与 da 文件自带的 CNα 相符，这是与试验方自算结果的交叉验证。"
+    }
+  },
+
+  "knowledge_base": {
+    "_about": "规则即数据。这些下限保证内置知识没有在重构中被悄悄丢掉。",
+    "min_rules": 18,
+    "min_enabled_rules": 18,
+    "min_features": 17,
+    "seed_balance": "n628e",
+    "builtin_rules_have_refs": true,
+    "_enabled_note": "min_enabled_rules 是 UI「检查项默认全部勾选」在 API 层的等价物：默认参与检查的集合 = enabled 的规则集合。"
+  },
+
+  "finding_contract": {
+    "_about": "非 ok 的判定必须四段齐全，报告要把这四项直接列给试验人员。此前只在浏览器 DOM 上被断言过。",
+    "required_fields_on_non_ok": ["verdict", "cause", "impact", "action"],
+    "levels_considered_non_ok": ["notice", "warning", "critical"],
+    "seed_band_totals": { "total_bands": 48, "bands_with_full_four": 30, "ok_bands": 18 },
+    "_source": "app/windtunnel/rules.py Band/Finding；app/windtunnel/report.py 逐条渲染四段"
+  },
+
+  "matrix_entry": {
+    "_about": "真实 130 车次入口，多车次对比能力的验收基线。",
+    "run_count": 130,
+    "mach_count": 6,
+    "block_count": 12,
+    "min_coefficient_columns": 18,
+    "every_block_has_zero_deflection_baseline": true,
+    "deflection_series": {
+      "mach": 1.741,
+      "beta": 0,
+      "filter": "仅升降舵 δz 单独偏转",
+      "expect_runs": 6,
+      "with_baseline": 7
+    },
+    "legend_state_keys": ["Ma", "β", "φ", "δz", "δy", "δx"],
+    "legend_sorted_by": "δz 升序",
+    "physics": {
+      "_about": "物理正确性断言。它们比数值断言更难造假——实现算错时这些先崩。",
+      "delta_cn_monotonic_in_dz": "ΔCN 随 δz 单调递增（舵效方向正确）",
+      "baseline_delta_is_zero": "基准车次对自身的差量恒为 0",
+      "transonic_drag_rise": "CAF 从 Ma0.8 到 Ma1.05 明显增大（跨声速阻力上升）",
+      "effectiveness_falls_supersonic": "舵效超声速段低于跨声速段"
+    },
+    "symmetry_criterion": "判异与同批次水平比，而非与 0 比",
+    "no_repeat_runs": "本批次无重复车次时如实报告，不编造重复性精度指标"
+  },
+
+  "report": {
+    "min_sections": 8,
+    "must_contain": ["判据与依据", "未评定项说明", "气动曲线与规律结论"],
+    "summary_must_contain": ["各车次评级"],
+    "shift_record_filename_prefix": "246490_跟班记录",
+    "shift_record_must_contain": ["【车次 246490】"],
+    "edit_roundtrip": "编辑内容必须原样出现在导出文件中"
+  }
+}

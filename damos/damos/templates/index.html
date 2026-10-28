@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h3 style="margin-top:0;">当前用户信息（来自认证中心 id_token）</h3>
+  <p class="muted" style="font-size:14px;line-height:1.9;margin:0;">
+    sub（用户唯一 id）：<code>{{ user.id }}</code><br>
+    name：{{ user.name or '（空）' }}<br>
+    email：{{ user.email or '（空）' }}<br>
+    is_admin：{{ user.is_admin }}
+  </p>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3 style="margin:0;">我的日记</h3>
+    <a class="btn" href="{{ url_for('entry_new') }}">+ 新建</a>
+  </div>
+</div>
+
+{% for e in entries %}
+<div class="card">
+  <p class="entry-title"><a href="{{ url_for('entry_view', entry_id=e['id']) }}">{{ e['title'] }}</a></p>
+  <p class="entry-meta">更新于 {{ e['updated_at'] }}</p>
+</div>
+{% else %}
+<div class="card muted">还没有日记，点「新建」写第一篇吧。</div>
+{% endfor %}
+{% endblock %}

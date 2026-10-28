@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="card">
+  <h3 style="margin-top:0;">{{ entry['title'] }}</h3>
+  <p class="entry-meta">创建 {{ entry['created_at'] }} · 更新 {{ entry['updated_at'] }}</p>
+  <pre class="content">{{ entry['content'] }}</pre>
+  <div style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+    <a class="btn" href="{{ url_for('entry_edit', entry_id=entry['id']) }}">编辑</a>
+    <form method="post" action="{{ url_for('entry_delete', entry_id=entry['id']) }}"
+          onsubmit="return confirm('确定删除这篇日记？');" style="margin:0;">
+      <button class="btn danger" type="submit">删除</button>
+    </form>
+    <a class="btn gray" href="{{ url_for('index') }}">返回</a>
+  </div>
+</div>
+{% endblock %}

@@ -29,6 +29,16 @@ robocopy $root $stage /E /XD $xd /XF $xf /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
 $global:LASTEXITCODE = 0
 
+# docs/ is excluded wholesale, but the skill-pack authoring spec is served by the
+# app itself (GET /api/skills/spec) — without it the 技能包 page has no "写法规范".
+# Copy just that folder back in.
+$docsSkills = Join-Path $root 'docs\skills'
+if (Test-Path $docsSkills) {
+  robocopy $docsSkills (Join-Path $stage 'docs\skills') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy(docs\skills) failed with code $LASTEXITCODE" }
+  $global:LASTEXITCODE = 0
+}
+
 # ── helper scripts shipped inside the bundle ────────────────────────────────
 # .bat files: ASCII only (Chinese in echo breaks under the default code page);
 # all Chinese guidance lives in 使用说明.txt (UTF-8).

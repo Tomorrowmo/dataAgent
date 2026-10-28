@@ -125,7 +125,7 @@ def _humanize_error(exc: Exception, df: Optional[pd.DataFrame]) -> Optional[str]
     return None
 
 
-def _coerce_params(spec: AlgorithmSpec, params: Dict[str, Any]) -> Dict[str, Any]:
+def coerce_params(schema: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce LLM-supplied params to the types the function actually expects.
 
     The LLM emits JSON by hand and routinely gets the *container* wrong even
@@ -140,7 +140,7 @@ def _coerce_params(spec: AlgorithmSpec, params: Dict[str, Any]) -> Dict[str, Any
     every caller — chat agent, REST run endpoints, template replay — healed by
     one rule, per the "defensive layers, not per-symptom patches" principle.
     """
-    schema = spec.params_schema or {}
+    schema = schema or {}
     out: Dict[str, Any] = {}
     for k, v in (params or {}).items():
         t = (schema.get(k) or {}).get("type") if isinstance(schema.get(k), dict) else None
@@ -179,6 +179,10 @@ def _coerce_params(spec: AlgorithmSpec, params: Dict[str, Any]) -> Dict[str, Any
         except (TypeError, ValueError):
             out[k] = v  # leave it alone; the tool's own error is more informative
     return out
+
+
+def _coerce_params(spec: AlgorithmSpec, params: Dict[str, Any]) -> Dict[str, Any]:
+    return coerce_params(spec.params_schema or {}, params)
 
 
 def execute_builtin(

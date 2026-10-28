@@ -1,47 +1,26 @@
-"""Cross-run trend and outlier detection.
+"""跨车次趋势与离群检测。
 
-WHY THIS REPLACES THE FIRST ATTEMPT
------------------------------------
-The first version flagged a feature when the **longest monotone run anywhere in
-the series** reached a window of 5. On a 5-run batch that is harmless. On the
-customer's real 130-run entry it flagged **15 of 17 features** — a false-alarm
-machine, and worse than no detector at all, because an alarm that always fires
-trains the operator to ignore alarms.
+对同一特征在多个车次上的取值序列，用三个检测器分别回答三个不同的问题，
+并且只在检验本身显著时才升级为告警，其余结果作为背景信息列出。
 
-The error is the multiple-comparisons one: a purely random series of length *n*
-almost surely contains *some* monotone run of length 5. The probability that a
-given position starts an increasing run of length *k* is ``1/k!``, so the
-expected number of such runs in *n* points is roughly ``(n-k+1)·2/k!`` counting
-both directions — for n=130, k=5 that is ≈2.1 expected runs by chance alone.
-Flagging on "≥1 occurrence" is therefore guaranteed noise.
+mann_kendall
+    整条序列是否存在单调漂移。Mann–Kendall 检验统计同向与反向的数据对，
+    换算为 z 值，不要求数据服从某种分布，对个别离群点不敏感；配合 Theil–Sen
+    斜率给出“每车次漂移多少个特征单位”，据此判断漂移是否会在序列结束前越限。
 
-Three detectors are used instead, each answering a different question:
+hampel
+    某一个车次是否偏离其相邻车次。以移动中位数为基准，按 k·1.4826·MAD 判定。
+    中位数与 MAD 都是稳健统计量，离群点不会掩盖自己；移动窗口又保证真实趋势
+    不会被报成一串离群点。
 
-``mann_kendall``
-    *Is the whole series drifting?* The Mann–Kendall test (Mann 1945;
-    Kendall 1975) is the standard nonparametric test for a monotone trend: it
-    counts concordant minus discordant pairs and normalises to a z-score, so it
-    needs no distributional assumption and tolerates the odd outlier. Paired
-    with the Theil–Sen slope estimator (Theil 1950; Sen 1968) it also says *how
-    fast* — in feature units per run — which is what decides whether the drift
-    will breach a limit before the entry ends.
+nelson
+    是否出现游程规则违例，且次数多于随机序列的期望。采用 Nelson 规则 3，
+    窗口取 7，同时报告“观测次数/期望次数”，使读者能判断违例是否有意义。
 
-``hampel``
-    *Is any single run out of line with its neighbours?* The Hampel identifier
-    (Davies & Gather 1993) compares each point with a moving median and flags
-    it at ``k·1.4826·MAD``. Median/MAD are robust, so an outlier does not mask
-    itself, and the moving window means a genuine trend is not reported as a
-    string of outliers.
-
-``nelson``
-    *Is there a run-rule violation, and more than chance would give?* Nelson
-    rule 3 (Nelson 1984; Western Electric Handbook 1956) at its proper window
-    of 7, reported as **observed vs expected** occurrences so the reader can
-    see whether it means anything.
-
-A feature is escalated only when a test is significant on its own terms — the
-Mann–Kendall p-value crosses α, the Hampel score crosses k, or Nelson runs
-exceed chance by a factor. Everything else is reported as context, not alarm.
+不用“序列中任意位置出现长度≥5 的单调段即告警”的原因：对长度为 n 的随机
+序列，某位置起始一个长度为 k 的单调段的概率每个方向为 1/k!，n 个点中期望
+出现约 (n−k+1)·2/k! 段。n=100、k=5 时约为 1.6 段，即纯随机数据平均也会触发
+一到两次，这样的告警没有信息量。
 """
 
 from __future__ import annotations
@@ -216,7 +195,7 @@ class TrendReport:
             "rule_threshold": self.rule_threshold,
             "drift_fraction_of_limit": self.drift_fraction_of_limit,
             "practically_negligible": self.practically_negligible,
-            # Kept for backwards compatibility with the first-generation UI.
+            # 兼容旧版界面使用的字段。
             "trend": self.mk.get("direction", "无") if self.mk.get("significant") else "无显著趋势",
             "monotone_run": self.nl.get("longest_monotone_run", 0),
             "note": self.headline,
@@ -239,9 +218,8 @@ def analyse_series(
     ``practical_limit`` is the smallest magnitude at which the governing rule
     stops calling the value normal. A drift is only escalated when it is BOTH
     statistically significant AND large enough to matter against that limit:
-    on the customer's 130-run entry the balance return-to-zero trend is certain
-    (p = 0.0005) yet totals 0.00024 码 against a 0.003 first-alarm threshold —
-    8 % of the limit. Alarming on that teaches the operator to ignore alarms.
+    例如某特征的漂移在统计上非常确定（p = 0.0005），但累计漂移量只有首级
+    报警阈值的 8 %。对这种情形报警，只会让操作人员习惯性忽略报警。
     The outlier and run-rule components are judged separately, so a negligible
     drift never suppresses a genuine outlier.
     """

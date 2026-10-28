@@ -259,11 +259,53 @@ Frontend `web/.env.local`:
 ├── backend/app/windtunnel/   # 风洞领域模块 (parsers/features/rules/pipeline/report/ai)
 ├── backend/app/api/windtunnel.py
 ├── web/components/WindTunnelView.tsx + WindTunnelKnowledge.tsx
+├── backend/app/skills/       # 技能包:用户自带的方法(SKILL.md)+ 执行程序
+├── examples/skills/          # 两个示例包(多模块 python / 自带可执行程序)
 └── docs/
+    ├── skills/              # 技能包接入规范 + 设计说明
     ├── windtunnel.md        # 风洞应用设计、判据出处与验收证据
     ├── positioning.md       # product positioning + market research synthesis
     ├── business-plan.md     # GTM, pricing, financial plan, fundraising
     └── architecture.md      # technical architecture + threat model
+```
+
+## 技能包:把用户自己的方法装进来
+
+内置算法是一个函数,AI 现写的算法也是一个函数。用户真正的资产是**一整套做法** ——
+什么数据才够判、按什么顺序做、用什么判据下结论。技能包就是这个位置:
+
+```
+my-skill/
+├── SKILL.md      # 什么时候用它 + 怎么做(AI 命中场景时读,优先于自己的默认习惯)
+├── skill.yaml    # 声明工具:入口、参数、自测用例
+├── tools/        # def run(df, **params)
+└── references/   # 追问细节时才读的资料
+```
+
+- **三层披露**:提示词里常驻的只有每个包的一句话身份和 `when_to_use`;正文靠 `read_skill`
+  按需取;参考资料再往后一层。装 20 个包也不会挤占数据上下文。
+- **工具与内置算法平级**:进同一张工具表,`run_tool` 同一个动作调用,查找顺序是
+  内置 → 技能包 → AI 生成的算法(用户亲手写的方法优先于模型现编的)。
+- **安装即验证**:取包 → 读清单 → 静态检查 → 跑你声明的自测 → 落盘 → 登记,
+  六步逐条可见;全过才标「自检通过」。
+- **两条运行路径**:python 工具在沙箱子进程里跑(禁网络/子进程/删文件,允许读写包内文件);
+  已有的命令行程序走 `runtime: command`,但必须管理员 + 服务端显式开关。
+- **先验后装**:「验一下」跑完整套检查却一个字节都不写,直接给结论——能不能装、AI 会拿到
+  什么(知识/工具/脚本)、要改什么。
+- **通用 skill 包零改造**:网上流通的标准 skill 包(SKILL.md + scripts/ + references/)直接装。
+  缺 `when_to_use` 就从 description 里截、缺 `triggers` 就从描述里挖;`scripts/` 自动配成
+  `run_script` 工具,SKILL.md 里"运行 scripts/xxx.py"的指令照原样执行(需服务端开
+  `SKILLS_ALLOW_COMMAND_RUNTIME`,不开也能装、知识照常可用)。
+- **参数按你的数据推荐**:选列的参数自动填这份数据里真实存在的列;对不上就直说"这份数据不是
+  这个工具要的",不硬塞一个能跑但没意义的值。列名对不上时可以**指一次**,系统记成一条列映射
+  规则(`MappingRule`),之后任何包、任何数据集都认 —— 规则默认共享,一人教全员受益。
+
+入口:侧栏 →「技能包」。写法见 [docs/skills/技能包接入规范.md](docs/skills/技能包接入规范.md),
+设计取舍见 [docs/skills/设计说明.md](docs/skills/设计说明.md)。
+
+```bash
+# 89 条契约测试(不依赖 LLM,也不需要后端在跑)
+backend/.venv/Scripts/python.exe backend/skills_contract_test.py
 ```
 
 ## Domain application: wind-tunnel quality check

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "2026"
 PRODUCT_NAME = "RLab Cortex"
 PRODUCT_NOTE = ""
 

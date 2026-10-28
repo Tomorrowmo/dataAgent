@@ -12,6 +12,7 @@ Actions:
   - "describe_tool"   : args.slug -> the params schema
   - "run_tool"        : args.slug, args.params -> execute against current dataset
   - "generate_tool"   : args.description -> LLM writes + tests a new algorithm
+  - "read_skill"      : args.slug -> open a user-installed skill pack's SKILL.md
 """
 
 from __future__ import annotations
@@ -29,7 +30,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..algorithms import registry
-from ..db.models import Algorithm, Dataset, Message
+from ..algorithms.lookup import latest_algorithm
+from ..db.models import Algorithm, Dataset, Message, SkillPack
+from ..skills import store as skill_store
+from ..skills.runtime import run_tool as run_skill_tool
 from ..sandbox import executor as sandbox_executor
 from .codegen import generate_algorithm, parse_meta
 from .datasets import _persist_dataset, load_dataset_df
@@ -40,7 +44,7 @@ SYSTEM_PROMPT = """You are RLab Cortex, a verifiable data-analysis agent for eng
 You ALWAYS respond with a single JSON object — nothing outside it. Schema:
 {
   "thought": "<one sentence reasoning>",
-  "action": "answer | list_tools | describe_tool | run_tool | generate_tool | visualize | visualize_batch | generate_viz | analyze_image",
+  "action": "answer | list_tools | describe_tool | run_tool | generate_tool | read_skill | visualize | visualize_batch | generate_viz | analyze_image",
   "args": { ... }
 }
 
@@ -50,6 +54,8 @@ Action contracts:
 - describe_tool  : args = { "slug": "<algorithm slug>" }
 - run_tool       : args = { "slug": "<algorithm slug>", "params": { ... }, "dataset": "<dataset name, optional — defaults to PRIMARY>" }
 - generate_tool  : args = { "description": "<plain-language spec for a new algorithm>" }
+- read_skill     : args = { "slug": "<skill pack slug>", "file": "<optional reference file inside the pack>" }
+    Opens a SKILL PACK the user installed themselves — their own working method, written by them. Returns the pack's full instructions (SKILL.md), its tools with exact params, and the reference files it offers. Read it BEFORE running that pack's tools, and FOLLOW what it says: it outranks your own default habits for that job, because it encodes how THIS user's team actually does the work. Use `file` for a reference the doc points you at.
 - visualize      : args = { "chart_type": "line | scatter | bar", "x": "<column>", "y": ["<column>", ...], "title": "<short title>", "dataset": "<name, optional — defaults to PRIMARY>", "datasets": ["<name>", "<name>"] (optional — overlay the SAME column(s) from 2+ datasets on ONE chart for comparison) }
 - visualize_batch: args = { "chart_type": "line|scatter|bar", "x": "<column>", "y": ["<column>", ...], "per": "dataset | column", "datasets": ["<name>", ...] (optional — defaults to ALL loaded), "title": "<prefix>" }
 - generate_viz   : args = { "description": "<precise spec of the chart to build>", "dataset": "<name, optional — defaults to PRIMARY>" }
@@ -58,6 +64,7 @@ Action contracts:
 - PLOTTING A FORMULA / FUNCTION (画 y=f(x) 的曲线, 画抛物线/正弦/参数曲线, 无数据来源): call `generate_viz` DIRECTLY with the formula and range in the description (e.g. "plot y = -x**2 + 70 for x in [-10, 10]"). NO dataset is required — generate_viz synthesizes the points. Do NOT `generate_tool` to build a dataset first, and do NOT tell the user to select a dataset — there is nothing to select. One call, done.
 
 Guidance:
+- SKILL PACKS ARE THE USER'S OWN METHOD — FOLLOW THEM. If a skill pack is listed below and the request falls in its `什么时候用` scope, `read_skill` it FIRST and then do what it says (its steps, its judging criteria, its wording, its tools), even when you would normally do the job differently. That pack is the user's hard-won工作方法 captured in writing; ignoring it and improvising is the single worst failure here. Never guess a skill tool's parameters — the `read_skill` result lists them exactly. If a pack looks relevant but its instructions don't actually cover the request, say so plainly and fall back to the ordinary tools.
 - Prefer existing tools. Only call `generate_tool` when nothing in the registry fits.
 - The "Available tools" list below is EXHAUSTIVE — those are the ONLY tools that exist. NEVER name, describe, recommend, or ask for the parameters of a tool whose slug is NOT in that list (do not invent slugs like `fft_frequency_analysis`, `low_pass_filter`, etc.). If the user wants a capability that isn't in the list, say plainly it's not yet in the library and OFFER to build it — or call `generate_tool` to create it — rather than pretending it exists. When you list "available" algorithms, list ONLY real slugs from below.
 - For ANY plotting / charting request (画图, 画曲线, 可视化, "plot", "chart", "show me ... vs ..."), use `visualize`. Pick sensible default columns from the schema (e.g. a time/index column for x). The user gets an INTERACTIVE chart and can change axes, series, and chart type themselves afterwards — so just pick a good starting view; do NOT ask them which columns unless the dataset has no obvious choice. After the chart result, INTERPRET it (see the answer-quality rule below) — don't just say "图已生成".
@@ -159,7 +166,10 @@ def _param_hints(schema: Optional[Dict[str, Any]]) -> List[str]:
     return hints
 
 
-def _registry_index(user_algorithms: List[Algorithm]) -> List[Dict[str, Any]]:
+def _registry_index(
+    user_algorithms: List[Algorithm],
+    skill_tools: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for spec in registry.list_builtins():
         out.append({
@@ -180,6 +190,9 @@ def _registry_index(user_algorithms: List[Algorithm]) -> List[Dict[str, Any]]:
             "source": a.source,
             "verified": bool(a.is_verified),
         })
+    # Tools that came in with a user-installed skill pack. Same shape as the
+    # rest, so the prompt's tool list and the workbench don't special-case them.
+    out.extend(skill_tools or [])
     return out
 
 
@@ -465,9 +478,11 @@ async def _execute_action(
     lineage_state: Dict[int, Any],    # 各数据集的血缘链头部(原始→去噪→…)
     pipeline_state: Dict[str, Any],   # 跨轮流水线状态(由调用方持久化)
     image_ref: Optional[str] = None,  # 本轮附带的图片路径(若有),供 analyze_image 用
+    skill_packs: Optional[List[SkillPack]] = None,  # 本轮可用的用户技能包(已启用)
 ) -> Dict[str, Any]:
     action = parsed.get("action", "answer")
     args = parsed.get("args", {}) or {}
+    skill_packs = list(skill_packs or [])
 
     # ── 动作①:列出工具(可按 category 过滤)。内置 + 用户/公开算法 ──
     if action == "list_tools":
@@ -477,7 +492,7 @@ async def _execute_action(
             )
         )
         user_algos = list(result.scalars().all())
-        index = _registry_index(user_algos)
+        index = _registry_index(user_algos, skill_store.tool_index(skill_packs))
         cat = args.get("category")
         if cat:
             index = [t for t in index if t["category"] == cat]
@@ -493,7 +508,23 @@ async def _execute_action(
                 "description": spec.description, "params_schema": spec.params_schema,
                 "returns": spec.returns, "tags": spec.tags, "source": "builtin",
             }
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
+        hit = skill_store.resolve_tool(skill_packs, slug)
+        if hit:
+            pack, tool = hit
+            return {
+                "slug": skill_store.tool_slug(pack, tool),
+                "name": tool.get("title") or tool.get("name"),
+                "category": f"skill:{pack.slug}",
+                "description": tool.get("description", ""),
+                "params_schema": tool.get("params_schema") or {},
+                "returns": tool.get("returns", "dataframe"),
+                "needs_data": tool.get("needs_data", True),
+                "examples": tool.get("examples") or [],
+                "source": "skill", "skill": pack.slug, "skill_name": pack.name,
+                "verified": bool(pack.is_verified),
+                "note": f"这个工具来自技能包「{pack.name}」。跑之前先 read_skill('{pack.slug}') 看用法。",
+            }
+        row = await latest_algorithm(session, slug)
         if row is None:
             return {"error": f"tool not found: {slug}"}
         return {
@@ -525,12 +556,28 @@ async def _execute_action(
             result = registry.execute_builtin(slug, df, params)
             label = spec.name
         else:
-            # 不是内置 → 查用户/AI 生成的算法,沙箱里跑它的源码
-            row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
-            if row is None:
-                return {"status": "error", "error": f"tool not found: {slug}"}
-            result = registry.execute_code(row.code, df, params)
-            label = row.name
+            # 不是内置 → 先看用户装的技能包(它带自己的执行程序/模块),再看用户/AI 算法
+            hit = skill_store.resolve_tool(skill_packs, slug)
+            if hit:
+                pack, tool = hit
+                result = await asyncio.to_thread(
+                    run_skill_tool, root=pack.root, tool=tool, df=df, params=params,
+                )
+                label = f"{pack.name}·{tool.get('title') or tool.get('name')}"
+                if result.get("status") == "error" and pack.doc_chars:
+                    # A skill tool failing is usually a usage mistake, and the
+                    # pack itself documents the right usage — point there instead
+                    # of letting the agent retry the same wrong params.
+                    result["hint"] = (
+                        f"这个工具来自技能包「{pack.name}」。先 read_skill('{pack.slug}') "
+                        "看它的用法和参数,再决定怎么调整;不要用同样的参数重试。"
+                    )
+            else:
+                row = await latest_algorithm(session, slug)
+                if row is None:
+                    return {"status": "error", "error": f"tool not found: {slug}"}
+                result = registry.execute_code(row.code, df, params)
+                label = row.name
 
         # 换了数据源就必须说出来 —— 静默替换数据是最坏的失败模式
         if frame_note and result.get("status") == "ok":
@@ -737,6 +784,26 @@ async def _execute_action(
 
     # ── 动作⑦:自扩展 —— LLM 写一个新算法 + 自测,通过即注册、本轮可用 ──
     #    这是 RLab Cortex「自扩展可验证 agent」的核心:缺工具就现造,造完即用。
+    # ── 动作:打开一个用户自带的技能包(渐进式披露的第二层)──────────────────
+    #  系统提示里只有每个包的一句话身份 + 什么时候用;真正的方法论(SKILL.md 正文)
+    #  只有在 agent 判断"这单活归它管"时才读进来 —— 这样装 20 个包也不会撑爆上下文。
+    if action == "read_skill":
+        slug = (args.get("slug") or "").strip()
+        if not slug:
+            return {"error": "read_skill 需要 slug(技能包标识)。",
+                    "available": [p.slug for p in skill_packs]}
+        pack = next((p for p in skill_packs if p.slug == slug), None)
+        if pack is None:
+            low = slug.lower()
+            pack = next((p for p in skill_packs
+                         if p.slug.lower() == low or (p.name or "").lower() == low), None)
+        if pack is None:
+            return {
+                "error": f"没有装(或没启用)这个技能包:{slug}",
+                "available": [{"slug": p.slug, "name": p.name} for p in skill_packs],
+            }
+        return skill_store.read_doc(pack, args.get("file"))
+
     if action == "generate_tool":
         description = args.get("description", "")
         if not description.strip():
@@ -769,9 +836,7 @@ async def _execute_action(
         except Exception:
             meta = gen.get("meta") or {}
         slug = _slugify(meta.get("slug") or meta.get("name") or description[:40])
-        existing = (await session.execute(
-            select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == owner_id)
-        )).scalar_one_or_none()
+        existing = await latest_algorithm(session, slug, owner_id)
         report = {"tests": gen["tests"], "all_tests_passed": passed}
         if existing:
             existing.code = gen["code"]
@@ -1303,7 +1368,11 @@ async def run_turn(
             (Algorithm.owner_id == owner_id) | (Algorithm.is_public == True)  # noqa: E712
         )
     )).scalars().all()
-    tools_index = _registry_index(list(user_algo_rows))
+    # 用户自带的技能包(已启用的):它们的工具混进同一张工具表,
+    # 而它们的"方法论"只留一行索引 —— 正文靠 read_skill 按需取。
+    skill_packs = await skill_store.list_packs(session, owner_id, enabled_only=True)
+    skill_tools = skill_store.tool_index(skill_packs)
+    tools_index = _registry_index(list(user_algo_rows), skill_tools)
     tools_brief = _format_tools_brief(tools_index)
 
     # ── 拼 system prompt:协议规则 + 数据集上下文 + 真实工具清单 ──
@@ -1315,6 +1384,23 @@ async def run_turn(
         + tools_brief
         + "\n\nIf none of the above fits, use `generate_tool` with a precise description."
     )
+    if skill_packs:
+        system_msg += (
+            "\n\n## 用户自己装的技能包(Skill packs)\n"
+            "这些是**用户/他的团队自己写的工作方法**,已经装进系统。下面只是索引:"
+            "每个包的完整做法写在它自己的 SKILL.md 里,用 `read_skill` 才能看到。\n"
+            "命中其中一个包的适用场景时:先 `read_skill`,再按它说的做(它的判据、口径、步骤"
+            "优先于你的默认习惯),它的工具用 `run_tool` 调,slug 就是下面写的那个。\n"
+            + skill_store.prompt_block(skill_packs)
+        )
+        hits = skill_store.trigger_hits(skill_packs, user_message)
+        if hits:
+            system_msg += (
+                "\n\n⚠ 用户这句话命中了这些技能包的触发词:"
+                + "、".join(f"`{h.slug}`({h.name})" for h in hits)
+                + "。先 `read_skill` 打开看它是否真的适用 —— 适用就照它做;"
+                "确实不适用就明说,然后走普通流程。"
+            )
     if pipeline_notes:
         system_msg += (
             "\n\n## Pipeline continuation (跨轮流水线)\n"
@@ -1351,12 +1437,10 @@ async def run_turn(
     # denies the image exists and asks the user to re-upload. We override that
     # once, forcing analyze_image. This flag stops the override from looping.
     image_forced = False
-    # Circuit-breaker: count failures per (action, slug). When a tool keeps
-    # failing the SAME way we escalate a warning, then stop — the #1 cause of
-    # "hit step limit with no answer" was the agent re-calling a broken tool.
+    # 熔断：按 (action, slug) 统计失败次数。同一工具以同样方式连续失败时先告警、
+    # 再终止，避免智能体反复调用一个已损坏的工具直到步数用尽仍无答复。
     fail_counts: Dict[str, int] = {}
-    # …and the other half of "hit step limit with no answer": steps that all
-    # SUCCEED but repeat identically, so the failure counter never fires.
+    # 另一类情形：每一步都成功、但内容完全重复，失败计数不会触发，单独计数。
     repeat_counts: Dict[str, int] = {}
 
     # ── 新附图 → 确定性地先看一次图 ──────────────────────────────────────
@@ -1376,7 +1460,7 @@ async def run_turn(
             _res = await _execute_action(
                 session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=_p,
                 working=working, frames=frames, lineage_state=lineage_state,
-                pipeline_state=pipeline_state, image_ref=image_ref,
+                pipeline_state=pipeline_state, image_ref=image_ref, skill_packs=skill_packs,
             )
         except Exception as e:
             _res = {"status": "error", "error": f"{type(e).__name__}: {e}"}
@@ -1571,7 +1655,7 @@ async def run_turn(
             tool_result = await _execute_action(
                 session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
                 working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
-                image_ref=image_ref,
+                image_ref=image_ref, skill_packs=skill_packs,
             )
         except Exception as e:
             tdt = time.monotonic() - t1

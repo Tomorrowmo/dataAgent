@@ -1,0 +1,37 @@
+{
+  "name": "@rlab/dsh-tool-dataagent",
+  "description": "Model-facing data-analysis and wind-tunnel tools over the RLab Cortex compute sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "//deps": "dsh 包一律指向本地 monorepo 构建，而不是 npm。npm 上目前是 0.0.1-rc.1，本地是 0.1.0-rc.5——版本不一致时，编译用的类型和运行时加载的代码会是两份东西。指向同一份 checkout 可以消除这个偏差；等 npm 与仓库版本对齐后再换成版本号。",
+  "dependencies": {
+    "@deepseek-ai/cordis": "link:../../../../../GitBubProj/DeepseekHarness/vendor/cordis",
+    "@deepseek-ai/dsh-system-prompt": "link:../../../../../GitBubProj/DeepseekHarness/packages/core/system-prompt",
+    "@deepseek-ai/dsh-tools": "link:../../../../../GitBubProj/DeepseekHarness/packages/core/tools",
+    "@deepseek-ai/dsh-user-questions": "link:../../../../../GitBubProj/DeepseekHarness/packages/interaction/user-questions",
+    "@deepseek-ai/schemastery": "link:../../../../../GitBubProj/DeepseekHarness/vendor/schemastery",
+    "@deepseek-ai/dsh-host-webserver": "link:../../../../../GitBubProj/DeepseekHarness/packages/host/webserver"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
