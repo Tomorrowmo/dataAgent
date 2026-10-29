@@ -475,6 +475,7 @@ async def _execute_action(
     pipeline_state: Dict[str, Any],   # 跨轮流水线状态(由调用方持久化)
     image_ref: Optional[str] = None,  # 本轮附带的图片路径(若有),供 analyze_image 用
     on_progress: Optional[Any] = None,  # generate_tool 的阶段回调(写代码/自测/修复),推给前端
+    blocked_tools: Optional[Dict[str, str]] = None,  # skill 工具 slug → skill 名;该 skill 本轮未启用
 ) -> Dict[str, Any]:
     action = parsed.get("action", "answer")
     args = parsed.get("args", {}) or {}
@@ -486,7 +487,7 @@ async def _execute_action(
                 (Algorithm.owner_id == owner_id) | (Algorithm.is_public == True)  # noqa: E712
             )
         )
-        user_algos = list(result.scalars().all())
+        user_algos = [a for a in result.scalars().all() if a.slug not in (blocked_tools or {})]
         index = _registry_index(user_algos)
         cat = args.get("category")
         if cat:
@@ -513,6 +514,13 @@ async def _execute_action(
         }
 
     # ── 动作③:执行算法(核心)。先内置注册表,再用户/AI 生成的算法表 ──
+    if action in ("run_tool", "describe_tool") and str(args.get("slug")) in (blocked_tools or {}):
+        sk = (blocked_tools or {})[str(args.get("slug"))]
+        return {"status": "error", "error": (
+            f"工具 `{args.get('slug')}` 属于 skill「{sk}」，而这个 skill 本轮没有启用。不要调用它；"
+            f"如果它对用户的问题有帮助，在回答里用 args.suggest_skills 推荐启用这个 skill。"
+        )}
+
     if action == "run_tool":
         slug = args.get("slug")
         params = args.get("params", {}) or {}
@@ -1269,6 +1277,8 @@ async def run_turn(
     pipeline_state: Optional[Dict[str, Any]] = None,
     image_ref: Optional[str] = None,
     image_fresh: bool = False,
+    skills: Optional[List[Any]] = None,          # Skill rows the user enabled for this message
+    skill_catalog: Optional[List[Any]] = None,   # the user's other active skills (recommend only)
 ) -> AsyncIterator[AgentStep]:
     """Execute one chat turn: keep looping until the agent produces an `answer`
     action or exhausts max_steps. Yields a sequence of AgentStep events.
@@ -1338,6 +1348,15 @@ async def run_turn(
             (Algorithm.owner_id == owner_id) | (Algorithm.is_public == True)  # noqa: E712
         )
     )).scalars().all()
+    # A skill's tools come with its instructions: visible only while the skill is
+    # enabled, so the agent never runs them without the procedure that governs
+    # them. Otherwise they're blocked and the agent may only recommend the skill.
+    enabled_tools = {x.get("tool_slug") for sk in (skills or []) for x in (sk.scripts or []) if x.get("tool_slug")}
+    skill_names = {x.get("tool_slug"): ((sk.config or {}).get("name") or sk.name)
+                   for sk in (skill_catalog or []) for x in (sk.scripts or []) if x.get("tool_slug")}
+    blocked_tools = {a.slug: skill_names.get(a.slug, "未启用的 skill") for a in user_algo_rows
+                     if a.source == "skill" and a.slug not in enabled_tools}
+    user_algo_rows = [a for a in user_algo_rows if a.slug not in blocked_tools]
     tools_index = _registry_index(list(user_algo_rows))
     tools_brief = _format_tools_brief(tools_index)
 
@@ -1350,6 +1369,16 @@ async def run_turn(
         + tools_brief
         + "\n\nIf none of the above fits, use `generate_tool` with a precise description."
     )
+    skills = list(skills or [])
+    skill_catalog = list(skill_catalog or [])
+    if skills or skill_catalog:
+        from .skills import prompt_section
+        system_msg += "\n\n" + prompt_section(skills, skill_catalog)
+    if skills:
+        # Recorded on the turn so the UI can show which skills shaped this answer.
+        yield AgentStep(kind="skills", payload={"used": [
+            {"id": s.id, "slug": s.slug, "name": (s.config or {}).get("name") or s.name} for s in skills
+        ]})
     if pipeline_notes:
         system_msg += (
             "\n\n## Pipeline continuation (跨轮流水线)\n"
@@ -1411,7 +1440,7 @@ async def run_turn(
             _res = await _execute_action(
                 session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=_p,
                 working=working, frames=frames, lineage_state=lineage_state,
-                pipeline_state=pipeline_state, image_ref=image_ref,
+                pipeline_state=pipeline_state, image_ref=image_ref, blocked_tools=blocked_tools,
             )
         except Exception as e:
             _res = {"status": "error", "error": f"{type(e).__name__}: {e}"}
@@ -1600,6 +1629,17 @@ async def run_turn(
             payload: Dict[str, Any] = {"text": answer_text}
             if suggestions:
                 payload["suggestions"] = suggestions[:3]
+            # Skill recommendations: only real, not-yet-enabled skills of this user.
+            raw_sk = (parsed.get("args", {}) or {}).get("suggest_skills") or []
+            if isinstance(raw_sk, str):
+                raw_sk = [raw_sk]
+            by_slug = {s.slug: s for s in skill_catalog}
+            rec = [by_slug[str(x)] for x in raw_sk if str(x) in by_slug][:2]
+            if rec:
+                payload["suggest_skills"] = [
+                    {"id": s.id, "slug": s.slug, "name": (s.config or {}).get("name") or s.name,
+                     "summary": (s.config or {}).get("summary") or s.description} for s in rec
+                ]
             yield AgentStep(kind="final", payload=payload)
             return
 
@@ -1621,7 +1661,7 @@ async def run_turn(
                 task = asyncio.create_task(_execute_action(
                     session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
                     working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
-                    image_ref=image_ref, on_progress=stages.put_nowait,
+                    image_ref=image_ref, on_progress=stages.put_nowait, blocked_tools=blocked_tools,
                 ))
                 try:
                     while not task.done() or not stages.empty():
@@ -1648,7 +1688,7 @@ async def run_turn(
                 tool_result = await _execute_action(
                     session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
                     working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
-                    image_ref=image_ref,
+                    image_ref=image_ref, blocked_tools=blocked_tools,
                 )
         except Exception as e:
             tdt = time.monotonic() - t1

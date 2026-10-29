@@ -176,6 +176,11 @@ export const api = {
     request<GenerationResult>('POST', '/algorithms/autofix', { code, dataset_id, instruction: instruction ?? '', error: error ?? '' }),
   /** 代码编辑器: source of a custom algorithm (editable when it's yours). */
   algorithmSource: (id: number) => request<AlgoSource>('GET', `/algorithms/${id}/source`),
+  /** META of a code draft, read statically on the server (never executed). */
+  /** Can this code join the platform? Static checklist, nothing is executed. */
+  checkAlgorithm: (code: string) => request<{ ok: boolean; items: AdmissionItem[] }>('POST', '/algorithms/check', { code }),
+  algorithmMeta: (code: string) =>
+    request<{ ok: boolean; meta: Record<string, unknown>; error?: string }>('POST', '/algorithms/meta', { code }),
   algorithmVersions: (id: number) => request<AlgoVersion[]>('GET', `/algorithms/${id}/versions`),
   /** Save edited code as a new version. The server re-runs it in the sandbox;
    *  ok=false (nothing saved) carries the validation / execution details. */
@@ -188,6 +193,23 @@ export const api = {
       'GET', `/algorithms/builtin-source/${encodeURIComponent(slug)}`),
   /** Code for a new custom algorithm copied from a built-in (not saved yet). */
   forkBuiltin: (slug: string) => request<{ code: string }>('POST', '/algorithms/fork-builtin', { slug }),
+
+  /** Skills: the user's skill packages (SKILL.md + scripts + references). */
+  listSkills: () => request<Skill[]>('GET', '/skills'),
+  /** Upload a .zip of a skill folder (or a SKILL.md) → a DRAFT with an AI-drafted card. */
+  importSkill: (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return request<Skill & { card_source?: 'ai' | 'fallback' }>('POST', '/skills/import', fd);
+  },
+  /** Save edits to the card and/or confirm (status "active") / disable a skill. */
+  updateSkill: (id: number, body: { config?: SkillCard; status?: 'active' | 'disabled' }) =>
+    request<Skill>('PUT', `/skills/${id}`, body),
+  /** Plain-language edit of the card, applied by AI and saved immediately. */
+  adjustSkill: (id: number, instruction: string) =>
+    request<{ reply: string; skill: Skill }>('POST', `/skills/${id}/adjust`, { instruction }),
+  regenerateSkillCard: (id: number) => request<Skill & { card_source?: 'ai' | 'fallback' }>('POST', `/skills/${id}/regenerate`),
+  deleteSkill: (id: number) => request<{ ok: boolean }>('DELETE', `/skills/${id}`),
   runAlgorithm: (slug: string, params: Record<string, unknown>, dataset_id?: number) =>
     request<RunResult>('POST', '/algorithms/run', { slug, params, dataset_id }),
   /** Let AI rewrite an existing tool from a plain-language instruction (add/adjust
@@ -411,6 +433,27 @@ export type Algorithm = {
   id?: number;
 };
 
+export type SkillCard = {
+  name: string; summary: string; when_to_use: string[]; inputs: string[]; steps: string[];
+  outputs: string[]; tools: { file: string; purpose: string }[]; cautions: string[];
+  /** How much of the skill can run on this platform (AI-assessed at import). */
+  platform_fit?: { level: 'full' | 'partial' | 'low' | ''; summary: string; missing: string[] };
+};
+
+export type Skill = {
+  id: number; slug: string; name: string; description: string;
+  status: 'draft' | 'active' | 'disabled';
+  /** Platform-provided (seeded for everyone): can be disabled, not deleted. */
+  is_default: boolean;
+  config: SkillCard;
+  references: { path: string; chars: number }[];
+  /** kind "tool" = registered as a sandboxed platform tool; "reference" = kept as
+   *  reference for the agent only (CLI / network / non-conformant). */
+  scripts: { path: string; ok: boolean; errors: string[]; tool_slug: string; kind?: 'tool' | 'reference'; note?: string; chars?: number }[];
+  source_filename: string; instructions: string;
+  created_at: string | null; updated_at: string | null;
+};
+
 export type AlgoSource = {
   id: number; slug: string; name: string; category: string; description: string;
   source: 'user' | 'ai'; code: string; params_schema: Record<string, ParamSpec>;
@@ -459,7 +502,16 @@ export type TestResult = {
   validation: { ok: boolean; errors: string[]; imports: string[]; has_run?: boolean; has_meta?: boolean };
   execution: RunResult;
   meta?: Record<string, unknown>;
+  /** Failed run → one actionable category: 参数 / 数据 / 代码 / 规范 / 超时. */
+  diagnosis?: RunDiagnosis | null;
 };
+
+export type RunDiagnosis = {
+  category: 'param' | 'data' | 'code' | 'rule' | 'timeout';
+  title: string; detail: string; action: string; line: number;
+};
+
+export type AdmissionItem = { key: string; label: string; ok: boolean; detail: string; level: 'required' | 'recommended' | 'optional' };
 
 export type GenerationResult = {
   code: string;
@@ -617,6 +669,7 @@ export async function streamChat(
   dataset_ids?: number[],
   signal?: AbortSignal,
   image_ref?: string | null,
+  skill_ids?: number[],
 ): Promise<void> {
   const token = getToken();
   // SSE must bypass the Next dev rewrites proxy — it BUFFERS streaming responses,
@@ -631,7 +684,7 @@ export async function streamChat(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message, dataset_id, dataset_ids, image_ref: image_ref ?? undefined }),
+    body: JSON.stringify({ message, dataset_id, dataset_ids, image_ref: image_ref ?? undefined, skill_ids }),
     signal,
   });
   if (!r.ok || !r.body) {
@@ -657,6 +710,99 @@ export async function streamChat(
           /* ignore */
         }
       }
+    }
+  }
+}
+
+/** One turn of the 算法共创 studio (AI writes / adjusts an algorithm by chat).
+ *  Events: plan | progress (codegen stage) | ask | answer | result | error. */
+export type StudioEvent =
+  | { kind: 'plan'; reply: string }
+  | { kind: 'progress'; stage: string; attempt?: number; reason?: string; name?: string; passed?: boolean }
+  | { kind: 'ask'; question: string; options: string[] }
+  | { kind: 'answer'; reply: string }
+  | { kind: 'result'; code: string; meta: Record<string, unknown>; tests: GenerationResult['tests']; all_tests_passed: boolean; attempts: number; final_error: string }
+  | { kind: 'error'; message: string };
+
+export async function streamStudio(
+  body: { messages: { role: 'user' | 'assistant'; content: string }[]; code: string; dataset_id?: number; last_error?: string; mode?: 'fix' },
+  onEvent: (e: StudioEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = getToken();
+  // Same as streamChat: bypass the buffering dev proxy so stages arrive live.
+  const base = (typeof window !== 'undefined' && window.location.port === '3000')
+    ? `${window.location.protocol}//${window.location.hostname}:8077` : '';
+  const r = await fetch(`${base}/api/algorithms/studio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!r.ok || !r.body) {
+    const text = await r.text();
+    let msg = text;
+    try { msg = JSON.parse(text).detail ?? text; } catch { /* keep text */ }
+    throw new Error(String(msg));
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nlIdx;
+    while ((nlIdx = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, nlIdx).trim();
+      buf = buf.slice(nlIdx + 2);
+      if (block.startsWith('data:')) {
+        try { onEvent(JSON.parse(block.slice(5).trim())); } catch { /* ignore */ }
+      }
+    }
+  }
+}
+
+/** Import a skill package with live progress (received → extracted → skill_md →
+ *  scripts → references → ai_reading → card → saved | error). */
+export type SkillImportEvent =
+  | { stage: 'received'; filename: string; size: number }
+  | { stage: 'extracted'; count: number; files: string[] }
+  | { stage: 'skill_md'; name: string; description: string; chars: number }
+  | { stage: 'scripts'; items: { path: string; kind: 'tool' | 'reference'; note: string }[] }
+  | { stage: 'references'; items: { path: string; chars: number }[] }
+  | { stage: 'ai_reading'; configured: boolean; msg: string }
+  | { stage: 'card'; source: 'ai' | 'fallback'; fit?: SkillCard['platform_fit'] }
+  | { stage: 'saved'; skill: Skill & { card_source?: 'ai' | 'fallback' } }
+  | { stage: 'error'; message: string };
+
+export async function importSkillStream(file: File, onEvent: (e: SkillImportEvent) => void): Promise<void> {
+  const token = getToken();
+  const base = (typeof window !== 'undefined' && window.location.port === '3000')
+    ? `${window.location.protocol}//${window.location.hostname}:8077` : '';
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch(`${base}/api/skills/import-stream`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd,
+  });
+  if (!r.ok || !r.body) {
+    const text = await r.text();
+    let msg = text;
+    try { msg = JSON.parse(text).detail ?? text; } catch { /* keep text */ }
+    throw new Error(String(msg));
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, i).trim();
+      buf = buf.slice(i + 2);
+      if (block.startsWith('data:')) { try { onEvent(JSON.parse(block.slice(5).trim())); } catch { /* ignore */ } }
     }
   }
 }

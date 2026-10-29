@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X } from 'lucide-react';
+import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
 import Markdown from '@/components/Markdown';
-import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp } from '@/lib/api';
+import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
@@ -68,6 +68,15 @@ export default function ChatView({
   // algorithm NOT in here is flagged as coming from an unreviewed draft. Re-read
   // whenever the chat tab comes back — the user may have saved it in 算法库.
   const [reviewedSlugs, setReviewedSlugs] = useState<Set<string>>(new Set());
+  // Skills: the user's ACTIVE skills, and the ones enabled for the next message.
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [activeSkills, setActiveSkills] = useState<number[]>([]);
+  // Restored after mount (not in the initializer) so server and first client
+  // render agree; only persisted once restored, so the restore isn't clobbered.
+  const skillsRestored = useRef(false);
+  useEffect(() => { setActiveSkills(readIds(SKILLS_KEY)); skillsRestored.current = true; }, []);
+  useEffect(() => { if (skillsRestored.current) writeIds(SKILLS_KEY, activeSkills); }, [activeSkills]);
+  const toggleSkill = (id: number) => setActiveSkills((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const [input, setInput] = useState('');
   // Dataset @-mention: typing "@" suggests datasets; picking one makes it the input.
   const [mention, setMention] = useState<{ query: string } | null>(null);
@@ -156,6 +165,12 @@ export default function ChatView({
 
   useEffect(() => {
     if (!active) return;
+    api.listSkills().then((ss) => {
+      const act = ss.filter((x) => x.status === 'active');
+      setSkills(act);
+      // Drop selections of skills that were deleted / disabled meanwhile.
+      setActiveSkills((p) => p.filter((id) => act.some((x) => x.id === id)));
+    }).catch(() => {});
     api.listAlgorithms({ source: undefined }).then((as) => {
       setReviewedSlugs(new Set(as.filter((a) => a.source !== 'builtin' && a.verified).map((a) => a.slug)));
     }).catch(() => {});
@@ -469,7 +484,7 @@ export default function ChatView({
           next[next.length - 1] = updated;
           return next;
         });
-      }, dsIds, ac.signal, imgRef);
+      }, dsIds, ac.signal, imgRef, activeSkills.filter((id) => skills.some((x) => x.id === id)));
       // The turn may have advanced the cross-turn pipeline head — refresh the chip.
       refreshPipeline(convId);
       // Digitizing an image can create a new dataset — refresh so it appears.
@@ -607,6 +622,8 @@ export default function ChatView({
               reviewedSlugs={reviewedSlugs}
               onToolKept={(slug) => setReviewedSlugs((prev) => new Set(prev).add(slug))}
               onOpenAlgorithm={onOpenAlgorithm}
+              activeSkills={activeSkills}
+              onEnableSkill={(id) => setActiveSkills((p) => (p.includes(id) ? p : [...p, id]))}
             />
           ))
         )}
@@ -696,6 +713,7 @@ export default function ChatView({
             </div>
           );
         })()}
+        <SkillBar skills={skills} active={activeSkills} onToggle={toggleSkill} />
         <div className="flex gap-2 items-end">
           <textarea
             ref={inputAreaRef}
@@ -1141,9 +1159,10 @@ function Typewriter({ text }: { text: string }) {
   return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
-function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm }: {
+function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm, activeSkills, onEnableSkill }: {
   msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void;
   reviewedSlugs?: Set<string>; onToolKept?: (slug: string) => void; onOpenAlgorithm?: (slug: string) => void;
+  activeSkills?: number[]; onEnableSkill?: (id: number) => void;
 }) {
   if (msg.role === 'user') {
     return (
@@ -1166,6 +1185,7 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   // spinner would never stop once the turn finished.
   const resolved = resolvedStarts(events);
   const visibleEvents = events.filter((e, i) => {
+    if (e.kind === 'skills') return false;  // rendered as the "使用了 skill" label below
     if (e.kind !== 'progress') return true;
     const phase = String(e.payload.phase ?? '');
     if (phase === 'codegen') return false;  // rendered as one live build card below
@@ -1186,6 +1206,8 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   const suggestions: string[] = Array.isArray(rawSug)
     ? rawSug.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
     : [];
+  const usedSkills = ((events.find((e) => e.kind === 'skills')?.payload as { used?: { id: number; name: string }[] } | undefined)?.used) ?? [];
+  const suggestedSkills = ((finalEvent?.payload as { suggest_skills?: { id: number; name: string; summary: string }[] } | undefined)?.suggest_skills) ?? [];
   const errored = Boolean(finalEvent?.payload?.error);
   const cancelled = Boolean(finalEvent?.payload?.cancelled);
   const bubbleClass = errored
@@ -1202,6 +1224,11 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
     <div className="flex gap-3 max-w-3xl mx-auto">
       <div className="w-8 h-8 rounded-full bg-brand-600 text-white grid place-items-center"><Bot className="w-4 h-4" /></div>
       <div className={`flex-1 rounded-2xl ring-1 p-4 prose-tight text-sm ${bubbleClass}`}>
+        {usedSkills.length > 0 && (
+          <div className="inline-flex items-center gap-1 text-[11px] text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-md px-1.5 py-0.5 mb-2">
+            <Puzzle className="w-3 h-3" /> 使用了 skill：{usedSkills.map((x) => `「${x.name}」`).join('')}
+          </div>
+        )}
         {procEvents.length > 0 && <ProcessTrace events={procEvents} active={Boolean(msg.pending)} t={t} />}
         {outputs.map((e, i) => isGenerateResult(e)
           ? <GeneratedToolCard key={`o${i}`} result={e.payload.result as GenResult}
@@ -1227,6 +1254,22 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
         {msg.content && (msg.pending
           ? <Typewriter text={msg.content} />
           : <Markdown>{msg.content}</Markdown>)}
+        {!msg.pending && suggestedSkills.length > 0 && onEnableSkill && (
+          <div className="mt-3 space-y-1.5">
+            {suggestedSkills.map((sk) => {
+              const on = activeSkills?.includes(sk.id);
+              return (
+                <div key={sk.id} className="flex flex-wrap items-center gap-2 text-xs bg-violet-50/70 ring-1 ring-violet-100 rounded-lg px-2.5 py-1.5">
+                  <Puzzle className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                  <span className="text-ink-700 flex-1 min-w-0">你的 skill「<b>{sk.name}</b>」可能更适合这个问题{sk.summary ? `：${sk.summary}` : ''}</span>
+                  {on
+                    ? <span className="text-violet-700 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> 已启用，下一条消息生效</span>
+                    : <button onClick={() => onEnableSkill(sk.id)} className="px-2 py-0.5 rounded-md bg-violet-600 text-white hover:bg-violet-700">启用</button>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {!msg.pending && suggestions.length > 0 && onSuggest && (
           <div className="mt-3 pt-3 border-t border-ink-100/70">
             <div className="text-[11px] text-ink-400 mb-1.5">接下来可以</div>
@@ -1548,4 +1591,70 @@ function readLastSelection(): number[] {
 
 function writeLastSelection(ids: number[]) {
   try { localStorage.setItem(LAST_SEL_KEY, JSON.stringify(ids)); } catch { /* ignore */ }
+}
+
+
+/** Skills selector above the chat input: which of the user's skills the agent
+ *  should follow for the next message. Selected ones show as removable chips. */
+function SkillBar({ skills, active, onToggle }: { skills: Skill[]; active: number[]; onToggle: (id: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    if (open) document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const on = skills.filter((x) => active.includes(x.id));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+      <div ref={ref} className="relative">
+        <button onClick={() => setOpen((o) => !o)}
+          className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg ring-1 ${on.length ? 'ring-violet-300 bg-violet-50 text-violet-700' : 'ring-ink-200 text-ink-500 hover:bg-ink-50'}`}>
+          <Puzzle className="w-3.5 h-3.5" /> Skills{on.length ? ` · ${on.length}` : ''} <ChevronDown className="w-3 h-3" />
+        </button>
+        {open && (
+          <div className="absolute bottom-full mb-2 left-0 w-80 max-h-72 overflow-y-auto scroll-hide bg-white rounded-xl ring-1 ring-ink-200 shadow-lg z-30 p-1">
+            <div className="px-2 py-1 text-[10.5px] text-ink-400">勾选后，智能体会按这些 skill 的方法来分析</div>
+            {skills.length === 0 && (
+              <div className="px-2 py-3 text-xs text-ink-400">还没有可用的 skill —— 在左侧「技能 Skills」里添加并确认后会出现在这里。</div>
+            )}
+            {skills.map((x) => {
+              const sel = active.includes(x.id);
+              return (
+                <button key={x.id} onClick={() => onToggle(x.id)}
+                  className={`w-full text-left px-2 py-1.5 rounded-lg flex items-start gap-2 ${sel ? 'bg-violet-50' : 'hover:bg-ink-50'}`}>
+                  <span className={`mt-0.5 w-3.5 h-3.5 rounded border shrink-0 grid place-items-center ${sel ? 'bg-violet-600 border-violet-600' : 'border-ink-300'}`}>
+                    {sel && <Check className="w-2.5 h-2.5 text-white" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm text-ink-800 truncate">{x.config?.name || x.name}</span>
+                    <span className="block text-[11px] text-ink-400 line-clamp-2">{x.config?.summary || x.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {on.map((x) => (
+        <span key={x.id} className="inline-flex items-center gap-1 text-[11px] text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-md pl-1.5 pr-1 py-0.5">
+          {x.config?.name || x.name}
+          <button onClick={() => onToggle(x.id)} title="不再使用这个 skill" className="hover:text-violet-900"><X className="w-3 h-3" /></button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const SKILLS_KEY = 'numetrix.chat.activeSkills';
+
+function readIds(key: string): number[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : [];
+  } catch { return []; }
+}
+
+function writeIds(key: string, ids: number[]) {
+  try { localStorage.setItem(key, JSON.stringify(ids)); } catch { /* ignore */ }
 }

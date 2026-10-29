@@ -13,6 +13,7 @@ from ..sandbox import executor as sandbox_executor
 from ..sandbox.validator import validate_algorithm_code
 from ..services import algo_store
 from ..services.algo_store import find_algorithm
+from ..services.algo_check import admission_check, diagnose_run
 from ..services.codegen import generate_algorithm, parse_meta
 from ..services.datasets import _persist_dataset, load_dataset_df
 from .deps import current_user, get_db, llm_for
@@ -107,7 +108,23 @@ async def test_code(
         },
         "execution": result.to_dict(),
         "meta": meta,
+        "diagnosis": None if result.status == "ok" else diagnose_run(
+            result.error, code=body.code, params=body.params,
+            columns=[str(c) for c in df.columns] if df is not None else None, has_df=df is not None,
+        ),
     }
+
+
+class CheckReq(BaseModel):
+    code: str
+
+
+@router.post("/check")
+async def check_code(body: CheckReq, user: User = Depends(current_user)):
+    """Admission checklist for an uploaded / pasted algorithm (static, nothing
+    runs): syntax, run() entry, META, allowed libraries, forbidden constructs,
+    declared params, self-tests — each with the offending line when it fails."""
+    return admission_check(body.code)
 
 
 class AutofixReq(BaseModel):
@@ -903,3 +920,159 @@ async def delete_algorithm(algo_id: int, user: User = Depends(current_user), ses
     await algo_store.delete_algorithm(session, row)
     await session.commit()
     return {"ok": True}
+
+
+# ── 算法共创对话（AI 生成 / 上传代码 → 对话式修改）──────────────────────────────
+# One endpoint drives the "chat with AI to write / adjust an algorithm" studio.
+# Each turn the planner decides: ask ONE clarifying question (with clickable
+# options), write / modify the code (streaming the build stages), or just answer
+# a question about the code. Modifications always start from the code currently
+# in the editor — including the user's own manual edits.
+
+STUDIO_PLANNER = """你是数据分析平台里的「算法共创助手」，和用户对话来编写/修改一个 Python 算法（平台规范：顶级 META 字典 + run(df, **params)，在沙箱运行）。
+根据对话历史和当前代码，决定这一轮做什么，只输出一个 JSON 对象：
+
+1. 需求含糊、不同理解会写出完全不同的算法时（例如只说「一元二次方程」：求根？按数据拟合 y=ax²+bx+c？画曲线？），先问一个问题：
+   {"action": "ask", "question": "一句话的问题", "options": ["2-4 个可直接点选的简短选项"]}
+   - 只在【还没有代码】且确实含糊时问；已有代码时按最合理的理解直接改。
+   - 上一条 AI 消息已经是提问时，不要再连续追问，按用户回答直接写。
+2. 写新代码或修改当前代码：
+   {"action": "code", "reply": "一两句话告诉用户这次要做/改什么", "spec": "给代码生成器的完整、精确的需求说明：要做什么、输入哪些列/参数、输出什么；如果是修改，写清楚改哪里、其余保持不变"}
+3. 用户只是在问代码相关的问题、不需要改代码（如「这个参数是什么意思」）：
+   {"action": "answer", "reply": "直接回答"}
+用中文回复用户。"""
+
+
+class StudioMsg(BaseModel):
+    role: str          # "user" | "assistant"
+    content: str
+
+
+class StudioReq(BaseModel):
+    messages: List[StudioMsg]
+    code: str = ""                       # what's in the editor right now (may be hand-edited)
+    dataset_id: Optional[int] = None     # helps the model use real column names
+    last_error: str = ""                 # latest debug-run error, if the user wants it fixed
+    # "fix" = admission fix after an upload: no planning / clarifying question,
+    # rewrite the current code to meet the platform rules (the last user message
+    # lists the failed checks).
+    mode: str = ""
+
+
+@router.post("/studio")
+async def algorithm_studio(
+    body: StudioReq,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """SSE stream of: plan → (ask | answer | progress… → result) | error."""
+    import asyncio
+    import re as _re
+
+    from fastapi.responses import StreamingResponse
+
+    llm = llm_for(user)
+    if not llm.is_configured:
+        raise HTTPException(400, "no LLM key configured. Set one in Settings.")
+    schema_hint = None
+    if body.dataset_id is not None:
+        ds = (await session.execute(
+            select(Dataset).where(Dataset.id == body.dataset_id, Dataset.owner_id == user.id)
+        )).scalar_one_or_none()
+        if ds:
+            schema_hint = str(ds.schema_json)[:4000]
+
+    def sse(obj: Dict[str, Any]) -> str:
+        return f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n"
+
+    async def stream():
+        yield ": studio-open\n\n"
+        history = [{"role": m.role if m.role in ("user", "assistant") else "user", "content": m.content[:4000]}
+                   for m in body.messages[-16:]]
+        ctx = (f"当前编辑器里的代码：\n```python\n{body.code[:12000]}\n```" if body.code.strip() else "当前还没有代码。")
+        if body.last_error.strip():
+            ctx += f"\n\n最近一次调试运行的报错：\n{body.last_error.strip()[:2000]}"
+        if schema_hint:
+            ctx += f"\n\n用户选的参考数据集结构：{schema_hint[:2000]}"
+        if body.mode == "fix" and body.code.strip():
+            plan = {"action": "code", "reply": "开始按平台接入规范修改代码，原有计算逻辑保持不变。",
+                    "spec": "Make this module conform to the platform algorithm contract — a top-level literal META dict "
+                            "(name, slug, category, description, params_schema declaring every run() parameter, returns), "
+                            "a top-level run(df, **params) entry, only sandbox-allowed imports (numpy / pandas / scipy / "
+                            "sklearn / stdlib math-like modules; no os / sys / argparse / network / file IO), and 1-3 "
+                            "test_cases. PRESERVE the original computation exactly. Failed checks: "
+                            + (history[-1]["content"] if history else "")}
+        else:
+            try:
+                raw = await llm.chat(
+                    [{"role": "system", "content": STUDIO_PLANNER + "\n\n" + ctx}, *history],
+                    temperature=0.2, max_tokens=900, json_mode=True,
+                )
+                m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+                plan = json.loads(m.group(0)) if m else {}
+            except Exception as e:  # noqa: BLE001
+                yield sse({"kind": "error", "message": f"AI 调用失败：{type(e).__name__}: {e}"})
+                return
+        action = plan.get("action")
+        if action == "ask" and not body.code.strip():
+            opts = [str(o)[:40] for o in (plan.get("options") or []) if str(o).strip()][:4]
+            yield sse({"kind": "ask", "question": str(plan.get("question") or "能再具体说说想要什么吗？"), "options": opts})
+            return
+        if action == "answer":
+            yield sse({"kind": "answer", "reply": str(plan.get("reply") or "")})
+            return
+
+        spec = str(plan.get("spec") or (history[-1]["content"] if history else "")).strip()
+        yield sse({"kind": "plan", "reply": str(plan.get("reply") or "")})
+        if body.code.strip():
+            prompt = (
+                "Here is the CURRENT algorithm module (the user may have edited it by hand — keep their edits). "
+                "Rewrite it to satisfy the change request, KEEPING everything else unchanged. Any new option must be a "
+                "real run() parameter declared in META params_schema AND used in run().\n\n"
+                f"Current code:\n```python\n{body.code[:12000]}\n```\n\n"
+                f"Change request: {spec}\n"
+                + (f"\nThe latest debug run failed with:\n{body.last_error.strip()[:2000]}\nFix that too.\n"
+                   if body.last_error.strip() else "")
+                + "\nReturn the complete module (META + run + test_cases)."
+            )
+        else:
+            prompt = spec
+
+        stages: asyncio.Queue = asyncio.Queue()
+        task = asyncio.create_task(generate_algorithm(prompt, llm=llm, schema_hint=schema_hint, on_progress=stages.put_nowait))
+        try:
+            while not task.done() or not stages.empty():
+                try:
+                    ev = await asyncio.wait_for(stages.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
+                yield sse({"kind": "progress", **ev})
+            bundle = task.result()
+        except Exception as e:  # noqa: BLE001
+            yield sse({"kind": "error", "message": f"生成失败：{type(e).__name__}: {e}"})
+            return
+        finally:
+            if not task.done():
+                task.cancel()
+        yield sse({
+            "kind": "result", "code": bundle.get("code") or "", "meta": bundle.get("meta") or {},
+            "tests": bundle.get("tests") or [], "all_tests_passed": bool(bundle.get("all_tests_passed")),
+            "attempts": int(bundle.get("attempts") or 1), "final_error": bundle.get("final_error") or "",
+        })
+
+    from .chat import SSE_HEADERS
+    return StreamingResponse(stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+class MetaReq(BaseModel):
+    code: str
+
+
+@router.post("/meta")
+async def read_meta(body: MetaReq, user: User = Depends(current_user)):
+    """META of a code draft, read statically (never executed) — lets the editor
+    build the run-settings form (params, required, column pickers) as you type."""
+    try:
+        return {"ok": True, "meta": algo_store.static_meta(body.code)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e), "meta": {}}

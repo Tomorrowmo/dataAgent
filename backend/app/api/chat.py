@@ -172,6 +172,10 @@ async def reset_pipeline(
 class SendReq(BaseModel):
     message: str
     dataset_id: Optional[int] = None
+    # Skills the user enabled for this message (their instructions + tools are
+    # given to the agent); the user's other active skills are only offered as
+    # recommendations.
+    skill_ids: Optional[List[int]] = None
     # Multi-dataset: the full set of datasets active in this turn. The first is
     # treated as PRIMARY. Falls back to dataset_id / the conversation's dataset.
     dataset_ids: Optional[List[int]] = None
@@ -291,6 +295,9 @@ async def send_message(
     # NEXT message keeps composing on this turn's result.
     pipeline_state: Dict[str, Any] = dict(conv.pipeline_state or {})
 
+    from .skills import load_for_chat
+    skills_selected, skills_catalog = await load_for_chat(session, user.id, body.skill_ids)
+
     async def event_stream():
         events: List[Dict[str, Any]] = []
         final_text = ""
@@ -319,6 +326,7 @@ async def send_message(
                     session=session, llm=llm, owner_id=user.id, datasets=datasets,
                     history=history, user_message=body.message, max_steps=8,
                     pipeline_state=pipeline_state, image_ref=image_ref, image_fresh=image_fresh,
+                    skills=skills_selected, skill_catalog=skills_catalog,
                 ):
                     event = {"kind": step.kind, "payload": step.payload}
                     events.append(event)

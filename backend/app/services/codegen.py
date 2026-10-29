@@ -269,10 +269,18 @@ def _smoke_test(code: str) -> tuple[List[Dict[str, Any]], bool, Optional[str]]:
     all_ok = True
     first_err: Optional[str] = None
     for i, c in enumerate(cases):
-        result = sandbox_executor.execute(
-            code, c["params"], input_df=c["df"], save_result=False,
-            timeout_seconds=_SMOKE_TEST_TIMEOUT_SECONDS,
-        )
+        try:
+            result = sandbox_executor.execute(
+                code, c["params"], input_df=c["df"], save_result=False,
+                timeout_seconds=_SMOKE_TEST_TIMEOUT_SECONDS,
+            )
+        except Exception as e:  # noqa: BLE001
+            # One test case the harness can't even hand over must fail THAT case
+            # (the repair loop sees why), not abort the whole generation.
+            result = sandbox_executor.ExecutionResult(
+                status="error", error=f"测试用例无法传入沙箱：{type(e).__name__}: {e}",
+                duration_ms=0, summary={}, logs="", result_path=None, result_rows=0,
+            )
         hints = diagnose(result.error) if result.status != "ok" else []
         reports.append({
             "case": i + 1,

@@ -80,6 +80,13 @@ async def init_db() -> None:
             if "graph" not in tpl_cols:
                 await conn.execute(text("ALTER TABLE flow_templates ADD COLUMN graph JSON DEFAULT '{}'"))
 
+            # Default-skill flag (added after the skills table shipped).
+            if await conn.run_sync(lambda c: bool(c.execute(text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='skills'")).fetchone())):
+                sk_cols = await conn.run_sync(_existing_cols, "skills")
+                if "is_default" not in sk_cols:
+                    await conn.execute(text("ALTER TABLE skills ADD COLUMN is_default BOOLEAN DEFAULT 0"))
+
             # Screenshot path on feedback (added after the feedback table shipped).
             def _table_exists(sync_conn, table: str) -> bool:
                 return bool(sync_conn.execute(

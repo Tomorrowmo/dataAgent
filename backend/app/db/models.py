@@ -122,6 +122,39 @@ class AlgorithmVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class Skill(Base):
+    """A user-provided skill package (SKILL.md + optional scripts / references).
+
+    Lifecycle: imported as `draft` with an AI-drafted description card →
+    the user reviews / edits the card and confirms → `active` (its scripts are
+    registered as sandboxed tools) → selectable in chat. `disabled` hides it.
+    """
+
+    __tablename__ = "skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    slug: Mapped[str] = mapped_column(String(120), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")      # SKILL.md frontmatter description
+    instructions: Mapped[str] = mapped_column(Text, default="")     # SKILL.md body
+    # The reviewed description / configuration card (summary, when_to_use,
+    # inputs, steps, outputs, cautions, tools). What the user confirms.
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    references: Mapped[list] = mapped_column(JSON, default=list)    # [{path, chars}]
+    scripts: Mapped[list] = mapped_column(JSON, default=list)       # [{path, ok, errors, tool_slug}]
+    files_dir: Mapped[str] = mapped_column(String(1024), default="")
+    source_filename: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft | active | disabled
+    # Platform-provided skill (app/skills_builtin): seeded for every user, can be
+    # disabled but not deleted, instructions follow the shipped package.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class Run(Base):
     """A single execution of an algorithm against a dataset."""
 

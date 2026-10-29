@@ -1,19 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import ChatView from '@/components/ChatView';
 import DatasetsView from '@/components/DatasetsView';
 import AlgorithmsView, { TemplatesView } from '@/components/AlgorithmsView';
 import SettingsView from '@/components/SettingsView';
+import SkillsView from '@/components/SkillsView';
 import AboutView from '@/components/AboutView';
 import FeedbackButton from '@/components/FeedbackButton';
 import FeedbackInbox from '@/components/FeedbackInbox';
 
-type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'feedback' | 'settings' | 'about';
+type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'skills' | 'feedback' | 'settings' | 'about';
 
 export default function WorkspacePage() {
   const [view, setView] = useState<View>('chat');
+  // Views with in-progress work (算法共创 conversation + code, a skill's AI
+  // adjustments) stay MOUNTED once opened — switching tabs only hides them, so
+  // nothing is lost and an in-flight AI edit keeps streaming. Like ChatView.
+  const [opened, setOpened] = useState<Set<View>>(() => new Set<View>(['chat']));
+  useEffect(() => { setOpened((s) => (s.has(view) ? s : new Set(s).add(view))); }, [view]);
   const [activeConv, setActiveConv] = useState<number | null>(null);
   const [convVer, setConvVer] = useState(0);
   // A suggestion clicked in the datasets view that should be asked in chat:
@@ -82,8 +88,13 @@ export default function WorkspacePage() {
             onDatasetsChanged={() => setDsVer((v) => v + 1)}
           />
         )}
-        {view === 'algorithms' && <AlgorithmsView focusAlgo={focusAlgo} />}
+        {opened.has('algorithms') && (
+          <div className={`h-full ${view === 'algorithms' ? '' : 'hidden'}`}><AlgorithmsView focusAlgo={focusAlgo} active={view === 'algorithms'} /></div>
+        )}
         {view === 'templates' && <TemplatesView />}
+        {opened.has('skills') && (
+          <div className={`h-full ${view === 'skills' ? '' : 'hidden'}`}><SkillsView /></div>
+        )}
         {view === 'feedback' && <FeedbackInbox onJump={jumpTo} />}
         {view === 'settings' && <SettingsView />}
         {view === 'about' && <AboutView />}

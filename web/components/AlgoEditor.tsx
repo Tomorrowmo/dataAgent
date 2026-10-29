@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Play, Save, Sparkles, Download, Trash2, X, Copy, ShieldCheck } from 'lucide-react';
-import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type AlgoVersion, type ParamSpec, type RunResult } from '@/lib/api';
+import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type AlgoVersion, type ParamSpec, type RunResult, type RunDiagnosis } from '@/lib/api';
 import { cellStr } from '@/lib/algoMeta';
+import ParamField from '@/components/ParamField';
 
 // 代码编辑器（弹窗里的小 IDE）—— 参考 SFBYDataLab 能力库的做法:
 // 行号 / 校验 / 调试运行（沙箱 + 选测试数据）/ 问题跳转到行 / AI 校正（先预览再应用）/
@@ -35,6 +36,33 @@ function lastLine(s: string): string {
   return ls[ls.length - 1] || s;
 }
 
+const DIAG_STYLE: Record<RunDiagnosis['category'], { tag: string; cls: string }> = {
+  param: { tag: '参数问题', cls: 'bg-amber-50 ring-amber-200 text-amber-900' },
+  data: { tag: '数据问题', cls: 'bg-sky-50 ring-sky-200 text-sky-900' },
+  code: { tag: '代码问题', cls: 'bg-red-50 ring-red-200 text-red-800' },
+  rule: { tag: '不符合平台规范', cls: 'bg-red-50 ring-red-200 text-red-800' },
+  timeout: { tag: '运行超时', cls: 'bg-amber-50 ring-amber-200 text-amber-900' },
+};
+
+/** A failed run explained: which KIND of problem (param / data / code / …), the
+ *  likely cause in plain words, and what to do — with a shortcut to act on it. */
+function DiagnosisBox({ d, onGo, onLine }: { d: RunDiagnosis; onGo: (tab: 'data') => void; onLine: (line: number) => void }) {
+  const st = DIAG_STYLE[d.category] ?? DIAG_STYLE.code;
+  return (
+    <div className={`rounded-lg ring-1 p-2.5 text-xs space-y-1 ${st.cls}`}>
+      <div className="font-medium text-sm">{d.title}</div>
+      <div className="whitespace-pre-wrap break-all">{d.detail}</div>
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        <span className="opacity-80">下一步：{d.action}</span>
+        {(d.category === 'param' || d.category === 'data') && (
+          <button onClick={() => onGo('data')} className="px-2 py-0.5 rounded-md bg-white ring-1 ring-current">去运行设置</button>
+        )}
+        {d.line > 0 && <button onClick={() => onLine(d.line)} className="px-2 py-0.5 rounded-md bg-white ring-1 ring-current">定位到第 {d.line} 行</button>}
+      </div>
+    </div>
+  );
+}
+
 function problemsFrom(validation?: TestResult['validation'], execution?: RunResult, extra?: string): Problem[] {
   const out: Problem[] = [];
   for (const e of validation?.errors ?? []) out.push({ level: 'bad', msg: e, line: errLine(e) });
@@ -45,10 +73,21 @@ function problemsFrom(validation?: TestResult['validation'], execution?: RunResu
   return out;
 }
 
-function defaultsFrom(schema?: Record<string, ParamSpec> | null): string {
-  const p: Record<string, unknown> = {};
-  for (const [k, sp] of Object.entries(schema || {})) if (sp && sp.default !== undefined && sp.default !== null) p[k] = sp.default;
-  return JSON.stringify(p, null, 2);
+function defaultStr(d: unknown): string {
+  if (d === undefined || d === null) return '';
+  return Array.isArray(d) ? d.join(', ') : String(d);
+}
+
+/** Form string → the param's JSON type (same rules as the library run panel). */
+function coerceParam(sp: ParamSpec | undefined, raw: string): unknown {
+  const v = raw.trim();
+  if (v === '') return undefined;
+  const t = String(sp?.type ?? '').toLowerCase();
+  if (['array', 'list', 'columns'].includes(t)) return v.split(',').map((x) => x.trim()).filter(Boolean);
+  if (['integer', 'int'].includes(t)) return parseInt(v, 10);
+  if (['number', 'float', 'double'].includes(t)) return Number(v);
+  if (['boolean', 'bool'].includes(t) || /^(true|false)$/i.test(v)) return /^(true|1|是|yes)$/i.test(v);
+  return v;
 }
 
 function CodeView({ code, mark }: { code: string; mark?: Set<number> }) {
@@ -64,13 +103,33 @@ function CodeView({ code, mark }: { code: string; mark?: Set<number> }) {
   );
 }
 
-export default function AlgoEditor({ target: initial, onClose, onSaved, onDeleted, onDirtyChange }: {
+export default function AlgoEditor({
+  target: initial, onClose, onSaved, onDeleted, onDirtyChange,
+  externalCode, onCodeChange, onRunResult, highlight, studio = false, datasetId: dsProp, onDatasetChange, openTab,
+}: {
   target: EditorTarget;
-  onClose: () => void;
+  onClose?: () => void;
   onSaved?: (a: Algorithm) => void;
   onDeleted?: () => void;
   /** Lets the host (算法库右侧) ask before navigating away from unsaved edits. */
   onDirtyChange?: (dirty: boolean) => void;
+  // ── driven by the 算法共创 studio (chat on the left) ──
+  /** Code pushed in by the host (an AI turn / undo); applied when `nonce` changes. */
+  externalCode?: { code: string; nonce: number };
+  /** Every edit, so the chat can send the CURRENT code (incl. hand edits) to the AI. */
+  onCodeChange?: (code: string) => void;
+  /** Debug-run outcome, so the chat can offer "让 AI 修这个报错". */
+  onRunResult?: (r: TestResult) => void;
+  /** 0-based line numbers the last AI turn changed — tinted in the gutter. */
+  highlight?: Set<number>;
+  /** Inside the studio: the chat IS the AI assistant, so hide the editor's own AI tab. */
+  studio?: boolean;
+  /** Controlled test dataset — the studio shares ONE dataset between the AI's
+   *  column context and debug runs, so there's never a second, disagreeing picker. */
+  datasetId?: number | null;
+  onDatasetChange?: (id: number | null) => void;
+  /** Host asks to show a tab (applied when `nonce` changes). */
+  openTab?: { tab: 'out' | 'data'; nonce: number };
 }) {
   const [target, setTarget] = useState<EditorTarget>(initial);
   const [code, setCode] = useState(initial.mode === 'new' ? initial.code : '');
@@ -79,8 +138,16 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
     { name: initial.mode === 'new' ? (initial.title || '新算法') : '', slug: '', source: initial.mode === 'new' ? initial.source : '' });
   const [editable, setEditable] = useState(initial.mode === 'new');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasetId, setDatasetId] = useState<number | null>(null);
-  const [paramsText, setParamsText] = useState('{}');
+  const [dsLocal, setDsLocal] = useState<number | null>(null);
+  const controlled = dsProp !== undefined;
+  const datasetId = controlled ? dsProp : dsLocal;
+  const setDatasetId = (v: number | null) => (onDatasetChange ? onDatasetChange(v) : setDsLocal(v));
+  // Run settings: the code's META.params_schema (read statically as you type)
+  // drives a form; values are kept per param name across code changes.
+  const [schema, setSchema] = useState<Record<string, ParamSpec>>({});
+  const [metaErr, setMetaErr] = useState('');
+  const [paramVals, setParamVals] = useState<Record<string, string>>({});
+  const [lastParams, setLastParams] = useState<Record<string, unknown> | null>(null);
   const [out, setOut] = useState<TestResult | null>(null);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [tab, setTab] = useState<Tab>('out');
@@ -98,8 +165,38 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
   const dirty = editable && code !== saved;
   const isCustom = target.mode === 'edit';
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { onCodeChange?.(code); }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (openTab) setTab(openTab.tab); }, [openTab?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (externalCode) { setCode(externalCode.code); setOut(null); setProblems([]); }
+  }, [externalCode?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { api.listDatasets().then((d) => { setDatasets(d); if (d[0]) setDatasetId((cur) => cur ?? d[0].id); }).catch(() => {}); }, []);
+  useEffect(() => {
+    api.listDatasets().then((d) => {
+      setDatasets(d);
+      if (!controlled && d[0]) setDsLocal((cur) => cur ?? (d.find((x) => x.kind !== 'derived') ?? d[0]).id);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Read META without running anything, shortly after typing stops.
+  useEffect(() => {
+    if (!code.trim()) { setSchema({}); setMetaErr(''); return; }
+    const t = setTimeout(() => {
+      api.algorithmMeta(code).then((r) => {
+        if (r.ok) { setSchema(((r.meta as { params_schema?: Record<string, ParamSpec> }).params_schema) ?? {}); setMetaErr(''); }
+        else setMetaErr(r.error || '');
+      }).catch(() => {});
+    }, 700);
+    return () => clearTimeout(t);
+  }, [code]);
+  // New params get their META default; values the user already typed are kept.
+  useEffect(() => {
+    setParamVals((prev) => {
+      const next: Record<string, string> = {};
+      for (const [k, sp] of Object.entries(schema)) next[k] = k in prev ? prev[k] : defaultStr(sp?.default);
+      return next;
+    });
+  }, [schema]);
 
   // Load source for edit / builtin targets.
   useEffect(() => {
@@ -110,7 +207,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
         if (!alive) return;
         setCode(s.code); setSaved(s.code); setEditable(s.editable);
         setHead({ name: s.name, slug: s.slug, version: s.version, source: s.source, verified: s.verified });
-        setParamsText(defaultsFrom(s.params_schema));
+        setSchema(s.params_schema || {});
         const dsid = (s.test_report as { dataset_id?: number })?.dataset_id;
         if (typeof dsid === 'number') setDatasetId(dsid);
         setVersions(vs); setStatus(s.editable ? '就绪' : '只读（不是你的算法）');
@@ -132,9 +229,22 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
     return () => { alive = false; };
   }, [target]);
 
+  /** Params for run(df, **params) from the form — or null (and the run settings
+   *  opened, missing ones named) when a required param is still empty. */
   function parseParams(): Record<string, unknown> | null {
-    try { const v = JSON.parse(paramsText || '{}'); return v && typeof v === 'object' ? v : {}; }
-    catch { setProblems([{ level: 'bad', msg: '测试参数不是合法 JSON', line: 0 }]); setTab('data'); return null; }
+    const missing = Object.entries(schema).filter(([k, sp]) => sp?.required && !(paramVals[k] ?? '').trim()).map(([k]) => k);
+    if (missing.length) {
+      setProblems([{ level: 'warn', msg: `还没填必填参数：${missing.join('、')}。在「运行设置」里填好再运行。`, line: 0 }]);
+      setTab('data');
+      setStatus('缺少必填参数，未运行');
+      return null;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, sp] of Object.entries(schema)) {
+      const v = coerceParam(sp, paramVals[k] ?? '');
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
   }
 
   function gotoLine(line: number) {
@@ -168,15 +278,14 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
     try {
       const r = await api.testAlgorithm(code, params, datasetId ?? undefined);
       setOut(r);
+      setLastParams(params);
+      onRunResult?.(r);
       const probs = problemsFrom(r.validation, r.execution);
+      if (r.diagnosis) probs.unshift({ level: r.diagnosis.category === 'code' || r.diagnosis.category === 'rule' ? 'bad' : 'warn', msg: r.diagnosis.title, line: r.diagnosis.line });
       setProblems(probs); setTab('out');
       const ok = r.validation.ok && r.execution.status === 'ok';
       setStatus(ok ? `沙箱通过 · ${r.execution.duration_ms} ms` : '沙箱未通过');
       if (!ok && probs[0]?.line) gotoLine(probs[0].line);
-      // First run on new code: fill test params from META defaults if still empty.
-      if (paramsText.trim() === '{}' && r.meta && (r.meta as { params_schema?: Record<string, ParamSpec> }).params_schema) {
-        setParamsText(defaultsFrom((r.meta as { params_schema?: Record<string, ParamSpec> }).params_schema));
-      }
     } catch (e) {
       setProblems([{ level: 'bad', msg: (e as Error).message, line: 0 }]); setTab('prob'); setStatus('运行失败');
     } finally { setBusy(''); }
@@ -241,7 +350,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
     if (target.mode !== 'edit') return;
     if (!window.confirm(`删除算法「${head.name}」（含全部历史版本）？在用它的流程会找不到这个工具。`)) return;
     setBusy('del');
-    try { await api.deleteAlgorithm(target.algoId); onDeleted?.(); onClose(); }
+    try { await api.deleteAlgorithm(target.algoId); onDeleted?.(); onClose?.(); }
     catch (e) { setStatus('删除失败:' + (e as Error).message); setBusy(''); }
   }
 
@@ -254,7 +363,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
 
   function close() {
     if (dirty && !window.confirm('有未保存的改动，确定关闭？')) return;
-    onClose();
+    onClose?.();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -290,7 +399,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
   const ghost = `${btn} ring-1 ring-ink-200 text-ink-700 hover:bg-ink-50`;
   const tabs: [Tab, string][] = target.mode === 'builtin'
     ? [['prob', '说明']]
-    : [['out', '输出'], ['prob', `问题${problems.length ? ' · ' + problems.length : ''}`], ['data', '测试数据'], ['ai', 'AI 校正'], ...(isCustom ? [['hist', `历史${versions.length ? ' · ' + versions.length : ''}`] as [Tab, string]] : [])];
+    : [['out', '输出'], ['prob', `问题${problems.length ? ' · ' + problems.length : ''}`], ['data', `运行设置${Object.entries(schema).some(([k, sp]) => sp?.required && !(paramVals[k] ?? '').trim()) ? ' · 待填' : ''}`], ...(studio ? [] : [['ai', 'AI 校正'] as [Tab, string]]), ...(isCustom ? [['hist', `历史${versions.length ? ' · ' + versions.length : ''}`] as [Tab, string]] : [])];
 
   const ex = out?.execution;
   const sum = (ex?.summary || {}) as { type?: string; columns?: string[]; head?: Record<string, unknown>[]; value?: unknown };
@@ -320,7 +429,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
               <button onClick={run} disabled={!!busy} className={ghost} title="Ctrl+Enter">
                 {busy === 'run' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} 调试运行
               </button>
-              <button onClick={() => setTab('ai')} disabled={!!busy} className={ghost}><Sparkles className="w-3.5 h-3.5" /> AI 校正</button>
+              {!studio && <button onClick={() => setTab('ai')} disabled={!!busy} className={ghost}><Sparkles className="w-3.5 h-3.5" /> AI 校正</button>}
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="这版改了什么（可空）"
                 className="text-xs border border-ink-200 rounded-lg px-2 py-1.5 w-40" />
               <button onClick={save} disabled={!!busy || (isCustom && !dirty)} className={`${btn} bg-brand-600 text-white hover:bg-brand-700`} title="Ctrl+S">
@@ -330,7 +439,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
           )}
           <button onClick={exportPy} className={ghost}><Download className="w-3.5 h-3.5" /> 导出 .py</button>
           {isCustom && editable && <button onClick={remove} disabled={!!busy} className={`${btn} ring-1 ring-red-200 text-red-600 hover:bg-red-50`}><Trash2 className="w-3.5 h-3.5" /> 删除</button>}
-          <button onClick={close} className={ghost} title="关闭编辑器，回到算法详情"><X className="w-3.5 h-3.5" /> 关闭编辑器</button>
+          {onClose && <button onClick={close} className={ghost} title="关闭编辑器，回到算法详情"><X className="w-3.5 h-3.5" /> 关闭编辑器</button>}
         </div>
 
         {/* body */}
@@ -341,7 +450,7 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
             {busy === 'load' && <div className="absolute inset-0 grid place-items-center text-ink-300 text-sm"><Loader2 className="w-5 h-5 animate-spin" /></div>}
             <div ref={gutRef} className="w-12 shrink-0 overflow-hidden text-right pr-2 pt-3 font-mono text-[12px] text-ink-500 select-none" style={{ lineHeight: `${LH}px` }}>
               {Array.from({ length: nLines }, (_, i) => (
-                <div key={i} className={errLines.has(i + 1) ? 'text-red-400 font-bold' : ''}>{i + 1}</div>
+                <div key={i} className={errLines.has(i + 1) ? 'text-red-400 font-bold' : highlight?.has(i) ? 'text-emerald-300 bg-emerald-900/50' : ''}>{i + 1}</div>
               ))}
             </div>
             <textarea
@@ -381,9 +490,14 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
                 <>
                   <div className={`rounded-lg px-2.5 py-1.5 text-xs ${ex?.status === 'ok' && out.validation.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
                     {ex?.status === 'ok' && out.validation.ok ? `沙箱通过 · ${ex.duration_ms} ms` : '未通过'}
-                    {datasetId != null && <> · 数据:{datasets.find((d) => d.id === datasetId)?.name}</>}
+                    {' · 数据：'}{datasetId != null ? datasets.find((d) => d.id === datasetId)?.name : '无（df 为 None）'}
                   </div>
-                  {ex?.status !== 'ok' && ex?.error && <pre className="text-[11px] bg-red-50/50 ring-1 ring-red-100 rounded p-2 whitespace-pre-wrap font-mono">{ex.error.slice(0, 4000)}</pre>}
+                  {lastParams && <div className="text-[11px] text-ink-500 font-mono break-all">参数：{JSON.stringify(lastParams)}</div>}
+                  {ex?.status !== 'ok' && out?.diagnosis && <DiagnosisBox d={out.diagnosis} onGo={(tabName) => setTab(tabName)} onLine={gotoLine} />}
+                  {ex?.status !== 'ok' && ex?.error && (out?.diagnosis
+                    ? <details className="text-[11px]"><summary className="cursor-pointer text-ink-500 select-none">原始报错</summary>
+                        <pre className="mt-1 bg-red-50/50 ring-1 ring-red-100 rounded p-2 whitespace-pre-wrap font-mono">{ex.error.slice(0, 4000)}</pre></details>
+                    : <pre className="text-[11px] bg-red-50/50 ring-1 ring-red-100 rounded p-2 whitespace-pre-wrap font-mono">{ex.error.slice(0, 4000)}</pre>)}
                   {ex?.status === 'ok' && (sum.type === 'dataframe' && sum.head?.length ? (
                     <div className="overflow-auto max-h-64 ring-1 ring-ink-200 rounded">
                       <table className="text-[11px] min-w-full">
@@ -407,20 +521,33 @@ export default function AlgoEditor({ target: initial, onClose, onSaved, onDelete
                 </ul>
               ) : <div className="text-xs text-ink-400">没有问题。「校验」做静态检查：只允许 numpy / pandas / scipy / sklearn / 标准库；禁止 os、文件、网络、eval 等；必须有顶级 META 字典和 run(df, **params)。</div>)}
 
-              {tab === 'data' && (
-                <div className="space-y-2">
-                  <label className="block text-xs text-ink-500">测试数据集（调试运行和保存时的沙箱复跑都用它）</label>
-                  <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
-                    <option value="">（无 —— run 收到的 df 为 None）</option>
-                    {datasets.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rows} × {d.columns})</option>)}
-                  </select>
-                  {datasetId != null && <div className="text-[11px] text-ink-400 break-all">列:{(datasets.find((d) => d.id === datasetId)?.schema?.columns ?? []).map((c) => c.name).join(', ')}</div>}
-                  <label className="block text-xs text-ink-500">测试参数（JSON，传给 run 的 **params）</label>
-                  <textarea value={paramsText} onChange={(e) => setParamsText(e.target.value)} rows={8} spellCheck={false}
-                    className="w-full font-mono text-xs border border-ink-200 rounded-lg p-2" />
-                </div>
-              )}
+              {tab === 'data' && (() => {
+                const cols = (datasets.find((d) => d.id === datasetId)?.schema?.columns ?? []).map((c) => c.name);
+                const keys = Object.keys(schema);
+                return (
+                  <div className="space-y-3">
+                    <div className="text-xs text-ink-500">「调试运行」和保存时的沙箱复跑，都用下面的数据和参数调用 <code>run(df, **params)</code>。</div>
+                    <div>
+                      <label className="block text-xs text-ink-700 font-medium mb-1">数据集{studio ? <span className="text-ink-400 font-normal">（和左侧对话里的参考数据集是同一个）</span> : null}</label>
+                      <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)}
+                        className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
+                        <option value="">（无 —— run 收到的 df 为 None）</option>
+                        {datasets.filter((d) => d.kind !== 'derived' || d.id === datasetId).map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rows} × {d.columns})</option>)}
+                      </select>
+                      {cols.length > 0 && <div className="text-[11px] text-ink-400 mt-1 break-all">列：{cols.join(', ')}</div>}
+                    </div>
+                    <div className="space-y-2.5">
+                      <div className="text-xs text-ink-700 font-medium">参数 <span className="text-ink-400 font-normal">· 来自代码里的 META.params_schema，带 * 的必填</span></div>
+                      {metaErr ? <div className="text-xs text-amber-700">读不到 META（{metaErr}），先让代码符合规范才能填参数。</div>
+                        : keys.length === 0 ? <div className="text-xs text-ink-400">这个算法没有声明参数。</div>
+                          : keys.map((k) => (
+                            <ParamField key={k} name={k} spec={schema[k] ?? {}} value={paramVals[k] ?? ''} cols={cols}
+                              onChange={(v) => setParamVals((p) => ({ ...p, [k]: v }))} />
+                          ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {tab === 'ai' && (
                 <div className="space-y-2">

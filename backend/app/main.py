@@ -98,6 +98,7 @@ def _warmup(app: "FastAPI") -> None:
         from .api import feedback as feedback_api
         from .api import mappings as mappings_api
         from .api import oidc as oidc_api
+        from .api import skills as skills_api
         from .api import templates as templates_api
 
         app.include_router(auth_api.router, prefix="/api")
@@ -113,6 +114,7 @@ def _warmup(app: "FastAPI") -> None:
         app.include_router(templates_api.router, prefix="/api")
         app.include_router(feedback_api.router, prefix="/api")
         app.include_router(mappings_api.router, prefix="/api")
+        app.include_router(skills_api.router, prefix="/api")
         app.openapi_schema = None  # invalidate cache so the new routes appear in /openapi.json
 
         # Touch sklearn/scipy too while we're paying the cold-scan cost, so the

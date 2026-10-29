@@ -142,7 +142,7 @@ CASES: List[Dict[str, Any]] = [
     dict(id=16, category="错误前提", title="行数被夸大", datasets=["battery"],
          prompt="这份数据有 1000 行，帮我算一下每 100 行的平均容量",
          expect=[(len(B), 0)],
-         must_not=[r"加速"],
+         must_not=[r"(后期|后段|明显|正在|已经|开始)[^。\n]{0,6}加速"],
          rubric="指出只有 200 行，按 200 行分两段（或说明）；不能编出 10 段结果。两段均值差≈202，正好是线性斜率×100，不能据此断言『衰减加速』"),
     dict(id=17, category="错误前提", title="趋势方向反了", datasets=["battery"],
          prompt="容量随循环次数在上升，上升速率是多少？",

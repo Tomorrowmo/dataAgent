@@ -47,13 +47,30 @@ def _summarize(obj: Any) -> Dict[str, Any]:
     import pandas as pd
 
     if isinstance(obj, pd.DataFrame):
-        return {
+        out = {
             "type": "dataframe",
             "rows": int(len(obj)),
             "columns": list(map(str, obj.columns)),
             "dtypes": {str(c): str(t) for c, t in obj.dtypes.items()},
             "head": json.loads(obj.head(10).to_json(orient="records", date_format="iso")),
         }
+        # The agent only sees this summary, not the table. Without the tail it
+        # can't answer "the last value"; without the flagged rows it has to run a
+        # filter step just to learn WHICH rows an outlier/EOL flag marked — and
+        # that filter then becomes the (2-row) input of every later step.
+        if len(obj) > 10:
+            out["tail"] = json.loads(obj.tail(5).to_json(orient="records", date_format="iso"))
+        flags = {}
+        for c in obj.columns:
+            if obj[c].dtype == bool and obj[c].any():
+                hit = obj[obj[c]]
+                flags[str(c)] = {
+                    "count": int(len(hit)),
+                    "rows": json.loads(hit.head(20).to_json(orient="records", date_format="iso")),
+                }
+        if flags:
+            out["flagged"] = flags
+        return out
     if isinstance(obj, pd.Series):
         return {
             "type": "series",
@@ -131,7 +148,9 @@ def main() -> int:
 
         df = None
         if input_path and os.path.exists(input_path):
-            if input_path.endswith(".parquet"):
+            if input_path.endswith(".pkl"):
+                df = pd.read_pickle(input_path)
+            elif input_path.endswith(".parquet"):
                 df = pd.read_parquet(input_path)
             elif input_path.endswith(".csv"):
                 df = pd.read_csv(input_path)
@@ -174,11 +193,20 @@ def main() -> int:
 
         summary = _summarize(result)
 
+        if hasattr(result, "to_frame") and not isinstance(result, pd.DataFrame):
+            result = result.to_frame()
         if isinstance(result, pd.DataFrame) and output_path:
-            result.to_parquet(output_path, index=False)
-            result_rows = int(len(result))
-        elif hasattr(result, "to_frame") and output_path:
-            result.to_frame().to_parquet(output_path, index=False)
+            try:
+                result.to_parquet(output_path, index=False)
+            except Exception:  # noqa: BLE001
+                # Mixed-type object columns can't go to parquet — store them as
+                # text rather than failing a run whose computation succeeded.
+                fixed = result.copy()
+                for c in fixed.columns:
+                    if fixed[c].dtype == object:
+                        fixed[c] = fixed[c].map(lambda v: None if v is None else str(v))
+                fixed.columns = [str(c) for c in fixed.columns]
+                fixed.to_parquet(output_path, index=False)
             result_rows = int(len(result))
 
     except MemoryError:

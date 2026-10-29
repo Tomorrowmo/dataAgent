@@ -91,7 +91,15 @@ def execute(
         input_path = ""
         if input_df is not None:
             input_path = str(workdir / "input.parquet")
-            input_df.to_parquet(input_path, index=False)
+            try:
+                input_df.to_parquet(input_path, index=False)
+            except Exception:  # noqa: BLE001
+                # Parquet rejects mixed-type object columns (e.g. a test case
+                # that plants 'bad' in a numeric column on purpose). Pickle keeps
+                # the frame exactly as given; it's our own data, read by our own
+                # worker, never user-supplied bytes.
+                input_path = str(workdir / "input.pkl")
+                input_df.to_pickle(input_path)
 
         output_path = str(workdir / "output.parquet") if save_result else ""
 

@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
-import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
+import { api, type Algorithm, type Dataset, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
 import dynamic from 'next/dynamic';
 // @xyflow/react is browser-only — client-only load to keep it out of SSR.
 const FlowCanvas = dynamic(() => import('@/components/FlowCanvas'), { ssr: false });
-import SaveToolModal from '@/components/SaveToolModal';
+import AlgoStudio from '@/components/AlgoStudio';
 import AlgoEditor, { type EditorTarget } from '@/components/AlgoEditor';
 import RunApp from '@/components/RunApp';
 import DatasetChart from '@/components/DatasetChart';
@@ -18,9 +18,9 @@ import { SOURCE_ZH, RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr,
 // The 算法库 view: a single left list (two pinned entries 上传/AI + the
 // intent-grouped algorithms) and a right area that shows the selected thing.
 // 流程模板 is now its own top-level view (see TemplatesView, used by page.tsx).
-export default function AlgorithmsView({ focusAlgo }: { focusAlgo?: { slug: string; nonce: number } | null }) {
+export default function AlgorithmsView({ focusAlgo, active = true }: { focusAlgo?: { slug: string; nonce: number } | null; active?: boolean }) {
   const t = useT();
-  return <LibraryView t={t} focusAlgo={focusAlgo ?? null} />;
+  return <LibraryView t={t} focusAlgo={focusAlgo ?? null} active={active} />;
 }
 
 export function TemplatesView() {
@@ -123,7 +123,7 @@ const editorFor = (a: Algorithm): EditorTarget =>
 /** Wide enough (Tailwind xl) for run panel + editor side by side. */
 const sideBySide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches;
 
-function LibraryView({ t, focusAlgo }: { t: (k: string) => string; focusAlgo: { slug: string; nonce: number } | null }) {
+function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focusAlgo: { slug: string; nonce: number } | null; active: boolean }) {
   const [algos, setAlgos] = useState<Algorithm[]>([]);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Sel>(null);
@@ -152,6 +152,13 @@ function LibraryView({ t, focusAlgo }: { t: (k: string) => string; focusAlgo: { 
     setRev((r) => r + 1);
   }).catch(() => {});
   useEffect(() => { reload(); }, []);
+  // Kept mounted while hidden: refresh the list each time the tab comes back
+  // (the chat may have created tools meanwhile) — selection and any studio work stay.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) api.listAlgorithms().then(setAlgos).catch(() => {});
+    wasActive.current = active;
+  }, [active]);
 
   // Jump-in from chat (an AI-built tool's "在编辑器中打开"): select that algorithm
   // and open its code editor once the list is loaded.
@@ -233,8 +240,8 @@ function LibraryView({ t, focusAlgo }: { t: (k: string) => string; focusAlgo: { 
               ← 返回列表
             </button>
           )}
-          <div className={selected === 'upload' ? 'h-full' : 'hidden'}><UploadView t={t} onOpenEditor={setEditor} /></div>
-          <div className={selected === 'ai' ? 'h-full' : 'hidden'}><GenerateView t={t} onOpenEditor={setEditor} /></div>
+          <div className={selected === 'upload' ? 'h-full' : 'hidden'}><AlgoStudio start="upload" onSaved={() => reload()} /></div>
+          <div className={selected === 'ai' ? 'h-full' : 'hidden'}><AlgoStudio start="ai" onSaved={() => reload()} /></div>
           {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor} />}
           {selected === null && !editor && (
             <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
@@ -657,368 +664,6 @@ function RunOutput({ result, t }: { result: RunResult; t: (k: string) => string 
       ) : (
         <pre className="bg-ink-50 ring-1 ring-ink-200 rounded-lg p-3 text-xs overflow-auto max-h-80">{JSON.stringify(s.value ?? s, null, 2).slice(0, 4000)}</pre>
       )}
-    </div>
-  );
-}
-
-const EXAMPLE_CODE = `import pandas as pd
-import numpy as np
-
-META = {
-    "name": "Z-normalize columns",
-    "slug": "znorm_demo",
-    "category": "preprocess",
-    "description": "Z-score normalize selected numeric columns.",
-    "params_schema": {
-        "columns": {"type": "array", "items": "string", "required": False,
-                    "description": "If empty, uses all numeric columns"},
-    },
-    "returns": "dataframe",
-    "tags": ["preprocess", "scale"],
-}
-
-def run(df, *, columns=None):
-    if df is None:
-        raise ValueError("df is required")
-    out = df.copy()
-    cols = columns or [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    for c in cols:
-        s = out[c].astype(float)
-        mu, sd = s.mean(), s.std(ddof=0)
-        out[c] = (s - mu) / sd if sd else 0.0
-    return out
-
-test_cases = [
-    {"df": pd.DataFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}), "params": {}},
-]
-`;
-
-/** The接入规范, shown as a live checklist so a user pasting code knows exactly
- *  what's required — and which rules their current code already satisfies. */
-function SpecChecklist({ v }: { v?: TestResult['validation'] }) {
-  const badImports = v?.errors.filter((e) => e.includes('import not allowed') || e.includes("is not allowed")) ?? [];
-  const rules: { ok: boolean | null; label: string }[] = [
-    { ok: v ? !!v.has_meta : null, label: '定义顶级 META 字典（name / slug / category / description / params_schema / returns）' },
-    { ok: v ? !!v.has_run : null, label: '定义 run(df, **params) 入口函数' },
-    { ok: v ? badImports.length === 0 : null, label: '仅用 numpy / pandas / scipy / sklearn / 标准库（沙箱白名单）' },
-  ];
-  return (
-    <div className="rounded-xl ring-1 ring-ink-200 bg-ink-50/60 p-3 text-sm">
-      <div className="text-xs font-medium text-ink-600 mb-2">接入规范</div>
-      <ul className="space-y-1">
-        {rules.map((r, i) => (
-          <li key={i} className="flex items-start gap-2">
-            {r.ok === null ? <span className="w-3.5 mt-2 h-px bg-ink-300 shrink-0" title="运行测试后显示是否符合" />
-              : r.ok ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 text-emerald-500 shrink-0" />
-                : <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-red-500 shrink-0" />}
-            <span className={r.ok === false ? 'text-red-700' : 'text-ink-600'}>{r.label}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="text-[11px] text-ink-400 mt-2">目前仅支持 Python。代码不规范？用下方「AI 自动校正」把粘贴的片段改造成规范工具。</div>
-    </div>
-  );
-}
-
-function UploadView({ t, onOpenEditor }: { t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
-  const [code, setCode] = useState(EXAMPLE_CODE);
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasetId, setDatasetId] = useState<number | null>(null);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [fixing, setFixing] = useState(false);
-  const [fixNote, setFixNote] = useState('');
-  const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [errExplain, setErrExplain] = useState('');
-  const [errExplaining, setErrExplaining] = useState(false);
-  const [showSave, setShowSave] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { api.listDatasets().then(setDatasets).catch(() => {}); }, []);
-
-  async function explainTestErr() {
-    if (!testResult) return;
-    setErrExplaining(true); setErrExplain('');
-    try {
-      const r = await api.explainTestError(code, testResult.execution.error || '', datasetId ?? undefined);
-      setErrExplain(r.explanation || '（没有得到解释）');
-    } catch (e) { setErrExplain('（解释失败:' + (e as Error).message + '）'); }
-    finally { setErrExplaining(false); }
-  }
-
-  async function runTest(src?: string) {
-    setBusy(true); setError(''); setSaved(false); setErrExplain('');
-    try {
-      const r = await api.testAlgorithm(src ?? code, {}, datasetId ?? undefined);
-      setTestResult(r);
-      return r;
-    } catch (e) { setError((e as Error).message); return null; }
-    finally { setBusy(false); }
-  }
-
-  // AI auto-correct: hand the current (possibly non-conformant) code to the
-  // codegen + self-test loop, which preserves the logic but wraps it into the
-  // required META + run(df, **params) shape with sandbox-safe imports.
-  async function autofix() {
-    if (!code.trim()) return;
-    setFixing(true); setError(''); setFixNote(''); setSaved(false);
-    try {
-      const r = await api.autofixAlgorithm(code, datasetId ?? undefined);
-      setCode(r.code);
-      const total = r.tests?.length ?? 0;
-      const passed = r.tests?.filter((tc) => tc.status === 'ok').length ?? 0;
-      setFixNote(`已校正为「${String(r.meta?.name ?? '算法')}」 · 沙箱自测 ${passed}/${total} ${r.all_tests_passed ? '全部通过' : '未全通过,请查看下方测试'}`);
-      await runTest(r.code); // re-validate so the save gate reflects the fixed code
-    } catch (e) { setError((e as Error).message); }
-    finally { setFixing(false); }
-  }
-
-  function onPickFile(file?: File) {
-    if (!file) return;
-    setFixNote(''); setTestResult(null); setSaved(false);
-    const reader = new FileReader();
-    reader.onload = () => { setCode(String(reader.result ?? '')); };
-    reader.onerror = () => setError('读取文件失败');
-    reader.readAsText(file);
-  }
-
-  // Curated save: the dialog hands back the user-confirmed name / description /
-  // category / params_schema; we persist via /algorithms/save (with the code).
-  async function confirmSave(edits: { name: string; description: string; category: string; params_schema: Record<string, unknown> }) {
-    await api.saveAlgorithm({
-      code,
-      source: 'user',
-      name: edits.name,
-      description: edits.description,
-      category: edits.category,
-      params_schema: edits.params_schema,
-      test_report: testResult ? { all_tests_passed: testResult.execution.status === 'ok' && testResult.validation.ok, tests: [testResult.execution] } : {},
-    });
-  }
-
-  const validation = testResult?.validation;
-  const canSave = !!testResult && testResult.validation.ok && testResult.execution.status === 'ok';
-
-  return (
-    <div className="p-6 space-y-4">
-      <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <h3 className="font-medium">{t('algo.upload.step1')}</h3>
-          <button onClick={() => fileRef.current?.click()}
-            className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1.5 shrink-0">
-            <Upload className="w-3.5 h-3.5" /> 上传 .py 文件
-          </button>
-          <button onClick={() => onOpenEditor({ mode: 'new', code, source: 'user', title: '上传的算法' })}
-            className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1.5 shrink-0">
-            <Code2 className="w-3.5 h-3.5" /> 在编辑器中打开
-          </button>
-          <input ref={fileRef} type="file" accept=".py,.txt,text/x-python,text/plain" className="hidden"
-            onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
-        </div>
-        <p className="text-sm text-ink-500 mb-3">{t('algo.upload.step1desc')} 也可直接粘贴一段代码或上传 .py 文件,再用「AI 自动校正」补齐规范。</p>
-        <textarea
-          value={code}
-          onChange={(e) => { setCode(e.target.value); setFixNote(''); }}
-          rows={18}
-          spellCheck={false}
-          className="w-full font-mono text-[13px] leading-snug bg-ink-900 text-ink-50 rounded-xl p-4 border border-ink-200 focus:outline-none"
-        />
-        <div className="mt-3"><SpecChecklist v={validation} /></div>
-        {fixNote && (
-          <div className="mt-3 text-sm text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-lg px-3 py-2 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 shrink-0" /> {fixNote}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-        <h3 className="font-medium mb-2">{t('algo.upload.step2')}</h3>
-        <div className="flex items-end gap-3 mb-3 flex-wrap">
-          <div className="flex-1 min-w-[160px]">
-            <label className="block text-xs text-ink-500 mb-1">{t('algo.upload.dataset')}</label>
-            <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)} className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
-              <option value="">{t('chat.none')}</option>
-              {datasets.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-          <button onClick={() => autofix()} disabled={fixing || busy} title="把当前代码改造成符合规范的工具(保留逻辑,补 META / run / 合规 import)"
-            className="px-4 py-2 rounded-xl ring-1 ring-violet-200 text-violet-700 font-medium hover:bg-violet-50 flex items-center gap-2 disabled:opacity-50 shrink-0">
-            {fixing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} AI 自动校正
-          </button>
-          <button onClick={() => runTest()} disabled={busy || fixing} className="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 flex items-center gap-2 disabled:opacity-50 shrink-0">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} {t('algo.upload.runTest')}
-          </button>
-        </div>
-        {testResult && <TestResultDisplay r={testResult} t={t} />}
-        {testResult && (!testResult.validation.ok || testResult.execution.status !== 'ok') && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {testResult.execution.status !== 'ok' && (
-              <button onClick={explainTestErr} disabled={errExplaining}
-                className="text-sm px-3 py-1.5 rounded-lg bg-white ring-1 ring-red-200 text-red-700 hover:bg-red-50 flex items-center gap-1.5 disabled:opacity-50">
-                {errExplaining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 用人话解释这个错误
-              </button>
-            )}
-            <button onClick={() => autofix()} disabled={fixing}
-              className="text-sm px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 flex items-center gap-1.5 disabled:opacity-50">
-              {fixing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 让 AI 自动校正
-            </button>
-          </div>
-        )}
-        {errExplain && (
-          <div className="mt-2 text-sm text-ink-700 bg-brand-50/60 rounded-lg ring-1 ring-brand-100 p-2.5 whitespace-pre-wrap">
-            💡 {errExplain}
-          </div>
-        )}
-      </div>
-
-      {canSave && (
-        <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-          <h3 className="font-medium mb-2">{t('algo.upload.step3')}</h3>
-          <p className="text-sm text-ink-500 mb-3">{t('algo.upload.step3desc')} 保存前可确认 / 修改算法名称、说明、分类和要暴露的参数。</p>
-          <button onClick={() => setShowSave(true)} disabled={saved} className={`px-4 py-2 rounded-xl font-medium flex items-center gap-2 ${saved ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white hover:bg-brand-700'}`}>
-            {saved ? <><CheckCircle2 className="w-4 h-4" /> {t('algo.upload.saved')}</> : <><Save className="w-4 h-4" /> 确认并保存…</>}
-          </button>
-        </div>
-      )}
-
-      {error && (
-        <div className="px-3 py-2 rounded-lg bg-red-50 text-red-700 text-sm flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4" /> {error}
-        </div>
-      )}
-
-      {showSave && testResult && (
-        <SaveToolModal
-          slug={String((testResult.meta?.slug as string) ?? '')}
-          meta={testResult.meta ?? {}}
-          showReuse={false}
-          hint="确认或修改算法名称、说明、分类和要暴露的参数,然后保存到算法库。"
-          onConfirm={confirmSave}
-          onSaved={() => { setSaved(true); setShowSave(false); }}
-          onReused={() => setShowSave(false)}
-          onCancel={() => setShowSave(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-function GenerateView({ t, onOpenEditor }: { t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
-  const [prompt, setPrompt] = useState('');
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasetId, setDatasetId] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<GenerationResult | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => { api.listDatasets().then(setDatasets).catch(() => {}); }, []);
-
-  async function generate() {
-    if (!prompt.trim()) return;
-    setBusy(true); setError(''); setResult(null); setSaved(false);
-    try {
-      const r = await api.generateAlgorithm(prompt, datasetId ?? undefined);
-      setResult(r);
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  async function save() {
-    if (!result) return;
-    setBusy(true); setError('');
-    try {
-      await api.saveAlgorithm({
-        code: result.code,
-        source: 'ai',
-        test_report: { all_tests_passed: result.all_tests_passed, tests: result.tests },
-      });
-      setSaved(true);
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <div className="p-6 space-y-4">
-      <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-        <h3 className="font-medium mb-2">{t('algo.gen.title')}</h3>
-        <p className="text-sm text-ink-500 mb-3">{t('algo.gen.desc')}</p>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
-          placeholder={t('algo.gen.placeholder')}
-          className="w-full border border-ink-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
-        />
-        <div className="flex items-end gap-3 mt-3">
-          <div className="flex-1">
-            <label className="block text-xs text-ink-500 mb-1">{t('algo.gen.hint')}</label>
-            <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)} className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
-              <option value="">{t('chat.none')}</option>
-              {datasets.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-          <button onClick={generate} disabled={busy || !prompt.trim()} className="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 flex items-center gap-2 disabled:opacity-50">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} {t('algo.gen.go')}
-          </button>
-        </div>
-      </div>
-
-      {error && <div className="px-3 py-2 rounded-lg bg-red-50 text-red-700 text-sm flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div>}
-
-      {result && (
-        <>
-          <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <h3 className="font-medium">{t('algo.gen.proposed')} {String(result.meta.name ?? '')}</h3>
-              <button onClick={() => onOpenEditor({ mode: 'new', code: result.code, source: 'ai', title: String(result.meta.name ?? 'AI 生成的算法') })}
-                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1.5 shrink-0">
-                <Code2 className="w-3.5 h-3.5" /> 在编辑器中修改 / 调试后入库
-              </button>
-            </div>
-            <pre className="bg-ink-900 text-ink-50 rounded-xl p-4 text-[13px] overflow-x-auto"><code>{result.code}</code></pre>
-          </div>
-          <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-            <h3 className="font-medium mb-2">{t('algo.gen.testReport')}</h3>
-            <div className="space-y-2">
-              {result.tests.map((tc) => (
-                <div key={tc.case} className={`text-sm rounded-lg p-2.5 ${tc.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                  {t('algo.gen.case')} {tc.case}: <strong>{tc.status === 'ok' ? t('algo.test.ok') : t('algo.test.failed')}</strong> {t('algo.gen.in')} {tc.duration_ms} ms
-                  {tc.error && <div className="mt-1 font-mono text-xs">{tc.error}</div>}
-                </div>
-              ))}
-            </div>
-            <div className="mt-4">
-              <button onClick={save} disabled={busy || saved || !result.all_tests_passed} className={`px-4 py-2 rounded-xl font-medium flex items-center gap-2 ${saved ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50'}`}>
-                {saved ? <><CheckCircle2 className="w-4 h-4" /> {t('algo.upload.saved')}</> : <><Save className="w-4 h-4" /> {t('algo.gen.approve')}</>}
-              </button>
-              {!result.all_tests_passed && <div className="text-xs text-red-600 mt-2">{t('algo.gen.failedTests')}</div>}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function TestResultDisplay({ r, t }: { r: TestResult; t: (k: string) => string }) {
-  return (
-    <div className="space-y-2 text-sm">
-      <div className={`rounded-lg p-2.5 ${r.validation.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-        {t('algo.test.validation')} <strong>{r.validation.ok ? t('algo.test.ok') : t('algo.test.failed')}</strong>
-        {!r.validation.ok && (
-          <ul className="mt-1 list-disc pl-5 text-xs">
-            {r.validation.errors.map((e, i) => <li key={i}>{e}</li>)}
-          </ul>
-        )}
-        {r.validation.imports.length > 0 && <div className="text-xs mt-1">{t('algo.test.imports')} {r.validation.imports.join(', ')}</div>}
-      </div>
-      <div className={`rounded-lg p-2.5 ${r.execution.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-        {t('algo.test.execution')} <strong>{r.execution.status === 'ok' ? t('algo.test.ok') : t('algo.test.failed')}</strong> {t('algo.gen.in')} {r.execution.duration_ms} ms
-        {r.execution.error && <div className="mt-1 font-mono text-xs whitespace-pre-wrap">{r.execution.error.slice(0, 1000)}</div>}
-        {r.execution.summary && <pre className="bg-white/60 rounded p-2 mt-2 text-xs overflow-x-auto">{JSON.stringify(r.execution.summary, null, 2).slice(0, 800)}</pre>}
-      </div>
     </div>
   );
 }
