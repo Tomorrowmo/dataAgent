@@ -11,6 +11,8 @@ from ..algorithms import registry
 from ..db.models import Algorithm, Dataset, Run, User
 from ..sandbox import executor as sandbox_executor
 from ..sandbox.validator import validate_algorithm_code
+from ..services import algo_store
+from ..services.algo_store import find_algorithm
 from ..services.codegen import generate_algorithm, parse_meta
 from ..services.datasets import _persist_dataset, load_dataset_df
 from .deps import current_user, get_db, llm_for
@@ -111,6 +113,14 @@ async def test_code(
 class AutofixReq(BaseModel):
     code: str
     dataset_id: Optional[int] = None
+    # From the code editor's「AI 校正」: what the user wants changed, and the
+    # last debug-run error to fix. Both optional (empty = plain conformance fix).
+    instruction: str = ""
+    error: str = ""
+    # From the code editor's「AI 校正」: what the user wants changed, and the
+    # last debug-run error to fix. Both optional (empty = plain conformance fix).
+    instruction: str = ""
+    error: str = ""
 
 
 @router.post("/autofix")
@@ -148,7 +158,9 @@ async def autofix(
         "- 若缺少，补上顶级 META 字典与 `run(df, **params)` 入口（把原有函数/脚本逻辑接进 run）；\n"
         "- 只用允许的库（numpy / pandas / scipy / sklearn 子模块 / 标准库），把不允许的依赖替换或移除；\n"
         "- 补 1–3 个 test_cases 以便沙箱自测。\n\n"
-        "用户代码：\n```python\n" + body.code.strip() + "\n```"
+        + (f"用户的修改要求：{body.instruction.strip()}\n\n" if body.instruction.strip() else "")
+        + (f"最近一次调试运行的报错（请修正）：\n{body.error.strip()[:2000]}\n\n" if body.error.strip() else "")
+        + "用户代码：\n```python\n" + body.code.strip() + "\n```"
     )
     try:
         bundle = await generate_algorithm(fix_prompt, llm=llm, schema_hint=schema_hint)
@@ -239,6 +251,35 @@ class SaveReq(BaseModel):
     params_schema: Optional[Dict[str, Any]] = None
     test_report: Dict[str, Any] = Field(default_factory=dict)
     is_public: bool = False
+    # Code editor path: re-run the code in the sandbox on the server (with this
+    # dataset / params) and refuse to save unless it passes, instead of trusting
+    # the client-sent test_report.
+    verify: bool = False
+    dataset_id: Optional[int] = None
+    params: Dict[str, Any] = Field(default_factory=dict)
+    note: str = ""
+
+
+def _summary(row: Algorithm) -> AlgoSummary:
+    return AlgoSummary(
+        slug=row.slug, name=row.name, category=row.category, description=row.description,
+        source=row.source, params_schema=row.params_schema or {}, returns=row.returns,
+        verified=bool(row.is_verified), id=row.id,
+    )
+
+
+async def _verify_in_sandbox(
+    session: AsyncSession, user: User, code: str, dataset_id: Optional[int], params: Dict[str, Any],
+) -> Dict[str, Any]:
+    df = None
+    if dataset_id is not None:
+        ds = (await session.execute(
+            select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
+        )).scalar_one_or_none()
+        if ds is None:
+            raise HTTPException(404, "dataset not found")
+        df = load_dataset_df(ds)
+    return sandbox_executor.execute(code, params, input_df=df, save_result=False).to_dict()
 
 
 @router.post("/save", response_model=AlgoSummary)
@@ -259,36 +300,47 @@ async def save_algorithm(
     slug = (body.slug or meta.get("slug") or "").strip()
     if not slug:
         raise HTTPException(400, "slug is required (provide in body or in META)")
+    if registry.get_builtin(slug):
+        raise HTTPException(400, f"slug '{slug}' 与内置算法重名，请在 META 里换一个 slug")
 
-    # If same slug already exists for this user, bump version.
-    existing = (await session.execute(
-        select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == user.id)
-    )).scalar_one_or_none()
-    version = (existing.version + 1) if existing else 1
+    test_report = body.test_report or {}
+    if body.verify:
+        execution = await _verify_in_sandbox(session, user, body.code, body.dataset_id, body.params)
+        if execution["status"] != "ok":
+            raise HTTPException(400, "沙箱调试运行未通过，未保存：" + (execution.get("error") or "")[:1500])
+        test_report = {"all_tests_passed": True, "tests": [execution], "dataset_id": body.dataset_id}
 
-    row = Algorithm(
-        owner_id=user.id,
-        slug=slug,
+    fields = dict(
         name=body.name or meta.get("name") or slug,
         category=body.category or meta.get("category") or "custom",
         description=body.description or meta.get("description") or "",
-        source=body.source,
         code=body.code,
         params_schema=body.params_schema if body.params_schema is not None else (meta.get("params_schema") or {}),
         returns=meta.get("returns") or "dataframe",
-        is_public=body.is_public,
-        is_verified=bool(body.test_report.get("all_tests_passed", False)) if body.test_report else False,
-        test_report=body.test_report or {},
-        version=version,
+        is_verified=bool(test_report.get("all_tests_passed", False)),
+        test_report=test_report,
     )
-    session.add(row)
+    # One live row per (owner, slug): saving the same slug again is a new
+    # VERSION of that row (history in algorithm_versions), not a second row.
+    existing = (await session.execute(
+        select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == user.id)
+        .order_by(Algorithm.id.desc()).limit(1)
+    )).scalar_one_or_none()
+    if existing is not None:
+        await algo_store.ensure_history(session, existing, user.id)
+        for k, v in fields.items():
+            setattr(existing, k, v)
+        existing.version = (existing.version or 1) + 1
+        row = existing
+    else:
+        row = Algorithm(owner_id=user.id, slug=slug, source=body.source,
+                        is_public=body.is_public, version=1, **fields)
+        session.add(row)
+        await session.flush()
+    algo_store.snapshot(session, row, note=body.note or ("新建" if row.version == 1 else "保存"), user_id=user.id)
     await session.commit()
     await session.refresh(row)
-    return AlgoSummary(
-        slug=row.slug, name=row.name, category=row.category, description=row.description,
-        source=row.source, params_schema=row.params_schema or {}, returns=row.returns,
-        verified=bool(row.is_verified), id=row.id,
-    )
+    return _summary(row)
 
 
 class GenerateReq(BaseModel):
@@ -342,6 +394,7 @@ async def confirm_generated(
     name / description / params schema), or discard (delete) it."""
     row = (await session.execute(
         select(Algorithm).where(Algorithm.slug == body.slug, Algorithm.owner_id == user.id)
+        .order_by(Algorithm.id.desc()).limit(1)
     )).scalar_one_or_none()
     if row is None:
         raise HTTPException(404, "tool not found (maybe already discarded)")
@@ -357,7 +410,7 @@ async def confirm_generated(
         row.is_verified = True
         await session.commit()
         return {"ok": True, "kept": True, "slug": row.slug, "name": row.name}
-    await session.delete(row)
+    await algo_store.delete_algorithm(session, row)
     await session.commit()
     return {"ok": True, "kept": False, "slug": body.slug}
 
@@ -387,6 +440,7 @@ async def refine_tool(
         raise HTTPException(400, "refine requires an instruction")
     row = (await session.execute(
         select(Algorithm).where(Algorithm.slug == body.slug, Algorithm.owner_id == user.id)
+        .order_by(Algorithm.id.desc()).limit(1)
     )).scalar_one_or_none()
     if row is None:
         raise HTTPException(404, "tool not found")
@@ -450,7 +504,7 @@ async def suggest_params(
     if spec:
         name, desc, schema = spec.name, spec.description, spec.params_schema
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await find_algorithm(session, body.slug, user.id)
         if row is None:
             raise HTTPException(404, "algorithm not found")
         name, desc, schema = row.name, row.description, row.params_schema or {}
@@ -530,7 +584,7 @@ async def explain_error(
     if spec:
         name, desc, schema = spec.name, spec.description, spec.params_schema
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await find_algorithm(session, body.slug, user.id)
         name, desc, schema = (row.name, row.description, row.params_schema or {}) if row else (body.slug, "", {})
 
     ds_ctx = ""
@@ -586,7 +640,7 @@ async def explain_result(
     if spec:
         name, desc = spec.name, spec.description
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await find_algorithm(session, body.slug, user.id)
         name, desc = (row.name, row.description) if row else (body.slug, "")
 
     ds_ctx = ""
@@ -643,7 +697,7 @@ async def run_to_dataset(
         res = registry.execute_builtin(body.slug, df, body.params)
         label = spec.name
     else:
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == body.slug))).scalar_one_or_none()
+        row = await find_algorithm(session, body.slug, user.id)
         if row is None:
             raise HTTPException(404, "algorithm not found")
         res = registry.execute_code(row.code, df, body.params)
@@ -691,13 +745,9 @@ async def run_algorithm(
         result = registry.execute_builtin(body.slug, df, body.params)
         algo_id = None
     else:
-        row = (await session.execute(
-            select(Algorithm).where(Algorithm.slug == body.slug)
-        )).scalar_one_or_none()
+        row = await find_algorithm(session, body.slug, user.id)
         if row is None:
             raise HTTPException(404, "algorithm not found")
-        if row.owner_id not in (None, user.id) and not row.is_public:
-            raise HTTPException(403, "you don't have access to this algorithm")
         result = registry.execute_code(row.code, df, body.params)
         algo_id = row.id
 
@@ -719,3 +769,137 @@ async def run_algorithm(
         await session.refresh(run)
         result["run_id"] = run.id
     return result
+
+
+# ── 代码编辑器（看源码 / 调试 / 改版 / 历史 / 删除）──────────────────────────────
+# Custom (user / AI) algorithms are edited in place: every save re-runs the code
+# in the sandbox on the server and only then becomes a new version. Built-ins are
+# read-only here (they run in-process, outside the sandbox); "copy as my
+# algorithm" turns one into a sandboxed custom algorithm the user can edit.
+
+
+class ForkReq(BaseModel):
+    slug: str
+
+
+@router.get("/builtin-source/{slug}")
+async def builtin_source(slug: str, user: User = Depends(current_user)):
+    try:
+        return algo_store.builtin_source(slug)
+    except KeyError:
+        raise HTTPException(404, "builtin algorithm not found")
+
+
+@router.post("/fork-builtin")
+async def fork_builtin(body: ForkReq, user: User = Depends(current_user)):
+    """Code for a new custom algorithm copied from a built-in. Nothing is saved
+    yet — the editor opens it in "new" mode and saving goes through /save."""
+    try:
+        return {"code": algo_store.fork_code(body.slug)}
+    except KeyError:
+        raise HTTPException(404, "builtin algorithm not found")
+
+
+async def _readable_algo(session: AsyncSession, algo_id: int, user: User) -> Algorithm:
+    row = await session.get(Algorithm, algo_id)
+    if row is None or (row.owner_id != user.id and not row.is_public):
+        raise HTTPException(404, "algorithm not found")
+    return row
+
+
+async def _owned_algo(session: AsyncSession, algo_id: int, user: User) -> Algorithm:
+    row = await session.get(Algorithm, algo_id)
+    if row is None or row.owner_id != user.id:
+        raise HTTPException(404, "algorithm not found (or not yours to edit)")
+    return row
+
+
+@router.get("/{algo_id}/source")
+async def algorithm_source(algo_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    row = await _readable_algo(session, algo_id, user)
+    return {
+        "id": row.id, "slug": row.slug, "name": row.name, "category": row.category,
+        "description": row.description, "source": row.source, "code": row.code or "",
+        "params_schema": row.params_schema or {}, "version": row.version or 1,
+        "verified": bool(row.is_verified), "test_report": row.test_report or {},
+        "editable": row.owner_id == user.id,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.get("/{algo_id}/versions")
+async def algorithm_versions(algo_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    row = await _readable_algo(session, algo_id, user)
+    return [
+        {
+            "version": v.version, "name": v.name, "note": v.note, "code": v.code,
+            "verified": bool(v.is_verified), "current": v.version == row.version,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        }
+        for v in await algo_store.list_versions(session, row.id)
+    ]
+
+
+class UpdateAlgoReq(BaseModel):
+    code: str
+    note: str = ""
+    dataset_id: Optional[int] = None          # data for the save-time sandbox run
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.put("/{algo_id}")
+async def update_algorithm(
+    algo_id: int,
+    body: UpdateAlgoReq,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Save edited code as a NEW VERSION of the same algorithm. Gate: static
+    validation → META parses → sandbox run passes on the server. A failing gate
+    returns ok=false with the details (nothing saved) so the editor can show the
+    problems inline."""
+    row = await _owned_algo(session, algo_id, user)
+    validation = validate_algorithm_code(body.code)
+    vdict = {"ok": validation.ok, "errors": validation.errors, "imports": validation.imports,
+             "has_run": validation.has_run_function, "has_meta": validation.has_meta}
+    if not validation.ok:
+        return {"ok": False, "stage": "validation", "validation": vdict}
+    try:
+        meta = parse_meta(body.code)
+    except Exception as e:
+        return {"ok": False, "stage": "meta", "validation": vdict, "error": str(e)}
+    execution = await _verify_in_sandbox(session, user, body.code, body.dataset_id, body.params)
+    if execution["status"] != "ok":
+        return {"ok": False, "stage": "sandbox", "validation": vdict, "execution": execution}
+
+    try:
+        old_meta = parse_meta(row.code or "")
+    except Exception:
+        old_meta = {}
+    await algo_store.ensure_history(session, row, user.id)
+    row.code = body.code
+    # Name / description / params were possibly curated in the save dialog —
+    # only take META's value for a field the user actually changed in the code.
+    for meta_key, attr in (("name", "name"), ("description", "description"), ("category", "category"),
+                           ("params_schema", "params_schema"), ("returns", "returns")):
+        if meta.get(meta_key) is not None and meta.get(meta_key) != old_meta.get(meta_key):
+            setattr(row, attr, meta[meta_key])
+    row.is_verified = True
+    row.test_report = {"all_tests_passed": True, "tests": [execution], "dataset_id": body.dataset_id}
+    row.version = (row.version or 1) + 1
+    algo_store.snapshot(session, row, note=body.note or "编辑器保存", user_id=user.id)
+    await session.commit()
+    await session.refresh(row)
+    slug_note = ""
+    if meta.get("slug") and meta["slug"] != row.slug:
+        slug_note = f"META.slug 改成了 '{meta['slug']}'，但已保存的算法标识保持 '{row.slug}'（流程和对话按它引用）。"
+    return {"ok": True, "algorithm": _summary(row), "version": row.version,
+            "execution": execution, "validation": vdict, "note": slug_note}
+
+
+@router.delete("/{algo_id}")
+async def delete_algorithm(algo_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    row = await _owned_algo(session, algo_id, user)
+    await algo_store.delete_algorithm(session, row)
+    await session.commit()
+    return {"ok": True}

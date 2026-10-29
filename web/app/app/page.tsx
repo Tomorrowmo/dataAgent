@@ -29,6 +29,8 @@ export default function WorkspacePage() {
   // mounted while hidden, so it needs an explicit nudge to re-read the list —
   // otherwise its top-right picker still offers datasets that were just deleted.
   const [dsVer, setDsVer] = useState(0);
+  // "在编辑器中打开" on an AI-built tool in chat → 算法库 with its code editor open.
+  const [focusAlgo, setFocusAlgo] = useState<{ slug: string; nonce: number } | null>(null);
 
   // "回到现场" from the feedback inbox: reconstruct the in-app location from a
   // note's structured context (this is a SPA — the saved URL is always /app, so
@@ -61,6 +63,8 @@ export default function WorkspacePage() {
             pendingAsk={pendingAsk}
             onGoSettings={() => setView('settings')}
             onViewDataset={(id) => { setFocusDataset({ id, nonce: Date.now() }); setView('datasets'); }}
+            onOpenAlgorithm={(slug) => { setFocusAlgo({ slug, nonce: Date.now() }); setView('algorithms'); }}
+            active={view === 'chat'}
             datasetsVersion={dsVer}
           />
         </div>
@@ -78,7 +82,7 @@ export default function WorkspacePage() {
             onDatasetsChanged={() => setDsVer((v) => v + 1)}
           />
         )}
-        {view === 'algorithms' && <AlgorithmsView />}
+        {view === 'algorithms' && <AlgorithmsView focusAlgo={focusAlgo} />}
         {view === 'templates' && <TemplatesView />}
         {view === 'feedback' && <FeedbackInbox onJump={jumpTo} />}
         {view === 'settings' && <SettingsView />}

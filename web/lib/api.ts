@@ -162,13 +162,32 @@ export const api = {
     params_schema?: Record<string, unknown>;
     test_report?: Record<string, unknown>;
     is_public?: boolean;
+    /** Re-run in the sandbox on the server (with dataset_id / params) and refuse to save unless it passes. */
+    verify?: boolean;
+    dataset_id?: number;
+    params?: Record<string, unknown>;
+    note?: string;
   }) => request<Algorithm>('POST', '/algorithms/save', body),
   generateAlgorithm: (description: string, dataset_id?: number) =>
     request<GenerationResult>('POST', '/algorithms/generate', { description, dataset_id }),
   /** Auto-correct a pasted snippet / uploaded .py into a conformant tool
    *  (top-level META + run(df, **params), sandbox-safe imports), then sandbox-test it. */
-  autofixAlgorithm: (code: string, dataset_id?: number) =>
-    request<GenerationResult>('POST', '/algorithms/autofix', { code, dataset_id }),
+  autofixAlgorithm: (code: string, dataset_id?: number, instruction?: string, error?: string) =>
+    request<GenerationResult>('POST', '/algorithms/autofix', { code, dataset_id, instruction: instruction ?? '', error: error ?? '' }),
+  /** 代码编辑器: source of a custom algorithm (editable when it's yours). */
+  algorithmSource: (id: number) => request<AlgoSource>('GET', `/algorithms/${id}/source`),
+  algorithmVersions: (id: number) => request<AlgoVersion[]>('GET', `/algorithms/${id}/versions`),
+  /** Save edited code as a new version. The server re-runs it in the sandbox;
+   *  ok=false (nothing saved) carries the validation / execution details. */
+  updateAlgorithm: (id: number, body: { code: string; note?: string; dataset_id?: number; params?: Record<string, unknown> }) =>
+    request<UpdateAlgoResult>('PUT', `/algorithms/${id}`, body),
+  deleteAlgorithm: (id: number) => request<{ ok: boolean }>('DELETE', `/algorithms/${id}`),
+  /** Read-only source of a built-in algorithm. */
+  builtinSource: (slug: string) =>
+    request<{ slug: string; name: string; code: string; file: string; line: number; entry: string }>(
+      'GET', `/algorithms/builtin-source/${encodeURIComponent(slug)}`),
+  /** Code for a new custom algorithm copied from a built-in (not saved yet). */
+  forkBuiltin: (slug: string) => request<{ code: string }>('POST', '/algorithms/fork-builtin', { slug }),
   runAlgorithm: (slug: string, params: Record<string, unknown>, dataset_id?: number) =>
     request<RunResult>('POST', '/algorithms/run', { slug, params, dataset_id }),
   /** Let AI rewrite an existing tool from a plain-language instruction (add/adjust
@@ -390,6 +409,28 @@ export type Algorithm = {
   returns: string;
   verified: boolean;
   id?: number;
+};
+
+export type AlgoSource = {
+  id: number; slug: string; name: string; category: string; description: string;
+  source: 'user' | 'ai'; code: string; params_schema: Record<string, ParamSpec>;
+  version: number; verified: boolean; test_report: Record<string, unknown>;
+  editable: boolean; updated_at: string | null;
+};
+
+export type AlgoVersion = {
+  version: number; name: string; note: string; code: string; verified: boolean; current: boolean; created_at: string | null;
+};
+
+export type UpdateAlgoResult = {
+  ok: boolean;
+  stage?: 'validation' | 'meta' | 'sandbox';
+  error?: string;
+  note?: string;
+  version?: number;
+  algorithm?: Algorithm;
+  validation?: TestResult['validation'];
+  execution?: RunResult;
 };
 
 export type ParamSpec = {

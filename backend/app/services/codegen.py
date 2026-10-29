@@ -7,9 +7,10 @@ synthetic inputs we can execute in the sandbox to prove the code runs.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -194,26 +195,11 @@ def extract_code(text: str) -> str:
 
 
 def parse_meta(code: str) -> Dict[str, Any]:
-    """Run the code in a throwaway namespace to read META. We do NOT sandbox this
-    because we will sandbox the actual `run` execution; META is a literal dict.
+    """Read META statically (ast.literal_eval) — user / AI code is never exec'd in
+    the server process; only the sandbox runs it."""
+    from .algo_store import static_meta
 
-    We pre-seed the namespace with `pd` / `np` so a trivial NameError in top-level
-    `test_cases` (model forgot the import) doesn't masquerade as a real META bug.
-    """
-    ns: Dict[str, Any] = dict(_SAFE_NS_MODULES)
-    try:
-        exec(compile(code, "<meta-extract>", "exec"), ns, ns)
-    except Exception as e:
-        raise ValueError(f"could not import generated code: {e}") from e
-    if "META" not in ns or not isinstance(ns["META"], dict):
-        raise ValueError("generated code is missing a top-level META dict")
-    meta = ns["META"]
-    for k in ("name", "slug", "category", "description"):
-        if not meta.get(k):
-            raise ValueError(f"META.{k} is missing")
-    if "run" not in ns or not callable(ns["run"]):
-        raise ValueError("generated code is missing a `run` function")
-    return meta
+    return static_meta(code)
 
 
 def _extract_test_cases_serialized(code: str) -> List[Dict[str, Any]]:
@@ -233,6 +219,12 @@ def _extract_test_cases_serialized(code: str) -> List[Dict[str, Any]]:
             "params": params or {},
         })
     return cases
+
+
+def _short_reason(error: str) -> str:
+    """The last line of an error / traceback, trimmed — enough for a status chip."""
+    lines = [ln.strip() for ln in (error or "").strip().splitlines() if ln.strip()]
+    return (lines[-1] if lines else "")[:160]
 
 
 def _build_repair_messages(
@@ -303,6 +295,7 @@ async def generate_algorithm(
     llm: LLMClient,
     schema_hint: Optional[str] = None,
     max_attempts: int = 3,
+    on_progress: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """Ask the model for code, parse META, run sandboxed tests, return a bundle.
 
@@ -328,7 +321,16 @@ async def generate_algorithm(
     last_error: Optional[str] = None
     last_stage: str = ""
 
+    def progress(stage: str, **kw: Any) -> None:
+        # Stage events for the chat UI (写代码 → 沙箱自测 → 自动修复 → 完成).
+        if on_progress is not None:
+            try:
+                on_progress({"stage": stage, "max_attempts": max_attempts, **kw})
+            except Exception:  # noqa: BLE001 — progress must never break codegen
+                pass
+
     for attempt in range(1, max_attempts + 1):
+        progress("write", attempt=attempt)
         text = await llm.chat(messages, temperature=0.2, max_tokens=4000)
         code = extract_code(text)
 
@@ -350,11 +352,15 @@ async def generate_algorithm(
             if any(h["fatal"] for h in hints):
                 break
             if attempt < max_attempts:
+                progress("repair", attempt=attempt, reason=_short_reason(last_error))
                 messages = _build_repair_messages(user_msg, code, last_stage, last_error)
             continue
 
-        # Stage 2: sandboxed smoke test of every test_case.
-        test_reports, all_ok, first_err = _smoke_test(code)
+        # Stage 2: sandboxed smoke test of every test_case. The sandbox runs a
+        # blocking subprocess — off the event loop, so the server stays
+        # responsive and progress events actually reach the client meanwhile.
+        progress("test", attempt=attempt, name=str(meta.get("name") or ""))
+        test_reports, all_ok, first_err = await asyncio.to_thread(_smoke_test, code)
         attempt_log.append({
             "attempt": attempt,
             "stage":   "smoke_test",
@@ -362,6 +368,8 @@ async def generate_algorithm(
             "reports": test_reports,
         })
         if all_ok:
+            progress("done", attempt=attempt, passed=True,
+                     tests=len(test_reports), name=str(meta.get("name") or ""))
             return {
                 "code": code,
                 "meta": meta,
@@ -382,8 +390,11 @@ async def generate_algorithm(
             break
 
         if attempt < max_attempts:
+            progress("repair", attempt=attempt, reason=_short_reason(last_error))
             messages = _build_repair_messages(user_msg, code, last_stage, last_error)
 
+    progress("done", attempt=len(attempt_log) or max_attempts, passed=False,
+             reason=_short_reason(last_error or ""))
     # Exhausted retries (or short-circuited on a fatal infra error) — return
     # the last attempt so the caller can show the code, the failing report,
     # and the diagnostic hints to the user. all_tests_passed=False signals

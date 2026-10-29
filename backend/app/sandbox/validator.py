@@ -103,31 +103,33 @@ def validate_algorithm_code(source: str, *, mode: str = "algorithm") -> Validati
             break
 
     for node in ast.walk(tree):
+        # Every message carries "(line N)" so the editor can jump to it.
+        at = f" (line {getattr(node, 'lineno', '?')})"
         # Imports
         if isinstance(node, ast.Import):
             for alias in node.names:
                 root = alias.name.split(".")[0]
                 if alias.name not in allowed_imports and root not in allowed_imports:
-                    res.errors.append(f"import not allowed: {alias.name}")
+                    res.errors.append(f"import not allowed: {alias.name}{at}")
                 res.imports.append(alias.name)
         elif isinstance(node, ast.ImportFrom):
             if node.module is None:
-                res.errors.append("relative imports are not allowed")
+                res.errors.append(f"relative imports are not allowed{at}")
                 continue
             root = node.module.split(".")[0]
             if node.module not in allowed_imports and root not in allowed_imports:
-                res.errors.append(f"import not allowed: {node.module}")
+                res.errors.append(f"import not allowed: {node.module}{at}")
             res.imports.append(node.module)
 
         # Forbidden builtin names
         elif isinstance(node, ast.Name) and node.id in forbidden_names:
             if isinstance(getattr(node, "ctx", None), ast.Store):
                 continue
-            res.errors.append(f"use of '{node.id}' is not allowed")
+            res.errors.append(f"use of '{node.id}' is not allowed{at}")
 
         # Dunder access
         elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
-            res.errors.append(f"access to '{node.attr}' is not allowed")
+            res.errors.append(f"access to '{node.attr}' is not allowed{at}")
 
         # Expected entry-point function
         elif isinstance(node, ast.FunctionDef) and node.name == expected_fn:

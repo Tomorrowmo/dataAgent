@@ -223,19 +223,47 @@ class LLMClient:
         if self.is_anthropic:
             # `temperature` accepted and ignored — see the module docstring.
             return await self._chat_anthropic(messages, max_tokens=max_tokens, json_mode=json_mode)
-        url = f"{self.base_url}/chat/completions"
+        text, finish = await self._chat_once(messages, temperature, max_tokens, json_mode, thinking_off=False)
+        if not text and finish == "length" and self._thinking_on():
+            # Reasoning ate the whole budget before any answer — retry without it.
+            text, finish = await self._chat_once(messages, temperature, max_tokens, json_mode, thinking_off=True)
+        if not text:
+            raise LLMError(f"模型没有返回任何内容(finish_reason={finish}),请重试。")
+        return text
+
+    # ── OpenAI-compatible backend ───────────────────────────────────────────
+    @property
+    def _is_deepseek(self) -> bool:
+        return "deepseek" in (self.base_url or "").lower()
+
+    def _thinking_on(self) -> bool:
+        """DeepSeek V4 thinks unless told not to; other providers: assume no."""
+        return self._is_deepseek and get_settings().deepseek_thinking.strip().lower() != "disabled"
+
+    def _payload(self, messages, temperature: float, max_tokens: int, *, stream: bool, thinking_off: bool) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
+            "model": self.model, "messages": messages, "temperature": temperature,
+            "max_tokens": max_tokens, "stream": stream,
         }
+        if self._is_deepseek:
+            mode = "disabled" if thinking_off else get_settings().deepseek_thinking.strip().lower()
+            if mode in ("enabled", "disabled"):
+                payload["thinking"] = {"type": mode}
+            if mode != "disabled":
+                # Reasoning tokens count against max_tokens on DeepSeek; give them
+                # their own headroom so the answer still gets `max_tokens`.
+                payload["max_tokens"] = max_tokens + get_settings().llm_thinking_headroom
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
+        return payload
+
+    async def _chat_once(self, messages, temperature, max_tokens, json_mode, *, thinking_off: bool) -> Tuple[str, Optional[str]]:
+        payload = self._payload(messages, temperature, max_tokens, stream=False, thinking_off=thinking_off)
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             r = await client.post(
-                url,
+                f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
@@ -243,7 +271,8 @@ class LLMClient:
                 raise LLMError(f"LLM HTTP {r.status_code}: {r.text[:500]}")
             data = r.json()
             try:
-                return data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                return choice["message"].get("content") or "", choice.get("finish_reason")
             except (KeyError, IndexError) as e:
                 raise LLMError(f"unexpected LLM response shape: {e}") from e
 
@@ -260,18 +289,26 @@ class LLMClient:
             async for delta in self._stream_anthropic(messages, max_tokens=max_tokens):
                 yield delta
             return
-        url = f"{self.base_url}/chat/completions"
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
+        state: Dict[str, Any] = {}
+        got = False
+        async for delta in self._stream_once(messages, temperature, max_tokens, state, thinking_off=False):
+            got = True
+            yield delta
+        if not got and state.get("finish") == "length" and self._thinking_on():
+            # Nothing was emitted yet, so a clean retry without thinking is safe.
+            async for delta in self._stream_once(messages, temperature, max_tokens, state, thinking_off=True):
+                got = True
+                yield delta
+        if not got:
+            raise LLMError(f"模型没有返回任何内容(finish_reason={state.get('finish')}),请重试。")
+
+    async def _stream_once(self, messages, temperature, max_tokens, state: Dict[str, Any], *, thinking_off: bool) -> AsyncIterator[str]:
+        payload = self._payload(messages, temperature, max_tokens, stream=True, thinking_off=thinking_off)
+        state["finish"] = None
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
-                url,
+                f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                 json=payload,
             ) as r:
@@ -286,8 +323,10 @@ class LLMClient:
                         return
                     try:
                         obj = json.loads(chunk)
-                        delta = obj["choices"][0]["delta"].get("content", "")
-                        if delta:
-                            yield delta
                     except Exception:
                         continue
+                    for choice in obj.get("choices") or []:
+                        state["finish"] = choice.get("finish_reason") or state["finish"]
+                        delta = (choice.get("delta") or {}).get("content") or ""
+                        if delta:
+                            yield delta

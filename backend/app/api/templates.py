@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..algorithms import registry
 from ..db.models import Algorithm, Dataset, FlowTemplate, User
+from ..services.algo_store import find_algorithm
 from ..services.datasets import _persist_dataset, gc_derived_datasets, load_dataset_df
 from .deps import current_user, get_db
 
@@ -173,7 +174,7 @@ async def run_template(
         if registry.get_builtin(slug):
             res = registry.execute_builtin(slug, df, params)
         else:
-            row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
+            row = await find_algorithm(session, slug, user.id)
             if row is None:
                 step_results.append({"i": i, "label": label, "slug": slug, "status": "error",
                                      "error": f"工具未找到: {slug}（可能已删除）"})

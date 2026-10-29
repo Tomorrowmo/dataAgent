@@ -31,6 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..algorithms import registry
 from ..db.models import Algorithm, Dataset, Message
 from ..sandbox import executor as sandbox_executor
+from . import algo_store
+from .algo_store import find_algorithm
 from .codegen import generate_algorithm, parse_meta
 from .datasets import _persist_dataset, load_dataset_df
 from .llm import LLMClient, LLMError
@@ -69,13 +71,20 @@ Guidance:
 - COLUMN HONESTY: only use column names that actually appear in the selected dataset's schema. If the user asks about a column or quantity that is NOT in the data (e.g. they ask to plot/fit `voltage_v` but the dataset only has `a1, b2, c2`, or they ask for `SoC` / `内阻` / a cycle that the data doesn't contain), NEVER silently substitute a different column as a stand-in and proceed — that fabricates a result. Instead say plainly the requested column/quantity is not in this dataset, list what IS available, and ask the user to confirm a real column or switch datasets. Same rule for `generate_viz` descriptions: do not name a column the data doesn't have.
 - COMPUTE-THEN-PLOT: if a chart needs a quantity that ISN'T already a column (envelope, derivative/slope, moving RMS, residual, zero-crossings, marked extrema, …), do NOT force it into `generate_viz` (its sandbox can't import scipy and tends to fail on such charts). FIRST add that quantity as a real column — `run_tool` an existing tool, or `generate_tool` to build one — THEN `visualize` the original column together with the new one. Charting is the LAST step, after the data it needs exists.
 - 极值图 / PEAK-OVERLAY: to draw the extrema ON the signal curve (极值图, 标出峰值/极值), run `mark_peaks` (column=the signal) — it keeps the signal and adds a `<col>_peak` column — then `visualize` with y=[the signal, `<col>_peak`] (or `generate_viz` for line+markers). Use `find_peaks` only when the user just wants to COUNT peaks or a peaks-only table; never try to plot the raw signal FROM a find_peaks result (it has no signal column).
-- RESHAPED-DATA RECOVERY: if a prior pipeline step reshaped the data (find_peaks → peak_index/…, group_aggregate → value2_mean/…), the original columns (signal, value2, …) are NOT in that result. For PLOTTING this is handled automatically (visualize falls back to the original data and the result's `plotted_from` says which data was used — mention it). For a TOOL that needs an original column, set `dataset` to the original dataset by name, or tell the user to click 重置流水线 — do NOT loop re-asking.
+- RESHAPED-DATA RECOVERY: if a prior pipeline step reshaped the data (find_peaks → peak_index/…, group_aggregate → value2_mean/…), the original columns (signal, value2, …) are NOT in that result. For PLOTTING this is handled automatically (visualize falls back to the original data and the result's `plotted_from` says which data was used — mention it). For a TOOL that needs an original column, set `dataset` to the original dataset by name, or tell the user to click 「改用原始数据」 (just above the chat input box) — do NOT loop re-asking.
 - ACT, don't pre-narrate. When the user asks for a concrete action (画热力图/生成某图, 计算, 检测异常, 运行某算法…), emit that action (visualize / generate_viz / run_tool) IMMEDIATELY. Do NOT first send an `answer` that explains the concept or announces "我将为你生成…" — just do it. Pre-explaining a concept the user already asked for wastes a whole slow LLM round-trip and reads as stalling. Terseness applies BEFORE acting, never to the final answer — see the next rule.
 - THE FINAL ANSWER MUST CARRY THE ANALYSIS, not just announce that it ran. "已完成分析,结果如上" / "图已生成" / "共有 3 个异常" are failures: the user then has to interpret the numbers themselves, which is the work they asked YOU to do. A good answer, in the user's language, covers:
   1. **结论先行** — answer the actual question in the first sentence, with the concrete numbers (real values from the tool result, never invented or rounded away).
   2. **数字意味着什么** — the engineering/business reading. 563 个异常点 is a number; "只占 0.28%,但集中在 18/256 个测点,说明不是随机噪声" is an answer.
   3. **值得注意的地方** — anything surprising, counter-intuitive, or that limits the conclusion: a weak correlation, a confound, a tiny sample behind a big-looking effect, a value that is physically implausible. If the data contradicts the obvious interpretation, SAY SO — that is the most valuable thing you can tell the user.
   4. **下一步** — via `args.next` (see the suggestions rule).
+- NUMBER PROVENANCE (hard rule — the product promise is "trust the number"): every number in `answer.text` must be COPIED from a tool result of THIS turn or from the dataset context above (row count, column stats). Do NOT do new arithmetic in your head — no differences, percentages, deviations, ratios, t/p-values, extrapolations or unit conversions you computed yourself. If such a derived number would help, compute it with a tool first (`derived_column`, `run_tool`, or `generate_tool`), or say it qualitatively ("明显偏低") without a number. If a tool FAILED, say it failed — never fill the gap with your own calculation.
+- MIN/MAX ARE NOT ENDPOINTS: never describe a trend or total change ("从 X 降到 Y", "衰减约 N%") using a column's min/max — extremes are often outliers. A trend comes from a fitted slope or from the first/last rows reported by a tool.
+- THE "First rows" IN THE CONTEXT ARE ONLY THE FIRST 5 ROWS: never state a column's range, distribution, typical level or trend from them. Ranges come from min/max in a tool result; if you haven't computed one, don't state one.
+- VERIFY CHECKABLE PREMISES WITH A TOOL: when the user's question asserts something about the data (a value "高达 50°C", a trend "在上升", which points are outliers, a row count), run the tool that checks it FIRST, then answer with the real numbers — confirm or correct the premise. Don't answer hypothetically ("如果它们确实离群…") and don't fall back to the 5 head rows; the provenance rule means "compute it", not "avoid it". Likewise, a forecast beyond the data is fine to compute with a fitting tool as long as you label it 外推/假设.
+- CONVERSATION HONESTY: if the user refers to earlier results ("上一轮/之前发现的…") that are NOT in this conversation's history, say plainly that there is no such earlier result in this conversation; if you then compute it now, present it as freshly computed — never as "上一轮的结果".
+- DRAFT ALGORITHMS: a tool result carrying `draft_tool` was computed by an algorithm that was AI-generated (or uploaded) and NOT yet reviewed by the user. When your answer uses its numbers, say so once, plainly (e.g. "以下结果来自刚由 AI 新建、尚未经你审核的算法「…」"), so the user knows which numbers rest on unreviewed code.
+- Don't over-generalize from a few points: two outliers are "两个点", not "大幅跳变 / 波动 ±15%"; two block means are not evidence of acceleration unless a tool compared them to the linear expectation.
   Length follows content: a one-number lookup stays short; a multi-step analysis earns several sentences or a small table. Never pad, never restate the steps you took (the 工作台 already shows those), and never claim more certainty than the numbers support.
 - After `run_tool`, you'll receive a tool-result message. ALWAYS interpret the result for the user with a final `answer` action — never leave them hanging on raw numbers.
 - ALWAYS SUGGEST NEXT STEPS. Every final `answer` should carry `args.next`: 2-3 follow-up questions the user could send verbatim, in the user's language, each under 30 characters. They must be GROUNDED in this turn — name the real columns/datasets/results just produced, and propose the natural next move (dig into an anomaly you found, plot what you just computed, apply the same analysis to another column/dataset, save a good pipeline as a template). Never generic filler like "还需要什么帮助吗"; never something the data can't support. Example after finding outlier counts per sensor: {"next": ["画出 CH07.12 的时程曲线", "剔除异常后重新统计", "看看异常集中在哪个时间段"]}.
@@ -465,6 +474,7 @@ async def _execute_action(
     lineage_state: Dict[int, Any],    # 各数据集的血缘链头部(原始→去噪→…)
     pipeline_state: Dict[str, Any],   # 跨轮流水线状态(由调用方持久化)
     image_ref: Optional[str] = None,  # 本轮附带的图片路径(若有),供 analyze_image 用
+    on_progress: Optional[Any] = None,  # generate_tool 的阶段回调(写代码/自测/修复),推给前端
 ) -> Dict[str, Any]:
     action = parsed.get("action", "answer")
     args = parsed.get("args", {}) or {}
@@ -493,7 +503,7 @@ async def _execute_action(
                 "description": spec.description, "params_schema": spec.params_schema,
                 "returns": spec.returns, "tags": spec.tags, "source": "builtin",
             }
-        row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
+        row = await find_algorithm(session, slug, owner_id)
         if row is None:
             return {"error": f"tool not found: {slug}"}
         return {
@@ -526,11 +536,15 @@ async def _execute_action(
             label = spec.name
         else:
             # 不是内置 → 查用户/AI 生成的算法,沙箱里跑它的源码
-            row = (await session.execute(select(Algorithm).where(Algorithm.slug == slug))).scalar_one_or_none()
+            row = await find_algorithm(session, slug, owner_id)
             if row is None:
                 return {"status": "error", "error": f"tool not found: {slug}"}
             result = registry.execute_code(row.code, df, params)
             label = row.name
+            if not row.is_verified:
+                # Numbers from code nobody has reviewed yet — say so, in the UI
+                # (deterministic badge) and to the model (so the answer says it).
+                result["draft_tool"] = {"slug": row.slug, "name": row.name, "source": row.source}
 
         # 换了数据源就必须说出来 —— 静默替换数据是最坏的失败模式
         if frame_note and result.get("status") == "ok":
@@ -742,13 +756,15 @@ async def _execute_action(
         if not description.strip():
             return {"error": "generate_tool requires a non-empty 'description'."}
         schema_hint = _format_dataset_context(datasets) if datasets else None
-        gen = await generate_algorithm(description, llm=llm, schema_hint=schema_hint)
+        gen = await generate_algorithm(description, llm=llm, schema_hint=schema_hint, on_progress=on_progress)
         passed = bool(gen.get("all_tests_passed"))
         result: Dict[str, Any] = {
             "code": gen["code"],
             "meta": gen["meta"],
             "tests": gen["tests"],
             "all_tests_passed": passed,
+            "attempts": int(gen.get("attempts") or 1),
+            "final_error": gen.get("final_error") or "",
         }
         if not passed:
             # Don't register a tool that failed its tests; tell the agent to
@@ -769,11 +785,27 @@ async def _execute_action(
         except Exception:
             meta = gen.get("meta") or {}
         slug = _slugify(meta.get("slug") or meta.get("name") or description[:40])
+        if registry.get_builtin(slug):
+            slug = f"{slug}_ai"
         existing = (await session.execute(
             select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == owner_id)
+            .order_by(Algorithm.id.desc()).limit(1)
         )).scalar_one_or_none()
+        # Never overwrite a tool the user already kept / saved from the editor —
+        # register the new draft under a fresh slug instead. Only an unverified
+        # draft is replaced in place (its previous code stays in history).
+        n = 2
+        base_slug = slug
+        while existing is not None and existing.is_verified:
+            slug = f"{base_slug}_{n}"
+            n += 1
+            existing = (await session.execute(
+                select(Algorithm).where(Algorithm.slug == slug, Algorithm.owner_id == owner_id)
+                .order_by(Algorithm.id.desc()).limit(1)
+            )).scalar_one_or_none()
         report = {"tests": gen["tests"], "all_tests_passed": passed}
         if existing:
+            await algo_store.ensure_history(session, existing, owner_id)
             existing.code = gen["code"]
             existing.name = meta.get("name") or existing.name
             existing.description = meta.get("description") or existing.description
@@ -782,6 +814,7 @@ async def _execute_action(
             existing.test_report = report
             existing.is_verified = False  # draft until the user keeps it
             existing.version = (existing.version or 1) + 1
+            algo_store.snapshot(session, existing, note="对话 AI 重新生成", user_id=owner_id)
             await session.commit()
             slug = existing.slug
         else:
@@ -796,6 +829,8 @@ async def _execute_action(
                 is_public=False, is_verified=False, test_report=report, version=1,
             )
             session.add(row)
+            await session.flush()
+            algo_store.snapshot(session, row, note="对话 AI 生成", user_id=owner_id)
             await session.commit()
         result["registered_slug"] = slug
         result["note"] = (
@@ -1290,7 +1325,7 @@ async def run_turn(
             f"- 「{ds.name}」上几轮已处理到第 {entry.get('steps', '?')} 步(当前结果数据集:"
             f"「{entry.get('head_name', head_ds.name)}」)。后续 run_tool 默认在这个**已处理结果**"
             f"上继续(不是原始数据);当前工作表的列:{cols[:400]}。"
-            f"若用户想从原始数据重新开始,提醒他在对话顶部点「重置流水线」。"
+            f"若用户想从原始数据重新开始,提醒他点输入框上方的「改用原始数据」。"
         )
         resumed.append({"dataset_id": ds.id, "name": ds.name,
                         "head_id": head_ds.id, "head_name": head_ds.name,
@@ -1439,9 +1474,12 @@ async def run_turn(
                 "ok": False, "duration_s": round(dt, 2), "error": f"{type(e).__name__}: {e}",
                 "msg": f"{model_label} failed after {dt:.1f}s: {type(e).__name__}",
             })
+            empty = "没有返回任何内容" in str(e)
             yield AgentStep(kind="final", payload={
-                "text": f"**LLM call failed:** {type(e).__name__}: {e}\n\n"
-                        f"Check your provider settings (DeepSeek / Qwen / OpenAI key & base URL) in the Settings page.",
+                "text": (f"**模型这一步没有给出回答**（{e}）。通常是思考过长被截断，直接重发一次即可。"
+                         if empty else
+                         f"**LLM call failed:** {type(e).__name__}: {e}\n\n"
+                         f"Check your provider settings (DeepSeek / Qwen / OpenAI key & base URL) in the Settings page."),
                 "error": True,
             })
             return
@@ -1452,6 +1490,13 @@ async def run_turn(
             "ok": True, "duration_s": round(dt, 2), "chars": len(raw or ""),
             "msg": f"{model_label} returned {len(raw or '')} chars in {dt:.1f}s",
         })
+
+        # A whitespace-only reply must never become an empty answer bubble.
+        if not raw.strip():
+            yield AgentStep(kind="final", payload={
+                "text": "**模型这一步没有给出回答**（返回为空）。直接重发一次即可。", "error": True,
+            })
+            return
 
         # 阶段3 ── 解析 JSON。失败时进入「自愈第①②层」(纯散文 / 半结构化)。
         try:
@@ -1568,11 +1613,43 @@ async def run_turn(
         })
         t1 = time.monotonic()
         try:
-            tool_result = await _execute_action(
-                session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
-                working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
-                image_ref=image_ref,
-            )
+            if action == "generate_tool":
+                # Building a tool takes 10-60 s (write → sandbox test → self-repair).
+                # Run it as a task and relay its stage events as they happen, so
+                # the user watches it being built instead of a frozen spinner.
+                stages: asyncio.Queue = asyncio.Queue()
+                task = asyncio.create_task(_execute_action(
+                    session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
+                    working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
+                    image_ref=image_ref, on_progress=stages.put_nowait,
+                ))
+                try:
+                    while not task.done() or not stages.empty():
+                        try:
+                            ev = await asyncio.wait_for(stages.get(), timeout=0.5)
+                        except asyncio.TimeoutError:
+                            continue
+                        stage_msg = {
+                            "write": "AI 编写新算法代码" + (f"（第 {ev.get('attempt')} 次）" if (ev.get("attempt") or 1) > 1 else ""),
+                            "test": "新算法沙箱自测中",
+                            "repair": "自测未通过，自动修正：" + str(ev.get("reason") or ""),
+                            "done": "新算法构建完成" if ev.get("passed") else "新算法自测未通过，未使用",
+                        }.get(str(ev.get("stage")), str(ev.get("stage")))
+                        yield AgentStep(kind="progress", payload={
+                            "phase": "codegen", "step": step_no + 1, "action": action,
+                            "description": str((parsed.get("args") or {}).get("description", ""))[:120],
+                            "msg": stage_msg, **ev,
+                        })
+                finally:
+                    if not task.done():
+                        task.cancel()  # client went away mid-build
+                tool_result = task.result()
+            else:
+                tool_result = await _execute_action(
+                    session=session, llm=llm, owner_id=owner_id, datasets=datasets, parsed=parsed,
+                    working=working, frames=frames, lineage_state=lineage_state, pipeline_state=pipeline_state,
+                    image_ref=image_ref,
+                )
         except Exception as e:
             tdt = time.monotonic() - t1
             yield AgentStep(kind="progress", payload={

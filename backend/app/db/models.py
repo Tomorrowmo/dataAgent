@@ -98,6 +98,30 @@ class Algorithm(Base):
     )
 
 
+class AlgorithmVersion(Base):
+    """Immutable snapshot of a user / AI algorithm at one version. The live row in
+    `algorithms` is always the CURRENT version (one row per owner+slug); every
+    save appends a snapshot here so the editor can show / restore history."""
+
+    __tablename__ = "algorithm_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    algorithm_id: Mapped[int] = mapped_column(
+        ForeignKey("algorithms.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    code: Mapped[str] = mapped_column(Text, default="")
+    name: Mapped[str] = mapped_column(String(255), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String(64), default="custom")
+    params_schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    test_report: Mapped[dict] = mapped_column(JSON, default=dict)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Run(Base):
     """A single execution of an algorithm against a dataset."""
 

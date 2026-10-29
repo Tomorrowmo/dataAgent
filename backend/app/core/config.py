@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     # `deepseek-chat` / `deepseek-reasoner` are deprecated 2026-07-24 15:59 UTC;
     # both fold into deepseek-v4-flash (non-thinking / thinking mode).
     deepseek_model: str = "deepseek-v4-flash"
+    # V4 models think by default and the reasoning tokens count against
+    # max_tokens — a long think used to eat the whole budget and return an EMPTY
+    # answer. "" = provider default (thinking on), "enabled" / "disabled" force it.
+    deepseek_thinking: str = ""
+    # Extra completion tokens granted for reasoning while thinking is on, so a
+    # call site's max_tokens keeps meaning "length of the answer".
+    llm_thinking_headroom: int = 6000
 
     sandbox_cpu_seconds: int = 10
     sandbox_memory_mb: int = 512

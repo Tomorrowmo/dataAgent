@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 // @xyflow/react is browser-only — client-only load to keep it out of SSR.
 const FlowCanvas = dynamic(() => import('@/components/FlowCanvas'), { ssr: false });
 import SaveToolModal from '@/components/SaveToolModal';
+import AlgoEditor, { type EditorTarget } from '@/components/AlgoEditor';
 import RunApp from '@/components/RunApp';
 import DatasetChart from '@/components/DatasetChart';
 import { SOURCE_ZH, RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent, intentIcon } from '@/lib/algoMeta';
@@ -17,9 +18,9 @@ import { SOURCE_ZH, RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr,
 // The 算法库 view: a single left list (two pinned entries 上传/AI + the
 // intent-grouped algorithms) and a right area that shows the selected thing.
 // 流程模板 is now its own top-level view (see TemplatesView, used by page.tsx).
-export default function AlgorithmsView() {
+export default function AlgorithmsView({ focusAlgo }: { focusAlgo?: { slug: string; nonce: number } | null }) {
   const t = useT();
-  return <LibraryView t={t} />;
+  return <LibraryView t={t} focusAlgo={focusAlgo ?? null} />;
 }
 
 export function TemplatesView() {
@@ -114,21 +115,62 @@ export function TemplatesView() {
 type Sel = Algorithm | 'upload' | 'ai' | null;
 const isAlgoSel = (s: Sel): s is Algorithm => !!s && typeof s === 'object';
 
-function LibraryView({ t }: { t: (k: string) => string }) {
+/** Editor target for an algorithm: built-ins open read-only (source + "复制为我的
+ *  算法"), user / AI algorithms open editable. */
+const editorFor = (a: Algorithm): EditorTarget =>
+  a.source === 'builtin' || a.id == null ? { mode: 'builtin', slug: a.slug } : { mode: 'edit', algoId: a.id };
+
+/** Wide enough (Tailwind xl) for run panel + editor side by side. */
+const sideBySide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches;
+
+function LibraryView({ t, focusAlgo }: { t: (k: string) => string; focusAlgo: { slug: string; nonce: number } | null }) {
   const [algos, setAlgos] = useState<Algorithm[]>([]);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Sel>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());   // collapsed intent groups
   const toggleGroup = (k: string) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
-  useEffect(() => { api.listAlgorithms().then(setAlgos).catch(() => {}); }, []);
+  // 代码编辑器弹窗 + a revision counter so the run panel remounts (fresh params
+  // schema) after its algorithm was edited.
+  const [editor, setEditor] = useState<EditorTarget | null>(null);
+  const [rev, setRev] = useState(0);
+  const editorDirty = useRef(false);
+  // Picking something else in the list closes the inline editor — ask first if
+  // it holds unsaved edits.
+  const pick = (s: Sel) => {
+    if (editor && editorDirty.current && !window.confirm('编辑器里有未保存的改动，确定离开？')) return;
+    editorDirty.current = false;
+    // The code sits open beside the run panel by default. Below xl the editor
+    // would cover the run panel entirely, so there it stays one click away.
+    setEditor(isAlgoSel(s) && sideBySide() ? editorFor(s) : null);
+    setSelected(s);
+  };
+
+  const reload = (selectId?: number) => api.listAlgorithms().then((as) => {
+    setAlgos(as);
+    if (selectId != null) { const hit = as.find((a) => a.id === selectId); if (hit) setSelected(hit); }
+    setRev((r) => r + 1);
+  }).catch(() => {});
+  useEffect(() => { reload(); }, []);
+
+  // Jump-in from chat (an AI-built tool's "在编辑器中打开"): select that algorithm
+  // and open its code editor once the list is loaded.
+  const handledFocus = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusAlgo || handledFocus.current === focusAlgo.nonce || algos.length === 0) return;
+    const hit = algos.find((a) => a.slug === focusAlgo.slug && a.id != null);
+    if (!hit) return;
+    handledFocus.current = focusAlgo.nonce;
+    setSelected(hit);
+    setEditor({ mode: 'edit', algoId: hit.id! });
+  }, [focusAlgo, algos]);
   const isSel = (a: Algorithm) => isAlgoSel(selected) && selected.slug === a.slug && selected.id === a.id;
 
   const searching = q.trim().length > 0;
   const hits = searching ? algos.filter((a) => matchAlgo(a, q)) : [];
   const groups = searching ? [] : groupByIntent(algos);   // 改法 A + D
 
-  const showDetail = selected !== null;
+  const showDetail = selected !== null || editor !== null;
   return (
     <div className="flex h-full">
       {/* Left list: full-width on mobile (hidden once something is picked);
@@ -137,8 +179,8 @@ function LibraryView({ t }: { t: (k: string) => string }) {
         <div className="p-3 border-b border-ink-200 space-y-2">
           {/* two prominent capability cards, side by side — extend the library */}
           <div className="grid grid-cols-2 gap-2">
-            <EntryCard icon={<Upload className="w-4 h-4" />} label="上传自由算法" hint="贴代码即用" tone="emerald" sel={selected === 'upload'} onClick={() => setSelected('upload')} />
-            <EntryCard icon={<Sparkles className="w-4 h-4" />} label="用 AI 生成" hint="描述就生成" tone="violet" sel={selected === 'ai'} onClick={() => setSelected('ai')} />
+            <EntryCard icon={<Upload className="w-4 h-4" />} label="上传自由算法" hint="贴代码即用" tone="emerald" sel={selected === 'upload'} onClick={() => pick('upload')} />
+            <EntryCard icon={<Sparkles className="w-4 h-4" />} label="用 AI 生成" hint="描述就生成" tone="violet" sel={selected === 'ai'} onClick={() => pick('ai')} />
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -149,7 +191,7 @@ function LibraryView({ t }: { t: (k: string) => string }) {
         <div className="flex-1 overflow-y-auto scroll-hide p-2">
           {searching ? (
             <div className="space-y-1.5">
-              {hits.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => setSelected(a)} />)}
+              {hits.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => pick(a)} />)}
               {hits.length === 0 && <div className="text-xs text-ink-400 text-center py-6">没有匹配的算法</div>}
             </div>
           ) : (
@@ -165,7 +207,7 @@ function LibraryView({ t }: { t: (k: string) => string }) {
                   </button>
                   {open && (
                     <div className="space-y-1 mt-0.5">
-                      {g.items.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => setSelected(a)} />)}
+                      {g.items.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => pick(a)} />)}
                     </div>
                   )}
                 </div>
@@ -180,19 +222,33 @@ function LibraryView({ t }: { t: (k: string) => string }) {
           them doesn't lose typed code / the AI description. Algo run panel and
           the empty hint render conditionally. On mobile this is hidden until
           something is picked (then full-screen with a back button). */}
-      <div className={`flex-1 overflow-y-auto scroll-hide ${showDetail ? '' : 'max-md:hidden'}`}>
-        {showDetail && (
-          <button onClick={() => setSelected(null)}
-            className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
-            ← 返回列表
-          </button>
-        )}
-        <div className={selected === 'upload' ? 'h-full' : 'hidden'}><UploadView t={t} /></div>
-        <div className={selected === 'ai' ? 'h-full' : 'hidden'}><GenerateView t={t} /></div>
-        {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '')} algo={selected} t={t} />}
-        {selected === null && (
-          <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
-            ← 从左侧选一个算法（或上面的「上传自由算法 / 用 AI 生成」）;在这里填参数、选数据、直接运行
+      <div className={`flex-1 min-w-0 flex ${showDetail ? '' : 'max-md:hidden'}`}>
+        {/* Detail / run column. With the editor open it narrows to the run panel's
+            width and the 代码编辑器 fills the space beside it — edit on the right,
+            run the saved version on the left. Below xl the editor takes the pane. */}
+        <div className={`overflow-y-auto scroll-hide ${editor ? 'w-[44rem] max-w-[50%] shrink-0 max-xl:hidden' : 'flex-1 min-w-0'}`}>
+          {showDetail && (
+            <button onClick={() => pick(null)}
+              className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
+              ← 返回列表
+            </button>
+          )}
+          <div className={selected === 'upload' ? 'h-full' : 'hidden'}><UploadView t={t} onOpenEditor={setEditor} /></div>
+          <div className={selected === 'ai' ? 'h-full' : 'hidden'}><GenerateView t={t} onOpenEditor={setEditor} /></div>
+          {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor} />}
+          {selected === null && !editor && (
+            <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
+              ← 从左侧选一个算法（或上面的「上传自由算法 / 用 AI 生成」）;在这里填参数、选数据、直接运行
+            </div>
+          )}
+        </div>
+        {editor && (
+          <div className="flex-1 min-w-0 border-l border-ink-200">
+            <AlgoEditor key={JSON.stringify(editor).slice(0, 200)} target={editor}
+              onClose={() => { setEditor(null); editorDirty.current = false; }}
+              onDirtyChange={(d) => { editorDirty.current = d; }}
+              onSaved={(a) => reload(a.id)}
+              onDeleted={() => { setEditor(null); editorDirty.current = false; setSelected(null); reload(); }} />
           </div>
         )}
       </div>
@@ -265,7 +321,7 @@ function AlgoRow({ a, sel, onClick }: { a: Algorithm; sel: boolean; onClick: () 
 
 /** Manual tool runner (inline, no modal) — pick a dataset + fill params
  *  (auto-generated from the schema) + execute. Pure compute, NO AI involved. */
-function RunPanel({ algo, t }: { algo: Algorithm; t: (k: string) => string }) {
+function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
   const schema = algo.params_schema || {};
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetId, setDatasetId] = useState<number | null>(null);
@@ -396,6 +452,28 @@ function RunPanel({ algo, t }: { algo: Algorithm; t: (k: string) => string }) {
         </div>
         <div className="text-xs text-ink-500 mt-0.5 font-mono">{algo.slug} · {catZh(algo.category)} · 返回 {RETURNS_ZH[algo.returns] ?? algo.returns}</div>
         <p className="text-sm text-ink-700 mt-2">{dispDesc(algo)}</p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {algo.source === 'builtin' ? (
+            <>
+              <button onClick={() => onOpenEditor({ mode: 'builtin', slug: algo.slug })}
+                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-700 hover:bg-ink-50 flex items-center gap-1.5">
+                <Code2 className="w-3.5 h-3.5" /> 查看源码
+              </button>
+              <button onClick={async () => { try { const r = await api.forkBuiltin(algo.slug); onOpenEditor({ mode: 'new', code: r.code, source: 'user', title: `${dispName(algo)}（副本）` }); } catch (e) { setError((e as Error).message); } }}
+                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1.5">
+                <Copy className="w-3.5 h-3.5" /> 复制为我的算法（可改）
+              </button>
+            </>
+          ) : algo.id != null && (
+            <button onClick={() => onOpenEditor({ mode: 'edit', algoId: algo.id! })}
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1.5">
+              <Code2 className="w-3.5 h-3.5" /> 代码 · 编辑 / 调试 / 历史版本
+            </button>
+          )}
+          {algo.source !== 'builtin' && !algo.verified && (
+            <span className="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100">草稿 · 未验证（在编辑器里调试通过并保存即为已验证）</span>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl ring-1 ring-ink-200 p-4 space-y-3">
@@ -642,7 +720,7 @@ function SpecChecklist({ v }: { v?: TestResult['validation'] }) {
   );
 }
 
-function UploadView({ t }: { t: (k: string) => string }) {
+function UploadView({ t, onOpenEditor }: { t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
   const [code, setCode] = useState(EXAMPLE_CODE);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetId, setDatasetId] = useState<number | null>(null);
@@ -730,6 +808,10 @@ function UploadView({ t }: { t: (k: string) => string }) {
           <button onClick={() => fileRef.current?.click()}
             className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1.5 shrink-0">
             <Upload className="w-3.5 h-3.5" /> 上传 .py 文件
+          </button>
+          <button onClick={() => onOpenEditor({ mode: 'new', code, source: 'user', title: '上传的算法' })}
+            className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1.5 shrink-0">
+            <Code2 className="w-3.5 h-3.5" /> 在编辑器中打开
           </button>
           <input ref={fileRef} type="file" accept=".py,.txt,text/x-python,text/plain" className="hidden"
             onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = ''; }} />
@@ -822,7 +904,7 @@ function UploadView({ t }: { t: (k: string) => string }) {
   );
 }
 
-function GenerateView({ t }: { t: (k: string) => string }) {
+function GenerateView({ t, onOpenEditor }: { t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
   const [prompt, setPrompt] = useState('');
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetId, setDatasetId] = useState<number | null>(null);
@@ -888,7 +970,13 @@ function GenerateView({ t }: { t: (k: string) => string }) {
       {result && (
         <>
           <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">
-            <h3 className="font-medium mb-2">{t('algo.gen.proposed')} {String(result.meta.name ?? '')}</h3>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="font-medium">{t('algo.gen.proposed')} {String(result.meta.name ?? '')}</h3>
+              <button onClick={() => onOpenEditor({ mode: 'new', code: result.code, source: 'ai', title: String(result.meta.name ?? 'AI 生成的算法') })}
+                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1.5 shrink-0">
+                <Code2 className="w-3.5 h-3.5" /> 在编辑器中修改 / 调试后入库
+              </button>
+            </div>
             <pre className="bg-ink-900 text-ink-50 rounded-xl p-4 text-[13px] overflow-x-auto"><code>{result.code}</code></pre>
           </div>
           <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5">

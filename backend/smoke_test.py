@@ -80,6 +80,8 @@ def main() -> int:
 import numpy as np
 import pandas as pd
 
+META = {"name": "Scale", "slug": "smoke_scale", "category": "custom", "description": "scale numeric columns"}
+
 def run(df, *, scale: float = 1.0):
     if df is None:
         raise ValueError("df is required")
@@ -106,6 +108,8 @@ def run(df, **kwargs):
 
     banner("8. Sandbox: enforce wall-clock timeout")
     spin_code = '''
+META = {"name": "Spin", "slug": "smoke_spin", "category": "custom", "description": "never returns"}
+
 def run(df, **kwargs):
     x = 0
     while True:

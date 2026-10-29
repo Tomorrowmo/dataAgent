@@ -141,6 +141,15 @@ async def lifespan(app: FastAPI):
     # a daemon thread that does pure imports + sync include_router (no loop use),
     # so there's no cross-loop hazard.
     await init_db()
+    # Legacy /save inserted one row per version; fold those into one live row +
+    # version history so slug lookups are unambiguous. Light (no pandas).
+    try:
+        from .services.algo_store import dedupe_algorithms
+        folded = await dedupe_algorithms()
+        if folded:
+            logger.info("folded %d duplicate algorithm rows into version history", folded)
+    except Exception:  # noqa: BLE001
+        logger.exception("algorithm dedupe failed; continuing")
     # First-run admin seed (no-op when unconfigured or already present). On the
     # event loop because it touches the loop-bound sqlite engine, like init_db.
     # Never let a bootstrap failure brick startup — degrade to manual signup.

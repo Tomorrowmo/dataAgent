@@ -15,6 +15,7 @@ Model selection:
   "vl" / "vision" / "gpt-4o" / "gpt-4-vision"), use it as-is.
 - Else if the base_url is dashscope (which is what our BYOK users have),
   swap the model to `qwen-vl-max`. `qwen-max` alone is text-only.
+- Else if the base_url is DeepSeek, swap to `deepseek-v4-flash-vision-exp`.
 - Else surface a diagnostic error the caller can show to the user.
 """
 
@@ -73,8 +74,9 @@ def _pick_vision_model(llm: LLMClient) -> Optional[str]:
     if "dashscope" in base or "aliyun" in base:
         return "qwen-vl-max"
     if "deepseek" in base:
-        # DeepSeek has no vision-capable public model as of writing.
-        return None
+        # deepseek-v4-flash is text-only; images go to the (experimental) vision
+        # sibling, live on the public API since 2026-08-21.
+        return "deepseek-v4-flash-vision-exp"
     # Unknown provider — try user's model and let it 400 with a real error.
     return llm.model
 
@@ -124,6 +126,8 @@ async def _vision_call(
 
 
 _ANALYZE_PROMPT = """You are an engineering/scientific assistant looking at an image the user uploaded (a chart, plot, diagram, schematic, or photo).
+
+First identify what the image actually is (a table, a line/bar chart, a diagram, a photo) and refer to it accordingly — never call a table a "curve" or say values were "read off a curve" when they were printed in a table.
 
 Answer the user's question about the image directly and concretely, in the user's language. Read values off axes and curves when asked. State numbers with their units. If the user tells you what the axes mean, trust that. If something cannot be determined from the image, say so plainly rather than guessing. Do not invent data the image doesn't show."""
 

@@ -29,6 +29,8 @@ export default function ChatView({
   pendingAsk,
   onGoSettings,
   onViewDataset,
+  onOpenAlgorithm,
+  active = true,
   datasetsVersion = 0,
 }: {
   conversationId: number | null;
@@ -44,6 +46,10 @@ export default function ChatView({
   onGoSettings?: () => void;
   // Open a dataset's full page in the datasets tab ("查看完整表格").
   onViewDataset?: (id: number) => void;
+  // Open an algorithm's code editor in 算法库 (an AI-built tool's "在编辑器中打开").
+  onOpenAlgorithm?: (slug: string) => void;
+  // Whether the chat tab is the visible one (it stays mounted while hidden).
+  active?: boolean;
 }) {
   const t = useT();
   const lang = useLangStore((s) => s.lang);
@@ -52,6 +58,16 @@ export default function ChatView({
   // Multi-dataset: the set of datasets active in this conversation. The first
   // is the PRIMARY (default target); additional ones are loaded for comparison.
   const [activeDatasets, setActiveDatasets] = useState<number[]>([]);
+  // A recipe card clicked while no dataset is selected: the welcome screen asks
+  // which data to use, then applies the recipe (see the effect below).
+  const [pendingRecipe, setPendingRecipe] = useState<RecipeId | null>(null);
+  // Selection is never guessed: the first dataset load restores the user's last
+  // EXPLICIT choice (per browser), otherwise nothing is selected.
+  const restoredSelRef = useRef(false);
+  // Slugs of the user's algorithms that are reviewed (verified). A result from an
+  // algorithm NOT in here is flagged as coming from an unreviewed draft. Re-read
+  // whenever the chat tab comes back — the user may have saved it in 算法库.
+  const [reviewedSlugs, setReviewedSlugs] = useState<Set<string>>(new Set());
   const [input, setInput] = useState('');
   // Dataset @-mention: typing "@" suggests datasets; picking one makes it the input.
   const [mention, setMention] = useState<{ query: string } | null>(null);
@@ -138,6 +154,13 @@ export default function ChatView({
     refreshDatasets();
   }, []);
 
+  useEffect(() => {
+    if (!active) return;
+    api.listAlgorithms({ source: undefined }).then((as) => {
+      setReviewedSlugs(new Set(as.filter((a) => a.source !== 'builtin' && a.verified).map((a) => a.slug)));
+    }).catch(() => {});
+  }, [active]);
+
   // A suggestion was clicked in the datasets view → run it here on that dataset.
   useEffect(() => {
     if (!pendingAsk || lastAskRef.current === pendingAsk.nonce) return;
@@ -157,9 +180,14 @@ export default function ChatView({
       // possibly as a cascade that took a whole derived subtree). Leaving a dead
       // id selected would also send it as the target of the next message.
       const alive = new Set(list.map((d) => d.id));
+      // Never auto-select list[0]: it is often a pipeline intermediate the user
+      // didn't pick, and analyzing the wrong data silently is the worst failure.
       setActiveDatasets((prev) => {
+        if (!restoredSelRef.current) {
+          restoredSelRef.current = true;
+          if (prev.length === 0) return readLastSelection().filter((id) => alive.has(id));
+        }
         const kept = prev.filter((id) => alive.has(id));
-        if (kept.length === 0 && list.length > 0) return [list[0].id];
         return kept.length === prev.length ? prev : kept;
       });
     } catch { /* ignore */ }
@@ -291,14 +319,39 @@ export default function ChatView({
 
   function onRecipeClick(id: RecipeId) {
     const ds = datasets.find((d) => d.id === (activeDatasets[0] ?? -1)) ?? null;
-    if (id === 'custom' || !ds) {
+    if (id === 'custom') {
+      setPendingRecipe(null);
       inputAreaRef.current?.focus();
       return;
     }
-    const prompt = buildPrompt(id, ds, lang);
-    setInput(prompt);
+    if (!ds) {
+      // Needs data but none is selected — ask which (Welcome renders the picker).
+      setPendingRecipe(id);
+      return;
+    }
+    applyRecipe(id, ds);
+  }
+
+  function applyRecipe(id: RecipeId, ds: Dataset) {
+    setInput(buildPrompt(id, ds, lang));
     inputAreaRef.current?.focus();
   }
+
+  // Remember the user's explicit selection so the next visit restores it.
+  useEffect(() => {
+    if (restoredSelRef.current) writeLastSelection(activeDatasets);
+  }, [activeDatasets]);
+
+  // A recipe waiting for data runs as soon as a dataset gets selected — from the
+  // welcome picker, the top-bar picker, or a fresh upload alike.
+  useEffect(() => {
+    if (!pendingRecipe) return;
+    const ds = datasets.find((d) => d.id === activeDatasets[0]);
+    if (!ds) return;
+    setPendingRecipe(null);
+    applyRecipe(pendingRecipe, ds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRecipe, activeDatasets, datasets]);
 
   // One-click starter: ensure its bundled sample dataset exists (create it from
   // the embedded CSV the first time), then ask its question — so even an empty
@@ -510,7 +563,6 @@ export default function ChatView({
         </div>
       </div>
 
-      <PipelineBar pipeline={pipeline} datasets={datasets} onReset={resetPipeline} />
 
       <div
         ref={scrollRef}
@@ -538,6 +590,9 @@ export default function ChatView({
             onClickUpload={() => fileInputRef.current?.click()}
             onRecipeClick={onRecipeClick}
             onStarter={onStarter}
+            pendingRecipe={pendingRecipe}
+            onPickDataset={(id) => setActiveDatasets([id])}
+            onCancelRecipe={() => setPendingRecipe(null)}
             lang={lang}
           />
         ) : (
@@ -549,6 +604,9 @@ export default function ChatView({
               liveThought={m.pending ? liveThought : ''}
               turnStartedAt={m.pending ? turnStartedAt : undefined}
               onSuggest={busy ? undefined : (p) => send(p)}
+              reviewedSlugs={reviewedSlugs}
+              onToolKept={(slug) => setReviewedSlugs((prev) => new Set(prev).add(slug))}
+              onOpenAlgorithm={onOpenAlgorithm}
             />
           ))
         )}
@@ -594,6 +652,9 @@ export default function ChatView({
           handleFileUpload(e.dataTransfer.files[0]);
         }}
       >
+        {/* Sits right above the input: it says what the NEXT message will run on,
+            which is exactly where the user is looking when they type. */}
+        <PipelineBar pipeline={pipeline} datasets={datasets} onReset={resetPipeline} />
         {stagedAttachment && (
           <StagedChip
             att={stagedAttachment}
@@ -796,19 +857,25 @@ function PipelineBar({ pipeline, datasets, onReset }: {
   const entries = Object.entries(pipeline).filter(([, v]) => v && v.head_id);
   if (entries.length === 0) return null;
   return (
-    <div className="mx-5 mt-2 px-3 py-1.5 rounded-lg bg-violet-50 ring-1 ring-violet-100 text-[12px] text-violet-800 flex items-center gap-2 flex-wrap">
-      <GitBranch className="w-3.5 h-3.5 shrink-0 text-violet-500" />
-      <span className="font-medium">流水线进行中</span>
-      <span className="text-violet-600">
-        {entries.map(([dsId, v]) => {
+    <div className="mb-2 px-3 py-2 rounded-lg bg-violet-50 ring-1 ring-violet-200 text-[12.5px] text-violet-900 flex items-center gap-2 flex-wrap">
+      <GitBranch className="w-4 h-4 shrink-0 text-violet-600" />
+      <span className="min-w-0">
+        <span className="font-medium">下一条消息将接着上一步的结果继续：</span>
+        {entries.map(([dsId, v], i) => {
           const src = datasets.find((d) => String(d.id) === dsId)?.name ?? `#${dsId}`;
-          return `${src} → ${v.head_name}(第 ${v.steps} 步)`;
-        }).join(' · ')}
+          // head_name is "<source> · <step>" — show the step, the source separately.
+          const step = v.head_name.startsWith(src + ' · ') ? v.head_name.slice(src.length + 3) : v.head_name;
+          return (
+            <span key={dsId}>
+              {i > 0 && '；'}
+              「<b>{step}</b>」<span className="text-violet-600">（基于 {src}，第 {v.steps} 步）</span>
+            </span>
+          );
+        })}
       </span>
-      <span className="text-violet-500/80">—— 下一条消息会在这个结果上继续。</span>
-      <button onClick={onReset}
-        className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white ring-1 ring-violet-200 hover:bg-violet-100 text-violet-700 shrink-0">
-        <RotateCcw className="w-3 h-3" /> 重置流水线
+      <button onClick={onReset} title="清掉这条处理链，下一条消息改为在原始数据上分析"
+        className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white ring-1 ring-violet-300 hover:bg-violet-100 text-violet-700 shrink-0">
+        <RotateCcw className="w-3 h-3" /> 改用原始数据
       </button>
     </div>
   );
@@ -903,7 +970,8 @@ function ChatProfileCard({ ds, lang }: { ds: Dataset; lang: 'en' | 'zh' }) {
 }
 
 function Welcome({
-  t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onToggleDataset, onClickUpload, onRecipeClick, onStarter, lang,
+  t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onToggleDataset, onClickUpload, onRecipeClick, onStarter,
+  pendingRecipe, onPickDataset, onCancelRecipe, lang,
 }: {
   t: (k: string) => string;
   hasData: boolean;
@@ -916,8 +984,15 @@ function Welcome({
   onClickUpload: () => void;
   onRecipeClick: (id: RecipeId) => void;
   onStarter: (s: Starter) => void;
+  pendingRecipe: RecipeId | null;
+  onPickDataset: (id: number) => void;
+  onCancelRecipe: () => void;
   lang: 'en' | 'zh';
 }) {
+  const zh = lang === 'zh';
+  // Source datasets only — intermediates live in the 数据集 lineage tree.
+  const recent = datasets.filter((d) => d.kind !== 'derived').slice(0, 6);
+  const pendingTitle = pendingRecipe ? t(RECIPES.find((r) => r.id === pendingRecipe)?.titleKey ?? '') : '';
   return (
     <div className="max-w-3xl mx-auto pt-4">
       <h2 className="text-2xl font-semibold mb-1">👋 {t('welcome.hi')}</h2>
@@ -958,18 +1033,50 @@ function Welcome({
         /* Has data → understand it first, then what to do with it */
         <div className="mt-6">
           {activeDs && <ChatProfileCard ds={activeDs} lang={lang} />}
-          <p className="text-sm text-ink-500 mb-3">
-            {lang === 'zh' ? '已有数据集 ' : 'Dataset '}
-            <span className="font-medium text-ink-700">{activeDs?.name}</span>
-            {activeIds.length > 1 && `  +${activeIds.length - 1}${lang === 'zh' ? '（可对比）' : ''}`}
-            {lang === 'zh' ? ' —— 点一个分析，或在下面直接问。' : ' — tap one, or just ask below.'}
-          </p>
+          {activeDs ? (
+            <p className="text-sm text-ink-500 mb-3">
+              {zh ? '当前数据集 ' : 'Dataset '}
+              <span className="font-medium text-ink-700">{activeDs.name}</span>
+              {activeIds.length > 1 && `  +${activeIds.length - 1}${zh ? '（可对比）' : ''}`}
+              {zh ? ' —— 点一个分析，或在下面直接问。' : ' — tap one, or just ask below.'}
+            </p>
+          ) : (
+            /* Nothing selected: say so, and let the user pick right here. When a
+               recipe card was just clicked, this is the "which data?" step. */
+            <div className={`rounded-xl p-3.5 mb-4 ${pendingRecipe ? 'ring-2 ring-brand-400 bg-brand-50/60' : 'ring-1 ring-ink-200 bg-white'}`}>
+              <div className="flex items-start gap-2">
+                <div className="text-sm text-ink-700 flex-1">
+                  {pendingRecipe
+                    ? <>{zh ? '「' : '"'}<b>{pendingTitle}</b>{zh ? '」需要一份数据 —— 选一个要分析的数据集：' : '" needs data — pick a dataset to analyze:'}</>
+                    : (zh ? '还没有选择要分析的数据集 —— 先选一个（也可以在右上角「数据集」里选），再点下面的分析。'
+                         : 'No dataset selected yet — pick one (or use the picker at the top right), then choose an analysis.')}
+                </div>
+                {pendingRecipe && (
+                  <button onClick={onCancelRecipe} className="text-xs text-ink-400 hover:text-ink-600 shrink-0">{zh ? '取消' : 'Cancel'}</button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                {recent.map((d) => (
+                  <button key={d.id} onClick={() => onPickDataset(d.id)}
+                    className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 bg-white hover:ring-brand-400 hover:bg-brand-50 text-left">
+                    <span className="font-medium text-ink-800">{d.name}</span>
+                    <span className="text-ink-400 ml-1.5">{d.rows} × {d.columns}</span>
+                  </button>
+                ))}
+                <button onClick={onClickUpload}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-dashed border-brand-300 text-brand-700 hover:bg-brand-50">
+                  {zh ? '＋ 上传新数据' : '+ Upload new data'}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {RECIPES.map((r) => (
               <button
                 key={r.id}
                 onClick={() => onRecipeClick(r.id)}
-                className="text-left rounded-xl p-4 ring-1 bg-white ring-ink-200 hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition"
+                className={`text-left rounded-xl p-4 bg-white hover:bg-brand-50/40 hover:-translate-y-0.5 transition ${
+                  pendingRecipe === r.id ? 'ring-2 ring-brand-400' : 'ring-1 ring-ink-200 hover:ring-brand-300'}`}
               >
                 <div className="text-2xl mb-1.5">{r.emoji}</div>
                 <div className="font-medium text-sm">{t(r.titleKey)}</div>
@@ -1034,7 +1141,10 @@ function Typewriter({ text }: { text: string }) {
   return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
-function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest }: { msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void }) {
+function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm }: {
+  msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void;
+  reviewedSlugs?: Set<string>; onToolKept?: (slug: string) => void; onOpenAlgorithm?: (slug: string) => void;
+}) {
   if (msg.role === 'user') {
     return (
       <div className="flex gap-3 max-w-3xl mx-auto">
@@ -1058,8 +1168,18 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest }: {
   const visibleEvents = events.filter((e, i) => {
     if (e.kind !== 'progress') return true;
     const phase = String(e.payload.phase ?? '');
+    if (phase === 'codegen') return false;  // rendered as one live build card below
     return !((phase === 'llm_call' || phase === 'tool_start') && resolved.has(i));
   });
+  // An AI tool build still in flight: its stage events after the last finished build.
+  const lastBuildDone = events.map((e) => isGenerateResult(e)).lastIndexOf(true);
+  const liveBuild = events.filter((e, i) => i > lastBuildDone && e.kind === 'progress' && e.payload.phase === 'codegen');
+  // Results computed by algorithms nobody has reviewed yet (not saved/verified).
+  const drafts = new Map<string, string>();
+  for (const e of events) {
+    const d = e.kind === 'tool_result' ? (e.payload.result as { draft_tool?: { slug: string; name: string } } | undefined)?.draft_tool : undefined;
+    if (d && !reviewedSlugs?.has(d.slug)) drafts.set(d.slug, d.name);
+  }
   const finalEvent = [...events].reverse().find((e) => e.kind === 'final');
   // Grounded follow-ups the agent proposed for this turn — one click sends one.
   const rawSug = (finalEvent?.payload as { suggestions?: unknown } | undefined)?.suggestions;
@@ -1083,7 +1203,21 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest }: {
       <div className="w-8 h-8 rounded-full bg-brand-600 text-white grid place-items-center"><Bot className="w-4 h-4" /></div>
       <div className={`flex-1 rounded-2xl ring-1 p-4 prose-tight text-sm ${bubbleClass}`}>
         {procEvents.length > 0 && <ProcessTrace events={procEvents} active={Boolean(msg.pending)} t={t} />}
-        {outputs.map((e, i) => <EventChip key={`o${i}`} ev={e} active={Boolean(msg.pending)} t={t} />)}
+        {outputs.map((e, i) => isGenerateResult(e)
+          ? <GeneratedToolCard key={`o${i}`} result={e.payload.result as GenResult}
+              reviewed={reviewedSlugs?.has(String((e.payload.result as GenResult).registered_slug ?? '')) ?? false}
+              onKept={onToolKept} onOpenAlgorithm={onOpenAlgorithm} />
+          : <EventChip key={`o${i}`} ev={e} active={Boolean(msg.pending)} t={t} />)}
+        {liveBuild.length > 0 && msg.pending && <ToolBuildCard events={liveBuild} />}
+        {drafts.size > 0 && !msg.pending && (
+          <div className="text-xs text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-2.5 py-1.5 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>本回答中的部分结果来自 AI 新建、<b>尚未经你审核</b>的算法{[...drafts.values()].map((n) => `「${n}」`).join('')}。审核并保存后，这个提示会消失。</span>
+            {onOpenAlgorithm && [...drafts.keys()].slice(0, 1).map((slug) => (
+              <button key={slug} onClick={() => onOpenAlgorithm(slug)} className="underline hover:text-amber-900">去审核代码</button>
+            ))}
+          </div>
+        )}
         {msg.pending && liveThought && (
           <div className="text-xs text-ink-500 italic mb-2 leading-relaxed">
             💭 {liveThought}<span className="animate-pulse">▍</span>
@@ -1143,60 +1277,162 @@ function ProcessTrace({ events, active, t }: { events: Event[]; active: boolean;
   );
 }
 
-function GeneratedToolCard({ slug, name, meta }: { slug: string; name: string; meta?: Record<string, unknown> }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'kept' | 'discarded' | 'reused' | 'error'>('idle');
+type GenResult = {
+  code?: string; meta?: Record<string, unknown>; registered_slug?: string; all_tests_passed?: boolean;
+  attempts?: number; final_error?: string;
+  tests?: { case: number; status: string; error?: string; duration_ms?: number }[];
+};
+
+function isGenerateResult(e: Event): boolean {
+  return e.kind === 'tool_result' && e.payload.action === 'generate_tool' && !!(e.payload.result as GenResult | undefined)?.meta;
+}
+
+/** Live view of an AI tool being built: one line per stage (write → sandbox
+ *  test → auto-repair → done) instead of a frozen spinner — compact on purpose,
+ *  the code itself only shows up in the summary card once it's built. */
+function ToolBuildCard({ events }: { events: Event[] }) {
+  const p = (e: Event) => e.payload as { stage?: string; attempt?: number; reason?: string; name?: string; description?: string };
+  const name = [...events].reverse().map((e) => p(e).name).find(Boolean) || p(events[0]).description || '新算法';
+  const lines = events.map((e) => {
+    const { stage, attempt = 1, reason } = p(e);
+    if (stage === 'write') return attempt > 1 ? `按问题重写代码（第 ${attempt} 次）` : '理解需求，编写代码';
+    if (stage === 'test') return '沙箱自测（用合成数据真实运行）';
+    if (stage === 'repair') return `自测未通过，自动修正${reason ? `：${reason}` : ''}`;
+    if (stage === 'done') return '完成';
+    return String(stage ?? '');
+  });
+  return (
+    <div className="text-xs bg-white ring-1 ring-brand-200 rounded-lg px-3 py-2.5 mb-2">
+      <div className="text-ink-700 mb-1.5">🔧 正在为你新建算法「<b>{name}</b>」</div>
+      <ol className="space-y-0.5">
+        {lines.map((l, i) => {
+          const last = i === lines.length - 1;
+          const repair = p(events[i]).stage === 'repair';
+          return (
+            <li key={i} className={`flex items-start gap-1.5 ${repair ? 'text-amber-700' : last ? 'text-ink-700' : 'text-ink-400'}`}>
+              {last ? <Loader2 className="w-3 h-3 mt-0.5 animate-spin shrink-0" /> : <span className="w-3 shrink-0 text-center">{repair ? '↻' : '✓'}</span>}
+              <span className="break-all">{l}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** Summary of an AI-built tool, collapsed by default: what it does, its params,
+ *  how it fared in the sandbox; code + test detail one click away. Also the
+ *  keep / edit / discard decision. A failed build says so instead of vanishing. */
+function GeneratedToolCard({ result, reviewed, onKept, onOpenAlgorithm }: {
+  result: GenResult; reviewed: boolean; onKept?: (slug: string) => void; onOpenAlgorithm?: (slug: string) => void;
+}) {
+  const meta = result.meta ?? {};
+  const name = String(meta.name ?? '新算法');
+  const slug = result.registered_slug ?? '';
+  const [state, setState] = useState<'idle' | 'busy' | 'kept' | 'discarded' | 'reused' | 'error'>(reviewed ? 'kept' : 'idle');
   const [savedName, setSavedName] = useState(name);
   const [reusedName, setReusedName] = useState('');
   const [showSave, setShowSave] = useState(false);
+  useEffect(() => { if (reviewed) setState((s) => (s === 'idle' ? 'kept' : s)); }, [reviewed]);
 
-  async function act(keep: boolean) {
+  const tests = result.tests ?? [];
+  const okTests = tests.filter((x) => x.status === 'ok').length;
+  const repairs = Math.max(0, (result.attempts ?? 1) - 1);
+  const params = Object.keys((meta.params_schema as Record<string, unknown> | undefined) ?? {});
+  const failed = !slug || !result.all_tests_passed;
+
+  async function discard() {
     setState('busy');
-    try {
-      await api.confirmGeneratedTool(slug, keep);
-      setState(keep ? 'kept' : 'discarded');
-    } catch {
-      setState('error');
-    }
+    try { await api.confirmGeneratedTool(slug, false); setState('discarded'); }
+    catch { setState('error'); }
   }
 
-  if (state === 'kept') {
-    return <div className="text-xs text-emerald-700 bg-emerald-50 ring-1 ring-emerald-100 rounded-lg px-2.5 py-1.5 mb-2">✓ 已保存到工具库:<b>{savedName}</b>(下次可直接调用)</div>;
+  const details = (
+    <>
+      {result.code && (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-ink-500 hover:text-ink-700 select-none">查看代码（{result.code.split('\n').length} 行）</summary>
+          <pre className="mt-1 bg-ink-900 text-ink-50 rounded-lg p-2 text-[11px] leading-[16px] overflow-auto max-h-72">{result.code}</pre>
+        </details>
+      )}
+      {tests.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-ink-500 hover:text-ink-700 select-none">测试明细</summary>
+          <ul className="mt-1 space-y-0.5">
+            {tests.map((x) => (
+              <li key={x.case} className={x.status === 'ok' ? 'text-emerald-700' : 'text-red-600'}>
+                用例 {x.case}：{x.status === 'ok' ? '通过' : '失败'}{x.duration_ms != null ? ` · ${x.duration_ms} ms` : ''}
+                {x.error && <div className="font-mono text-[10.5px] whitespace-pre-wrap break-all">{x.error.slice(0, 400)}</div>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+
+  if (failed) {
+    return (
+      <div className="text-xs bg-amber-50/60 ring-1 ring-amber-200 rounded-lg px-3 py-2.5 mb-2">
+        <div className="text-amber-800">🔧 AI 尝试新建算法「<b>{name}</b>」，沙箱自测没有通过（尝试 {result.attempts ?? 1} 次），<b>没有被使用</b>。</div>
+        {result.final_error && <div className="text-amber-700 mt-1 break-all">原因：{result.final_error.trim().split('\n').pop()?.slice(0, 200)}</div>}
+        {details}
+      </div>
+    );
   }
+
+  const head = (
+    <>
+      <div className="text-ink-700">
+        🔧 AI 新建了算法「<b>{state === 'kept' ? savedName : name}</b>」
+        {state === 'kept'
+          ? <span className="ml-1.5 text-emerald-700">✓ 已审核保存到工具库</span>
+          : <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">草稿 · 未经你审核</span>}
+      </div>
+      {meta.description ? <div className="text-ink-500 mt-1">作用：{String(meta.description)}</div> : null}
+      <div className="text-ink-500 mt-0.5">
+        {params.length > 0 && <>参数：<span className="font-mono">{params.join(', ')}</span> · </>}
+        沙箱自测 {okTests}/{tests.length} 通过{repairs > 0 ? ` · 自动修复 ${repairs} 次` : ''}
+      </div>
+      {details}
+    </>
+  );
+
   if (state === 'discarded') {
-    return <div className="text-xs text-ink-500 bg-ink-50 ring-1 ring-ink-200 rounded-lg px-2.5 py-1.5 mb-2">已丢弃临时工具「{name}」。</div>;
+    return <div className="text-xs text-ink-500 bg-ink-50 ring-1 ring-ink-200 rounded-lg px-2.5 py-1.5 mb-2">已丢弃临时工具「{name}」（本次回答里用它算出的结果仍保留，但未经审核）。</div>;
   }
   if (state === 'reused') {
     return <div className="text-xs text-emerald-700 bg-emerald-50 ring-1 ring-emerald-100 rounded-lg px-2.5 py-1.5 mb-2">✓ 已改用现有工具「<b>{reusedName}</b>」,新工具已丢弃 —— 下次直接用它即可。</div>;
   }
 
   return (
-    <div className="text-xs bg-white ring-1 ring-brand-200 rounded-lg px-3 py-2.5 mb-2">
-      <div className="text-ink-700 mb-2">
-        🔧 新工具 <b>{name}</b> 已临时生成并用于本次分析。要保存进工具库供以后复用吗?
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setShowSave(true)}
-          disabled={state === 'busy'}
-          className="px-2.5 py-1 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 disabled:opacity-50"
-        >
-          保存到工具库…
-        </button>
-        <button
-          onClick={() => act(false)}
-          disabled={state === 'busy'}
-          className="px-2.5 py-1 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 disabled:opacity-50"
-        >
-          丢弃
-        </button>
-        {state === 'busy' && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
-        {state === 'error' && <span className="text-red-600">操作失败,请重试</span>}
-      </div>
+    <div className={`text-xs bg-white ring-1 rounded-lg px-3 py-2.5 mb-2 ${state === 'kept' ? 'ring-emerald-200' : 'ring-brand-200'}`}>
+      {head}
+      {state !== 'kept' && (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <button onClick={() => setShowSave(true)} disabled={state === 'busy'}
+            className="px-2.5 py-1 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 disabled:opacity-50">
+            保存到工具库…
+          </button>
+          {onOpenAlgorithm && (
+            <button onClick={() => onOpenAlgorithm(slug)} disabled={state === 'busy'}
+              className="px-2.5 py-1 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
+              在编辑器中打开
+            </button>
+          )}
+          <button onClick={discard} disabled={state === 'busy'}
+            className="px-2.5 py-1 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 disabled:opacity-50">
+            丢弃
+          </button>
+          {state === 'busy' && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
+          {state === 'error' && <span className="text-red-600">操作失败,请重试</span>}
+        </div>
+      )}
       {showSave && (
         <SaveToolModal
           slug={slug}
-          meta={meta ?? { name }}
-          onSaved={(n) => { setSavedName(n); setState('kept'); setShowSave(false); }}
+          meta={meta}
+          onSaved={(n) => { setSavedName(n); setState('kept'); setShowSave(false); onKept?.(slug); }}
           onReused={(n) => { setReusedName(n); setState('reused'); setShowSave(false); }}
           onCancel={() => setShowSave(false)}
         />
@@ -1278,7 +1514,7 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
       const toolName = String((result.meta as Record<string, unknown>).name ?? '');
       // Auto-registered draft tool → let the user keep or discard it.
       if (result.registered_slug) {
-        return <GeneratedToolCard slug={result.registered_slug} name={toolName} meta={result.meta} />;
+        return <GeneratedToolCard result={result as GenResult} reviewed={false} />;
       }
       return <div className="text-xs text-ink-500 mb-2">✨ {t('chat.generated')} &quot;{toolName}&quot;{t('chat.awaiting')}</div>;
     }
@@ -1296,4 +1532,20 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
     return null;
   }
   return null;
+}
+
+
+// Last explicit dataset selection in the chat, per browser. localStorage can be
+// unavailable (private mode, blocked site data) — then we simply don't restore.
+const LAST_SEL_KEY = 'numetrix.chat.lastDatasets';
+
+function readLastSelection(): number[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_SEL_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : [];
+  } catch { return []; }
+}
+
+function writeLastSelection(ids: number[]) {
+  try { localStorage.setItem(LAST_SEL_KEY, JSON.stringify(ids)); } catch { /* ignore */ }
 }

@@ -158,7 +158,7 @@ async def reset_pipeline(
     session: AsyncSession = Depends(get_db),
 ):
     """Drop the cross-turn pipeline state so the next message starts from the
-    ORIGINAL data again (the user clicked 重置流水线)."""
+    ORIGINAL data again (the user clicked 改用原始数据 above the chat input)."""
     conv = (await session.execute(
         select(Conversation).where(Conversation.id == conv_id, Conversation.owner_id == user.id)
     )).scalar_one_or_none()
