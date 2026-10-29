@@ -54,7 +54,7 @@ if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
   sed -i.bak "s|^DEEPSEEK_API_KEY=.*$|DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}|g" backend/.env
 fi
 # Rotate the JWT secret to something machine-specific on first run
-if grep -q "dev-only-secret" backend/.env 2>/dev/null; then
+if grep -qE "^SECRET_KEY=(dev-only-secret|please-change-me|$)" backend/.env 2>/dev/null; then
   SECRET=$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 48)
   sed -i.bak "s|^SECRET_KEY=.*$|SECRET_KEY=${SECRET}|g" backend/.env
   ok "Rotated SECRET_KEY"
