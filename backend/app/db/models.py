@@ -92,6 +92,10 @@ class Algorithm(Base):
     test_report: Mapped[dict] = mapped_column(JSON, default=dict)
 
     version: Mapped[int] = mapped_column(Integer, default=1)
+    # Soft delete: the row and its version history stay (so past results remain
+    # reproducible); the slug is renamed so slug lookups no longer find it.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    original_slug: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

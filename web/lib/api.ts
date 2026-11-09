@@ -302,8 +302,11 @@ export const api = {
     request<FlowTemplate>('POST', '/templates', { name, steps, description, graph: graph ?? {} }),
   listTemplates: () => request<FlowTemplate[]>('GET', '/templates'),
   deleteTemplate: (id: number) => request<{ ok: boolean }>('DELETE', `/templates/${id}`),
-  updateTemplate: (id: number, body: { name?: string; description?: string; steps?: TemplateStep[]; graph?: FlowGraph }) =>
+  updateTemplate: (id: number, body: { name?: string; description?: string; steps?: TemplateStep[]; graph?: FlowGraph; upgrade_versions?: boolean }) =>
     request<FlowTemplate>('PUT', `/templates/${id}`, body),
+  /** Run a flow without the AI and write the outcome into a conversation (new one when omitted). */
+  runTemplateInChat: (id: number, dataset_id: number, conversation_id?: number | null) =>
+    request<{ conversation_id: number; message_id: number; status: string }>('POST', `/templates/${id}/run-in-chat`, { dataset_id, conversation_id: conversation_id ?? null }),
   runTemplate: (id: number, dataset_id: number, save_result = true, param_overrides?: Record<string, Record<string, unknown>>) =>
     request<TemplateRunResult>('POST', `/templates/${id}/run`, { dataset_id, save_result, param_overrides: param_overrides ?? {} }),
 
@@ -462,6 +465,8 @@ export type Algorithm = {
   returns: string;
   verified: boolean;
   id?: number;
+  /** Current version (custom / AI algorithms). Flows pin one. */
+  version?: number | null;
 };
 
 export type SkillCard = {
@@ -554,7 +559,14 @@ export type GenerationResult = {
 
 export type Conversation = { id: number; title: string; dataset_id: number | null };
 
-export type TemplateStep = { action: string; slug?: string; params?: Record<string, unknown>; label?: string };
+export type TemplateStep = {
+  action: string; slug?: string; params?: Record<string, unknown>; label?: string;
+  /** Pinned algorithm (custom / AI) — filled by the server when omitted. */
+  algorithm_id?: number | null; version?: number | null;
+  /** Explicit input: the start dataset, or the output of an earlier step (index). */
+  input?: 'start' | number | null;
+  output_role?: 'data' | 'report' | null;
+};
 export type FlowGraphNode = { id: string; slug?: string; params?: Record<string, unknown>; label?: string; kind?: 'input' | 'step'; position: { x: number; y: number } };
 export type FlowGraphEdge = { source: string; target: string };
 /** Params promoted to "fill at replay time": the user is prompted for these in a
@@ -563,7 +575,9 @@ export type FlowGraphEdge = { source: string; target: string };
  *  page (mini-program) needs no canvas/topo logic to build the form + overrides. */
 export type FlowRuntimeParam = { nodeId: string; param: string; stepIndex?: number; slug?: string; label?: string; default?: unknown };
 export type FlowGraph = { nodes?: FlowGraphNode[]; edges?: FlowGraphEdge[]; runtime?: FlowRuntimeParam[] };
-export type FlowTemplate = { id: number; name: string; description: string; steps: TemplateStep[]; n_steps: number; graph?: FlowGraph };
+export type FlowTemplate = { id: number; name: string; description: string; steps: TemplateStep[]; n_steps: number; graph?: FlowGraph;
+  /** Steps whose pinned algorithm version is behind the current one. */
+  newer_versions?: { i: number; label: string; pinned: number; current: number }[] };
 export type TemplateRunResult = {
   steps: { i: number; label: string; slug?: string; status: string; error?: string; rows?: number; summary?: Record<string, unknown>; dataset_id?: number; report?: boolean }[];
   final: { rows: number; columns: string[]; preview: Record<string, unknown>[] };

@@ -36,6 +36,7 @@ from .algo_store import find_algorithm
 from .codegen import generate_algorithm, parse_meta
 from .datasets import _persist_dataset, load_dataset_df
 from .llm import LLMClient, LLMError
+from ..version import APP_VERSION
 
 SYSTEM_PROMPT = """You are RLab Cortex, a verifiable data-analysis agent for engineers and scientists. You help users explore, clean, and analyze tabular / time-series data by invoking curated algorithms (preferred) or, when no suitable one exists, generating a new one for the user to approve.
 
@@ -485,7 +486,7 @@ async def _execute_action(
         result = await session.execute(
             select(Algorithm).where(
                 (Algorithm.owner_id == owner_id) | (Algorithm.is_public == True)  # noqa: E712
-            )
+            ).where(Algorithm.deleted_at.is_(None))
         )
         user_algos = [a for a in result.scalars().all() if a.slug not in (blocked_tools or {})]
         index = _registry_index(user_algos)
@@ -538,10 +539,22 @@ async def _execute_action(
                 "(如果用户只是想画一个公式曲线 y=f(x),用 generate_viz 直接画,不需要数据集。)"
             )}
 
+        # 改进清单-3 · E1: record what this step REALLY ran on — the original
+        # dataset, an earlier step's output in this turn, or a prior turn's
+        # intermediate — at execution time (never inferred afterwards).
+        refs = lineage_state.setdefault("__refs", {})       # id(df) → input ref
+        step_no = int(lineage_state.get("__n", 0))
+        lineage_state["__n"] = step_no + 1
+        hit = refs.get(id(df))
+        # refs holds (frame, ref) so the frame stays alive and its id() can't be reused
+        input_ref = dict(hit[1]) if hit is not None and hit[0] is df else {"kind": "dataset", "dataset_id": ds.id}
+        algo_info: Dict[str, Any] = {"slug": slug}
+
         spec = registry.get_builtin(slug)
         if spec:
             result = registry.execute_builtin(slug, df, params)
             label = spec.name
+            algo_info.update({"source": "builtin", "app_version": APP_VERSION})
         else:
             # 不是内置 → 查用户/AI 生成的算法,沙箱里跑它的源码
             row = await find_algorithm(session, slug, owner_id)
@@ -549,6 +562,8 @@ async def _execute_action(
                 return {"status": "error", "error": f"tool not found: {slug}"}
             result = registry.execute_code(row.code, df, params)
             label = row.name
+            algo_info.update({"source": row.source, "id": row.id, "version": row.version,
+                              "verified": bool(row.is_verified)})
             if not row.is_verified:
                 # Numbers from code nobody has reviewed yet — say so, in the UI
                 # (deterministic badge) and to the model (so the answer says it).
@@ -557,6 +572,10 @@ async def _execute_action(
         # 换了数据源就必须说出来 —— 静默替换数据是最坏的失败模式
         if frame_note and result.get("status") == "ok":
             result.setdefault("summary", {})["ran_on"] = frame_note
+        result["provenance"] = {
+            "step": step_no, "input": input_ref, "dataset_id": ds.id,
+            "algorithm": algo_info, "label": label, "params": params, "output_role": None,
+        }
 
         # ★流水线三件事(去噪→检测→插值→归一化能自动接力的关键):
         #   1) 把输出写进 working[ds.id] → 同轮下一个 run_tool 自动读到它(轮内组合)
@@ -570,6 +589,11 @@ async def _execute_action(
                 out_df = pd.read_parquet(result["result_path"])
                 from .artifacts import discard_scratch
                 discard_scratch(result)
+                # Same rule the flow runner uses: fewer rows than the input AND only
+                # a handful → a REPORT (stats/correlation), otherwise transformed data.
+                is_report = len(out_df) < len(df) and len(out_df) <= max(int(df.shape[1]), 12)
+                result["provenance"]["output_role"] = "report" if is_report else "data"
+                refs[id(out_df)] = (out_df, {"kind": "step", "step": step_no})
                 working[ds.id] = out_df
                 # 记一帧:后续步骤若被重塑遮蔽,可回退到"含所需列的最近一帧",
                 # 而不是一路退到磁盘原始数据、把本轮刚算出的派生列丢掉
@@ -1332,6 +1356,9 @@ async def run_turn(
             continue
         working[ds.id] = df_head
         lineage_state[ds.id] = (head_ds.id, head_ds.name)
+        # A step reading this frame depends on a PRIOR turn's intermediate.
+        lineage_state.setdefault("__refs", {})[id(df_head)] = (
+            df_head, {"kind": "dataset", "dataset_id": head_ds.id, "prior_turn": True})
         cols = ", ".join(map(str, df_head.columns))
         pipeline_notes.append(
             f"- 「{ds.name}」上几轮已处理到第 {entry.get('steps', '?')} 步(当前结果数据集:"
@@ -1348,7 +1375,7 @@ async def run_turn(
     user_algo_rows = (await session.execute(
         select(Algorithm).where(
             (Algorithm.owner_id == owner_id) | (Algorithm.is_public == True)  # noqa: E712
-        )
+        ).where(Algorithm.deleted_at.is_(None))
     )).scalars().all()
     # A skill's tools come with its instructions: visible only while the skill is
     # enabled, so the agent never runs them without the procedure that governs

@@ -93,11 +93,17 @@ def snapshot(session: AsyncSession, row: Algorithm, *, note: str, user_id: Optio
 
 
 async def delete_algorithm(session: AsyncSession, row: Algorithm) -> None:
-    # sqlite doesn't enforce ON DELETE CASCADE unless the pragma is on — delete
-    # the history explicitly.
-    for v in await list_versions(session, row.id):
-        await session.delete(v)
-    await session.delete(row)
+    """Soft delete (改进清单-3 · A1): keep the row and every version snapshot so
+    results produced with it stay reproducible; hide it from the library and
+    rename the slug so slug lookups (chat, flows, run) no longer resolve it —
+    a new algorithm may then reuse the slug."""
+    from datetime import datetime, timezone
+    if row.deleted_at is not None:
+        return
+    await ensure_history(session, row, row.owner_id)
+    row.original_slug = row.slug
+    row.slug = f"{row.slug}__deleted_{row.id}"
+    row.deleted_at = datetime.now(timezone.utc)
 
 
 async def list_versions(session: AsyncSession, algorithm_id: int) -> List[AlgorithmVersion]:

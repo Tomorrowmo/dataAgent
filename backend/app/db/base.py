@@ -80,6 +80,15 @@ async def init_db() -> None:
             if "graph" not in tpl_cols:
                 await conn.execute(text("ALTER TABLE flow_templates ADD COLUMN graph JSON DEFAULT '{}'"))
 
+            # Algorithm soft delete (改进清单-3 · A1).
+            algo_cols = await conn.run_sync(_existing_cols, "algorithms")
+            for col_name, ddl in (
+                ("deleted_at",    "ALTER TABLE algorithms ADD COLUMN deleted_at DATETIME"),
+                ("original_slug", "ALTER TABLE algorithms ADD COLUMN original_slug VARCHAR(120)"),
+            ):
+                if col_name not in algo_cols:
+                    await conn.execute(text(ddl))
+
             # Default-skill flag (added after the skills table shipped).
             if await conn.run_sync(lambda c: bool(c.execute(text(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='skills'")).fetchone())):

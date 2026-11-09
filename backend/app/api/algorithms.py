@@ -33,6 +33,7 @@ class AlgoSummary(BaseModel):
     returns: str
     verified: bool = True
     id: Optional[int] = None
+    version: Optional[int] = None     # current version (custom algorithms) — flows pin one
 
 
 @router.get("", response_model=List[AlgoSummary])
@@ -53,7 +54,7 @@ async def list_all(
     if source in (None, "user", "ai"):
         q = select(Algorithm).where(
             (Algorithm.owner_id == user.id) | (Algorithm.is_public == True)  # noqa: E712
-        )
+        ).where(Algorithm.deleted_at.is_(None))
         if category:
             q = q.where(Algorithm.category == category)
         if source in ("user", "ai"):
@@ -63,7 +64,7 @@ async def list_all(
             AlgoSummary(
                 slug=r.slug, name=r.name, category=r.category, description=r.description,
                 source=r.source, params_schema=r.params_schema or {}, returns=r.returns,
-                verified=bool(r.is_verified), id=r.id,
+                verified=bool(r.is_verified), id=r.id, version=r.version,
             )
             for r in rows
         ])
@@ -283,7 +284,7 @@ def _summary(row: Algorithm) -> AlgoSummary:
     return AlgoSummary(
         slug=row.slug, name=row.name, category=row.category, description=row.description,
         source=row.source, params_schema=row.params_schema or {}, returns=row.returns,
-        verified=bool(row.is_verified), id=row.id,
+        verified=bool(row.is_verified), id=row.id, version=row.version,
     )
 
 
@@ -824,14 +825,14 @@ async def fork_builtin(body: ForkReq, user: User = Depends(current_user)):
 
 async def _readable_algo(session: AsyncSession, algo_id: int, user: User) -> Algorithm:
     row = await session.get(Algorithm, algo_id)
-    if row is None or (row.owner_id != user.id and not row.is_public):
+    if row is None or (row.owner_id != user.id and not row.is_public) or row.deleted_at is not None:
         raise HTTPException(404, "algorithm not found")
     return row
 
 
 async def _owned_algo(session: AsyncSession, algo_id: int, user: User) -> Algorithm:
     row = await session.get(Algorithm, algo_id)
-    if row is None or row.owner_id != user.id:
+    if row is None or row.owner_id != user.id or row.deleted_at is not None:
         raise HTTPException(404, "algorithm not found (or not yours to edit)")
     return row
 

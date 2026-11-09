@@ -20,18 +20,31 @@ import { IntentIcon } from '@/components/AnalysisIcon';
 // The 算法库 view: a single left list (two pinned entries 上传/AI + the
 // intent-grouped algorithms) and a right area that shows the selected thing.
 // 流程模板 is now its own top-level view (see TemplatesView, used by page.tsx).
-export default function AlgorithmsView({ focusAlgo, active = true }: { focusAlgo?: { slug: string; nonce: number } | null; active?: boolean }) {
+/** Jump into the library from elsewhere (改进清单-3 · L1). `editor` opens the
+ *  code editor (an AI-built tool's 「在编辑器中打开」); otherwise the run panel
+ *  is prefilled with the params / input a chat step really used. */
+export type FocusAlgo = {
+  slug: string; nonce: number; editor?: boolean;
+  params?: Record<string, unknown>; datasetId?: number | null; notes?: string[]; expectVersion?: number | null;
+};
+
+export default function AlgorithmsView({ focusAlgo, active = true, onUseInChat }: {
+  focusAlgo?: FocusAlgo | null; active?: boolean; onUseInChat?: (text: string, datasetId: number | null) => void;
+}) {
   const t = useT();
-  return <LibraryView t={t} focusAlgo={focusAlgo ?? null} active={active} />;
+  return <LibraryView t={t} focusAlgo={focusAlgo ?? null} active={active} onUseInChat={onUseInChat} />;
 }
 
-export function TemplatesView() {
+export function TemplatesView({ onRunInChat }: { onRunInChat?: (conversationId: number) => void } = {}) {
   const [tpls, setTpls] = useState<FlowTemplate[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [algos, setAlgos] = useState<Algorithm[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [mode, setMode] = useState<'edit' | 'run'>('edit');
+  const [chatDs, setChatDs] = useState<number | null>(null);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatErr, setChatErr] = useState('');
 
   function refresh(selectId?: number) {
     api.listTemplates().then((ts) => {
@@ -93,8 +106,37 @@ export function TemplatesView() {
                 <button onClick={() => setMode('edit')} className={mode === 'edit' ? 'bg-brand-600 text-white px-2.5 py-1' : 'px-2.5 py-1 text-ink-600 hover:bg-ink-50'}>编辑画布</button>
                 <button onClick={() => setMode('run')} className={mode === 'run' ? 'bg-brand-600 text-white px-2.5 py-1' : 'px-2.5 py-1 text-ink-600 hover:bg-ink-50'}>运行 · 小程序</button>
               </div>
-              <span className="text-[11px] text-ink-400">运行模式 = 给非专家用:选数据 + 填参数 + 跑,并看到可信的处理过程</span>
+              <span className="text-[11px] text-ink-500 max-lg:hidden">运行模式 = 给非专家用：选数据 + 填参数 + 跑，并看到可信的处理过程</span>
+              {onRunInChat && (
+                <div className="ml-auto flex items-center gap-2">
+                  <select aria-label="运行用的数据集" value={chatDs ?? ''} onChange={(e) => setChatDs(e.target.value ? Number(e.target.value) : null)}
+                    className="h-7 max-w-[14rem] border border-ink-300 rounded px-2 bg-white text-xs">
+                    <option value="">选择数据集…</option>
+                    {datasets.filter((d) => d.kind !== 'derived').map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button disabled={chatDs == null || chatBusy}
+                    onClick={async () => {
+                      if (chatDs == null) return;
+                      setChatBusy(true); setChatErr('');
+                      try { const r = await api.runTemplateInChat(selected.id, chatDs); onRunInChat(r.conversation_id); }
+                      catch (e) { setChatErr((e as Error).message); }
+                      finally { setChatBusy(false); }
+                    }}
+                    title="不经过 AI 直接运行这条流程，结果写进一个对话，之后可以接着提问"
+                    className="h-7 px-2.5 rounded border border-ink-300 bg-white text-xs text-ink-800 hover:bg-ink-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+                    {chatBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />} 在对话中运行
+                  </button>
+                </div>
+              )}
             </div>
+            {chatErr && <div className="px-3 py-1.5 text-xs text-danger-700 bg-danger-50 border-b border-danger-200">{chatErr}</div>}
+            {(selected.newer_versions?.length ?? 0) > 0 && (
+              <div className="px-3 py-1.5 text-xs text-ink-700 bg-ink-50 border-b border-ink-200 flex flex-wrap items-center gap-2">
+                <span>有新版本：{selected.newer_versions!.map((v) => `第 ${v.i + 1} 步「${v.label}」v${v.pinned} → v${v.current}`).join('；')}。流程目前仍按锁定的版本运行。</span>
+                <button onClick={async () => { try { await api.updateTemplate(selected.id, { upgrade_versions: true }); refresh(selected.id); } catch (e) { setChatErr((e as Error).message); } }}
+                  className="h-6 px-2 rounded border border-ink-300 bg-white hover:bg-ink-50">更新流程</button>
+              </div>
+            )}
             <div className="flex-1 min-h-0">
               {mode === 'edit' ? (
                 <FlowCanvas key={selected.id} tpl={selected} datasets={datasets} algos={algos}
@@ -129,7 +171,7 @@ const editorFor = (a: Algorithm): EditorTarget =>
 /** Wide enough (Tailwind xl) for run panel + editor side by side. */
 const sideBySide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches;
 
-function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focusAlgo: { slug: string; nonce: number } | null; active: boolean }) {
+function LibraryView({ t, focusAlgo, active, onUseInChat }: { t: (k: string) => string; focusAlgo: FocusAlgo | null; active: boolean; onUseInChat?: (text: string, datasetId: number | null) => void }) {
   const [algos, setAlgos] = useState<Algorithm[]>([]);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Sel>(null);
@@ -174,16 +216,22 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
     wasActive.current = active;
   }, [active]);
 
-  // Jump-in from chat (an AI-built tool's "在编辑器中打开"): select that algorithm
-  // and open its code editor once the list is loaded.
+  // Jump-in from chat: either open an AI-built tool's code editor, or select an
+  // algorithm with the run panel prefilled from a chat step (params + the input
+  // dataset that step really used).
   const handledFocus = useRef<number | null>(null);
+  const [prefill, setPrefill] = useState<{ params?: Record<string, unknown>; notes: string[]; expectVersion?: number | null } | null>(null);
   useEffect(() => {
     if (!focusAlgo || handledFocus.current === focusAlgo.nonce || algos.length === 0) return;
-    const hit = algos.find((a) => a.slug === focusAlgo.slug && a.id != null);
+    const hit = algos.find((a) => a.slug === focusAlgo.slug && (focusAlgo.editor ? a.id != null : true));
     if (!hit) return;
     handledFocus.current = focusAlgo.nonce;
     setSelected(hit);
-    setEditor({ mode: 'edit', algoId: hit.id! });
+    if (focusAlgo.editor && hit.id != null) { setEditor({ mode: 'edit', algoId: hit.id }); setPrefill(null); return; }
+    setEditor(null); setEditorMode(null);
+    if (focusAlgo.datasetId !== undefined) setTestDs(focusAlgo.datasetId);
+    setPrefill({ params: focusAlgo.params, notes: focusAlgo.notes ?? [], expectVersion: focusAlgo.expectVersion });
+    setRev((r) => r + 1);   // remount the run panel so it picks up the prefill
   }, [focusAlgo, algos]);
   const isSel = (a: Algorithm) => !draft && isAlgoSel(selected) && selected.slug === a.slug && selected.id === a.id;
 
@@ -257,7 +305,8 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
           <div className={selected === 'upload' ? 'h-full' : 'hidden'}><AlgoStudio start="upload" onSaved={() => reload()} /></div>
           <div className={selected === 'ai' ? 'h-full' : 'hidden'}><AlgoStudio start="ai" onSaved={() => reload()} /></div>
           {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor}
-            datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'} />}
+            datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'}
+            prefill={prefill} onClearPrefill={() => setPrefill(null)} onUseInChat={onUseInChat} />}
           {selected === null && !editor && (
             <div className="h-full grid place-items-center px-6">
               <div className="max-w-md text-center space-y-2">
@@ -341,23 +390,29 @@ function AlgoRow({ a, sel, onClick }: { a: Algorithm; sel: boolean; onClick: () 
 
 /** Manual tool runner (inline, no modal) — pick a dataset + fill params
  *  (auto-generated from the schema) + execute. Pure compute, NO AI involved. */
-function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatasetId, editorOpen }: {
+function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatasetId, editorOpen, prefill, onClearPrefill, onUseInChat }: {
   algo: Algorithm; t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void;
   /** Shared with the code editor's 运行设置 (lifted to LibraryView). */
   datasetId: number | null; onDatasetChange: (id: number | null) => void;
   /** The editor is open on THIS algorithm's code — label this panel as running the saved version. */
   editorOpen: boolean;
+  /** Params / notes carried over from a chat step (L1). */
+  prefill?: { params?: Record<string, unknown>; notes: string[]; expectVersion?: number | null } | null;
+  onClearPrefill?: () => void;
+  onUseInChat?: (text: string, datasetId: number | null) => void;
 }) {
   const schema = algo.params_schema || {};
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const toFormStr = (v: unknown) => (v === undefined || v === null ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v));
   const [params, setParams] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
-    for (const [k, sp] of Object.entries(schema)) {
-      const d = (sp as ParamSpec).default;
-      init[k] = d === undefined || d === null ? '' : Array.isArray(d) ? d.join(', ') : String(d);
-    }
+    for (const [k, sp] of Object.entries(schema)) init[k] = toFormStr((sp as ParamSpec).default);
+    for (const [k, v] of Object.entries(prefill?.params ?? {})) if (k in schema) init[k] = toFormStr(v);
     return init;
   });
+  const versionNote = prefill?.expectVersion != null && algo.version != null && prefill.expectVersion !== algo.version
+    ? `对话里用的是 v${prefill.expectVersion}，当前是 v${algo.version}，结果可能不同。` : '';
+  const prefillNotes = prefill ? [...prefill.notes, ...(versionNote ? [versionNote] : [])] : [];
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState('');
@@ -501,8 +556,26 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
           {algo.source !== 'builtin' && !algo.verified && (
             <span className="text-[11px] px-2 py-1 rounded border border-dashed border-ink-500 text-ink-700">草稿 · 未验证（在编辑器里调试通过并保存即为已验证）</span>
           )}
+          {onUseInChat && (
+            <button onClick={() => {
+              const dsName = datasets.find((d) => d.id === datasetId)?.name;
+              onUseInChat(`用「${dispName(algo)}」处理${dsName ? ` @${dsName} ` : '这份数据'}，`, datasetId);
+            }}
+              className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5">
+              <ArrowRight className="w-3.5 h-3.5" /> 在对话中使用
+            </button>
+          )}
         </div>
       </div>
+      {prefill && (
+        <div className="text-xs text-ink-700 bg-ink-50 border border-ink-200 border-l-[3px] border-l-brand-600 rounded px-3 py-2 leading-relaxed">
+          <div className="flex items-center gap-2">
+            <span>已从对话带入这一步的参数{datasetId != null ? '和输入数据' : ''}，可以直接执行或调整后再跑。</span>
+            {onClearPrefill && <button onClick={onClearPrefill} className="ml-auto text-ink-500 hover:text-ink-800">知道了</button>}
+          </div>
+          {prefillNotes.map((n, i) => <div key={i} className="mt-1 text-warning-700">· {n}</div>)}
+        </div>
+      )}
 
       {editorOpen && (
         <div className="text-xs text-ink-700 bg-ink-50 border border-ink-200 border-l-[3px] border-l-brand-600 rounded px-3 py-2 leading-relaxed">

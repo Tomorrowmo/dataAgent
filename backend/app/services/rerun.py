@@ -107,6 +107,7 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
     working: Dict[int, Any] = {}
     frames: Dict[int, List[Any]] = {}
     lineage: Dict[int, Tuple[int, str]] = {}
+    refs: Dict[int, Tuple[Any, Dict[str, Any]]] = {}   # id(frame) → (frame, input ref) — same as the agent
     for i, st in enumerate(plan.steps):
         ds = resolved[i]
         args = {"slug": st.slug, "params": st.params}
@@ -114,19 +115,29 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
             args["dataset"] = st.dataset_ref
         events.append({"kind": "tool_call", "payload": {"action": "run_tool", "args": args}})
         df, note = _read_frame_for_tool(ds, working, frames, st.params)
+        hit = refs.get(id(df))
+        input_ref = dict(hit[1]) if hit is not None and hit[0] is df else {"kind": "dataset", "dataset_id": ds.id}
         spec = registry.get_builtin(st.slug)
         if spec:
             result = registry.execute_builtin(st.slug, df, st.params)
             label = spec.name
+            algo_info: Dict[str, Any] = {"slug": st.slug, "source": "builtin"}
         else:
             row = await find_algorithm(session, st.slug, owner_id)
             result = registry.execute_code(row.code, df, st.params)  # type: ignore[union-attr]
             label = row.name  # type: ignore[union-attr]
+            algo_info = {"slug": st.slug, "source": row.source, "id": row.id, "version": row.version,  # type: ignore[union-attr]
+                         "verified": bool(row.is_verified)}  # type: ignore[union-attr]
+        result["provenance"] = {"step": i, "input": input_ref, "dataset_id": ds.id, "algorithm": algo_info,
+                                "label": label, "params": st.params, "output_role": None}
         if note and result.get("status") == "ok":
             result.setdefault("summary", {})["ran_on"] = note
         if result.get("status") == "ok" and result.get("result_path"):
             out_df = pd.read_parquet(result["result_path"])
             discard_scratch(result)
+            is_report = len(out_df) < len(df) and len(out_df) <= max(int(df.shape[1]), 12)
+            result["provenance"]["output_role"] = "report" if is_report else "data"
+            refs[id(out_df)] = (out_df, {"kind": "step", "step": i})
             working[ds.id] = out_df
             frames.setdefault(ds.id, []).append((label, out_df))
             parent_id, parent_name = lineage.get(ds.id, (ds.id, ds.name))

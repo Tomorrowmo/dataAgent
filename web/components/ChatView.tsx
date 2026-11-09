@@ -6,7 +6,9 @@ import Markdown from '@/components/Markdown';
 import { AiMark, SourceTag } from '@/components/ui';
 import DatasetChart from '@/components/DatasetChart';
 import AnalysisIcon from '@/components/AnalysisIcon';
-import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
+import type { FocusAlgo } from '@/components/AlgorithmsView';
+import { runStepsOf, flowFromSteps, type RunStep } from '@/lib/flowSteps';
+import { api, streamChat, type ChatMessage, type TemplateStep, type FlowTemplate, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
@@ -34,6 +36,8 @@ export default function ChatView({
   onGoSettings,
   onViewDataset,
   onOpenAlgorithm,
+  onOpenInLibrary,
+  pendingFill,
   active = true,
   datasetsVersion = 0,
 }: {
@@ -52,6 +56,10 @@ export default function ChatView({
   onViewDataset?: (id: number) => void;
   // Open an algorithm's code editor in 算法库 (an AI-built tool's "在编辑器中打开").
   onOpenAlgorithm?: (slug: string) => void;
+  // Open an algorithm in 算法库 with a chat step's params + input prefilled (L1).
+  onOpenInLibrary?: (f: Omit<FocusAlgo, 'nonce'>) => void;
+  // 「在对话中使用」 from the library: fill the input box (not send).
+  pendingFill?: { text: string; datasetId: number | null; nonce: number } | null;
   // Whether the chat tab is the visible one (it stays mounted while hidden).
   active?: boolean;
 }) {
@@ -193,6 +201,14 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAsk?.nonce]);
 
+  useEffect(() => {
+    if (!pendingFill) return;
+    setInput(pendingFill.text);
+    if (pendingFill.datasetId != null) setActiveDatasets([pendingFill.datasetId]);
+    setTimeout(() => inputAreaRef.current?.focus(), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingFill?.nonce]);
+
   async function refreshDatasets() {
     try {
       const list = await api.listDatasets();
@@ -256,7 +272,10 @@ export default function ChatView({
     // created locally, or previously loaded). Switching to a *different*
     // conversation still differs from the ref, so it reloads normally.
     if (conversationId === loadedConvRef.current) return;
-    api.listMessages(conversationId).then((msgs: ChatMessage[]) => {
+    // Results in this conversation may have been produced elsewhere (a flow run
+    // from the 流程 page, a re-run) — refresh the dataset list first so cards
+    // don't wrongly show their data as cleaned up.
+    refreshDatasets().finally(() => api.listMessages(conversationId).then((msgs: ChatMessage[]) => {
       loadedConvRef.current = conversationId;
       const mapped: DisplayMsg[] = msgs.map((m) => ({
         id: `m_${m.id}`,
@@ -277,7 +296,7 @@ export default function ChatView({
       }
       setLiveEvents(tl);
       setTurnStartedAt(undefined);
-    });
+    }));
   }, [conversationId]);
 
   useEffect(() => {
@@ -599,6 +618,7 @@ export default function ChatView({
   // Which datasets still exist — a result card whose derived dataset is gone
   // offers a re-run on the original data (改进清单-3 · S5).
   const datasetIds = new Set(datasets.map((d) => d.id));
+  const dsById = new Map(datasets.map((d) => [d.id, d] as [number, Dataset]));
   const rerunTargets = new Set(messages.filter((m) => m.rerunOf != null).map((m) => `m_${m.rerunOf}`));
   const activeDsList = activeDatasets
     .map((id) => datasets.find((d) => d.id === id))
@@ -681,6 +701,7 @@ export default function ChatView({
             demo={demo}
             demoErr={demoErr}
             onGoSettings={onGoSettings}
+            onFlowRan={(cid) => onConversationCreated(cid)}
           />
         ) : (
           messages.map((m) => (
@@ -698,6 +719,8 @@ export default function ChatView({
               onEnableSkill={(id) => setActiveSkills((p) => (p.includes(id) ? p : [...p, id]))}
               conversationId={conversationId}
               datasetIds={datasetIds}
+              dsById={dsById}
+              onOpenInLibrary={onOpenInLibrary}
               reran={rerunTargets.has(m.id)}
               onReran={(nm) => {
                 setMessages((prev) => [...prev, {
@@ -1137,7 +1160,7 @@ function DemoResultCard({ demo, onGoSettings, lang }: { demo: DemoResult; onGoSe
 
 function Welcome({
   t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onClickUpload, onRecipeClick, onStarter,
-  pendingRecipe, onPickDataset, onCancelRecipe, lang, onDemo, demoBusy, demo, demoErr, onGoSettings,
+  pendingRecipe, onPickDataset, onCancelRecipe, lang, onDemo, demoBusy, demo, demoErr, onGoSettings, onFlowRan,
 }: {
   t: (k: string) => string;
   hasData: boolean;
@@ -1158,6 +1181,7 @@ function Welcome({
   demo: DemoResult | null;
   demoErr: string;
   onGoSettings?: () => void;
+  onFlowRan: (conversationId: number) => void;
 }) {
   const zh = lang === 'zh';
   const [moreRecipes, setMoreRecipes] = useState(false);
@@ -1274,6 +1298,7 @@ function Welcome({
               );
             })}
           </div>
+          <MyFlows activeDs={activeDs} sources={sources} onRan={onFlowRan} lang={lang} />
           {RECIPES.length > RECIPES_SHOWN && (
             <button type="button" onClick={() => setMoreRecipes((v) => !v)} className="mt-2 text-xs text-brand-700 hover:underline">
               {moreRecipes ? (zh ? '收起' : 'Show fewer') : (zh ? `更多分析（${RECIPES.length - RECIPES_SHOWN}）` : `More analyses (${RECIPES.length - RECIPES_SHOWN})`)}
@@ -1281,6 +1306,165 @@ function Welcome({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function inputLabel(s: RunStep, steps: RunStep[], dsById?: Map<number, Dataset>): string {
+  const inp = s.prov.input;
+  if (!inp) return '输入未知';
+  if (inp.kind === 'dataset') {
+    const name = dsById?.get(inp.dataset_id)?.name ?? `数据集 #${inp.dataset_id}`;
+    return inp.prior_turn ? `上一轮的结果「${name}」` : `原始数据「${name}」`;
+  }
+  const k = steps.findIndex((x) => x.prov.step === inp.step);
+  return k >= 0 ? `第 ${k + 1} 步的结果` : '更早一步的结果';
+}
+
+function AnswerSteps({ steps, excluded, dsById, onOpenInLibrary }: {
+  steps: RunStep[]; excluded: number; dsById?: Map<number, Dataset>;
+  onOpenInLibrary?: (f: Omit<FocusAlgo, 'nonce'>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  const flow = flowFromSteps(steps);
+  const okCount = steps.filter((s) => s.ok).length;
+  const [name, setName] = useState('');
+
+  function openStep(s: RunStep) {
+    if (!onOpenInLibrary) return;
+    const notes: string[] = [];
+    let datasetId: number | null = null;
+    const inp = s.prov.input;
+    if (inp?.kind === 'dataset') {
+      if (dsById?.has(inp.dataset_id)) datasetId = inp.dataset_id;
+      else notes.push('这一步的输入数据已删除，只预填了参数。');
+    } else if (inp?.kind === 'step') {
+      const src = steps.find((x) => x.prov.step === inp.step);
+      if (src?.derived && dsById?.has(src.derived.id)) datasetId = src.derived.id;
+      else notes.push('这一步的输入（前一步的结果）已清理，只预填了参数。');
+    }
+    if (s.prov.algorithm.source && s.prov.algorithm.source !== 'builtin') notes.push('自定义算法如果含随机性，结果可能与对话略有不同。');
+    onOpenInLibrary({ slug: s.prov.algorithm.slug, params: s.prov.params, datasetId, notes, expectVersion: s.prov.algorithm.version ?? null });
+  }
+
+  async function save() {
+    if (!flow.steps) return;
+    setSaving(true); setErr('');
+    try {
+      const start = flow.startId != null ? dsById?.get(flow.startId)?.name : undefined;
+      const nm = name.trim() || `${start ?? '对话'} 分析流程`;
+      await api.createTemplate(nm, flow.steps, '从对话保存');
+      setSaved(nm); setOpen(false);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-ink-150 text-xs">
+      <div className="text-ink-600 font-medium mb-1">本次分析步骤</div>
+      <ol className="space-y-0.5">
+        {steps.map((s, i) => (
+          <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="font-mono text-ink-500 w-4 text-right">{i + 1}</span>
+            {onOpenInLibrary
+              ? <button type="button" onClick={() => openStep(s)} className="text-brand-700 hover:underline" title="在算法库打开，带上这一步的参数和输入">{s.prov.label ?? s.prov.algorithm.slug}</button>
+              : <span className="text-ink-800">{s.prov.label ?? s.prov.algorithm.slug}</span>}
+            {s.prov.algorithm.version != null && <span className="font-mono text-ink-500">v{s.prov.algorithm.version}</span>}
+            <span className="text-ink-500">输入：{inputLabel(s, steps, dsById)}</span>
+            {s.prov.output_role === 'report' && <span className="text-ink-500">· 报告</span>}
+            {!s.ok && <span className="text-danger-700">· 失败</span>}
+          </li>
+        ))}
+      </ol>
+      {okCount >= 2 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {saved
+            ? <span className="text-success-700">已保存为流程「{saved}」，可在「流程」页换数据重跑。</span>
+            : <>
+                <span className="text-ink-600">本次共 {okCount} 步</span>
+                <button type="button" onClick={() => setOpen((v) => !v)}
+                  className="h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50">存为流程，下次换数据一键重跑</button>
+              </>}
+        </div>
+      )}
+      {open && (
+        <div className="mt-2 rounded border border-ink-200 bg-ink-50 p-3 space-y-2">
+          {flow.reason ? (
+            <div className="text-ink-700">{flow.reason}</div>
+          ) : (
+            <>
+              <div className="text-ink-700">将保存以下 {flow.steps!.length} 步，每步的输入按这次实际的依赖记录：</div>
+              <ol className="space-y-0.5">
+                {flow.steps!.map((st, i) => (
+                  <li key={i} className="flex gap-2"><span className="font-mono text-ink-500 w-4 text-right">{i + 1}</span>
+                    <span className="text-ink-800">{st.label}</span>
+                    <span className="text-ink-500">输入：{st.input === 'start' ? '起始数据' : `第 ${(st.input as number) + 1} 步的结果`}{st.output_role === 'report' ? ' · 报告' : ''}</span>
+                  </li>
+                ))}
+              </ol>
+              {excluded > 0 && <div className="text-ink-500">画图、生成算法等 {excluded} 个步骤不会保存进流程。</div>}
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="流程名称（可空）"
+                  className="h-7 border border-ink-300 rounded px-2 bg-white text-xs w-56" />
+                <button type="button" onClick={save} disabled={saving}
+                  className="h-7 px-2.5 rounded border border-brand-600 bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">
+                  {saving ? '保存中…' : '保存'}
+                </button>
+                <button type="button" onClick={() => setOpen(false)} className="h-7 px-2 text-ink-600 hover:text-ink-900">取消</button>
+              </div>
+            </>
+          )}
+          {err && <div className="text-danger-700">{err}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** L4: the user's saved flows on the chat home — pick one, run it on the
+ *  selected data without the AI; the outcome lands in a conversation. */
+function MyFlows({ activeDs, sources, onRan, lang }: {
+  activeDs: Dataset | null; sources: Dataset[]; onRan: (conversationId: number) => void; lang: 'en' | 'zh';
+}) {
+  const zh = lang === 'zh';
+  const [tpls, setTpls] = useState<FlowTemplate[]>([]);
+  const [dsId, setDsId] = useState<number | null>(activeDs?.id ?? null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.listTemplates().then((t) => setTpls(t.filter((x) => x.n_steps > 0))).catch(() => {}); }, []);
+  useEffect(() => { if (activeDs) setDsId(activeDs.id); }, [activeDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (tpls.length === 0) return null;
+  async function run(id: number) {
+    if (dsId == null) { setErr(zh ? '先选一份数据' : 'Pick the data first'); return; }
+    setBusy(id); setErr('');
+    try { const r = await api.runTemplateInChat(id, dsId); onRan(r.conversation_id); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-ink-700">{zh ? '我的流程' : 'My flows'}</h3>
+        <span className="text-xs text-ink-500">{zh ? '不经过 AI，在这份数据上直接重跑：' : 'Re-run on this data without the AI:'}</span>
+        <select aria-label={zh ? '流程使用的数据' : 'Data for the flow'} value={dsId ?? ''} onChange={(e) => setDsId(e.target.value ? Number(e.target.value) : null)}
+          className="h-7 border border-ink-300 rounded px-2 bg-white text-xs max-w-[14rem]">
+          <option value="">{zh ? '选择数据…' : 'Choose data…'}</option>
+          {sources.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {tpls.slice(0, 6).map((t) => (
+          <button key={t.id} type="button" onClick={() => run(t.id)} disabled={busy != null}
+            className="text-left rounded border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 px-3 py-2 disabled:opacity-50">
+            <div className="text-sm text-ink-900 flex items-center gap-1.5">{busy === t.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t.name}</div>
+            <div className="text-[11px] text-ink-500">{t.n_steps} {zh ? '步' : 'steps'}</div>
+          </button>
+        ))}
+      </div>
+      {err && <div className="mt-1.5 text-xs text-danger-700">{err}</div>}
     </div>
   );
 }
@@ -1336,11 +1520,12 @@ function Typewriter({ text }: { text: string }) {
   return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
-function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm, activeSkills, onEnableSkill, conversationId, datasetIds, onReran, reran = false }: {
+function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm, activeSkills, onEnableSkill, conversationId, datasetIds, onReran, reran = false, dsById, onOpenInLibrary }: {
   msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void;
   reviewedSlugs?: Set<string>; onToolKept?: (slug: string) => void; onOpenAlgorithm?: (slug: string) => void;
   activeSkills?: number[]; onEnableSkill?: (id: number) => void;
   conversationId?: number | null; datasetIds?: Set<number>; onReran?: (m: ChatMessage) => void; reran?: boolean;
+  dsById?: Map<number, Dataset>; onOpenInLibrary?: (f: Omit<FocusAlgo, 'nonce'>) => void;
 }) {
   if (msg.role === 'user') {
     return (
@@ -1401,6 +1586,9 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   const outputs = visibleEvents.filter(isOutputEvent);
   // Derived datasets this answer produced that no longer exist → "expired".
   const serverId = msg.id.startsWith('m_') ? Number(msg.id.slice(2)) : null;
+  const runSteps = runStepsOf(events);
+  const excludedSteps = events.filter((e) => e.kind === 'tool_result' && (e.payload as { action?: string }).action !== 'run_tool'
+    && ['visualize', 'visualize_batch', 'generate_viz', 'generate_tool'].includes(String((e.payload as { action?: string }).action))).length;
   const expired = datasetIds && datasetIds.size > 0
     ? events.flatMap((e) => {
         const dd = e.kind === 'tool_result' ? (e.payload.result as { derived_dataset?: { id: number; name: string } } | undefined)?.derived_dataset : undefined;
@@ -1474,6 +1662,9 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
               ))}
             </div>
           </div>
+        )}
+        {!msg.pending && runSteps.length > 0 && (
+          <AnswerSteps steps={runSteps} excluded={excludedSteps} dsById={dsById} onOpenInLibrary={onOpenInLibrary} />
         )}
         {!msg.pending && expired.length > 0 && serverId != null && conversationId != null && onReran && (
           reran

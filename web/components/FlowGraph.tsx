@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Database, Wrench, BarChart3, Code2, List, Info, MessageSquare, CheckCircle2, AlertTriangle, ChevronDown, Save, Loader2, Pencil, X } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate } from '@/lib/api';
 import type { Event } from '@/components/WorkbenchPanel';
+import { flowFromSteps, runStepsOf } from '@/lib/flowSteps';
 import dynamic from 'next/dynamic';
 const FlowCanvas = dynamic(() => import('@/components/FlowCanvas'), { ssr: false });
 
@@ -122,14 +123,29 @@ export default function FlowGraph({
   const nodes = deriveFlow(events, datasetName);
   const toolCount = nodes.filter((n) => n.type === 'tool').length;
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveErr, setSaveErr] = useState('');
   // When the user opts to edit, we create the template then open it in the full
   // FlowCanvas editor (delete / add steps, edit params, run) — no need to
   // re-implement editing here.
   const [editTpl, setEditTpl] = useState<FlowTemplate | null>(null);
   const [opening, setOpening] = useState(false);
 
+  /** Steps to save: the LATEST turn's steps with their recorded inputs
+   *  (改进清单-3 · L2a); refuses with a reason when they can't replay faithfully.
+   *  Older conversations without provenance fall back to the linear chain. */
+  function stepsForSave() {
+    const lastTurn = events.map((e) => e.kind).lastIndexOf('turn');
+    const turnEvents = lastTurn >= 0 ? events.slice(lastTurn + 1) : events;
+    const run = runStepsOf(turnEvents as { kind: string; payload: Record<string, unknown> }[]);
+    if (run.length === 0) return toSteps(events, datasetName);
+    const f = flowFromSteps(run);
+    if (f.reason) { setSaveErr(f.reason); setSaveState('error'); return []; }
+    setSaveErr('');
+    return f.steps ?? [];
+  }
+
   async function saveTemplate() {
-    const steps = toSteps(events, datasetName);
+    const steps = stepsForSave();
     if (steps.length === 0) return;
     const name = window.prompt('给这个流程模板起个名字:', `${datasetName || '分析'}流程`);
     if (!name) return;
@@ -137,7 +153,8 @@ export default function FlowGraph({
     try {
       await api.createTemplate(name, steps, `从对话保存的 ${steps.length} 步流程`);
       setSaveState('saved');
-    } catch {
+    } catch (e) {
+      setSaveErr((e as Error).message);
       setSaveState('error');
     }
   }
@@ -145,7 +162,7 @@ export default function FlowGraph({
   // Save as a template, then open it in the editor canvas so the user can
   // delete/add steps and tweak params on the flow derived from this chat.
   async function editTemplate() {
-    const steps = toSteps(events, datasetName);
+    const steps = stepsForSave();
     if (steps.length === 0) return;
     const name = window.prompt('给这个流程起个名字（之后可在画布里编辑）:', `${datasetName || '分析'}流程`);
     if (!name) return;
@@ -154,7 +171,8 @@ export default function FlowGraph({
       const tpl = await api.createTemplate(name, steps, `从对话保存的 ${steps.length} 步流程`);
       setEditTpl(tpl);
       setSaveState('saved');
-    } catch {
+    } catch (e) {
+      setSaveErr((e as Error).message);
       setSaveState('error');
     } finally {
       setOpening(false);
@@ -204,8 +222,8 @@ export default function FlowGraph({
         </button>
       </div>
       <div className="mt-1.5 text-[10.5px] text-ink-400 text-center leading-snug">
-        {saveState === 'error' ? '保存失败,请重试。'
-          : '「编辑流程」会先存为模板再打开画布;保存后到「算法库 → 流程模板」可一键在新数据上执行。'}
+        {saveState === 'error' ? <span className="text-danger-700">{saveErr || '保存失败，请重试。'}</span>
+          : '「编辑流程」会先存为流程再打开画布；保存后到「流程」页可一键在新数据上执行。'}
       </div>
 
       {editTpl && <EditFlowModal tpl={editTpl} onClose={() => setEditTpl(null)} />}

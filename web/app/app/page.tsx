@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import ChatView from '@/components/ChatView';
 import DatasetsView from '@/components/DatasetsView';
-import AlgorithmsView, { TemplatesView } from '@/components/AlgorithmsView';
+import AlgorithmsView, { TemplatesView, type FocusAlgo } from '@/components/AlgorithmsView';
 import SettingsView from '@/components/SettingsView';
 import SkillsView from '@/components/SkillsView';
 import AboutView from '@/components/AboutView';
@@ -36,7 +36,9 @@ export default function WorkspacePage() {
   // otherwise its top-right picker still offers datasets that were just deleted.
   const [dsVer, setDsVer] = useState(0);
   // "在编辑器中打开" on an AI-built tool in chat → 算法库 with its code editor open.
-  const [focusAlgo, setFocusAlgo] = useState<{ slug: string; nonce: number } | null>(null);
+  const [focusAlgo, setFocusAlgo] = useState<FocusAlgo | null>(null);
+  // 「在对话中使用」 from the library: prefill (not send) the chat box.
+  const [pendingFill, setPendingFill] = useState<{ text: string; datasetId: number | null; nonce: number } | null>(null);
 
   // "回到现场" from the feedback inbox: reconstruct the in-app location from a
   // note's structured context (this is a SPA — the saved URL is always /app, so
@@ -69,7 +71,9 @@ export default function WorkspacePage() {
             pendingAsk={pendingAsk}
             onGoSettings={() => setView('settings')}
             onViewDataset={(id) => { setFocusDataset({ id, nonce: Date.now() }); setView('datasets'); }}
-            onOpenAlgorithm={(slug) => { setFocusAlgo({ slug, nonce: Date.now() }); setView('algorithms'); }}
+            onOpenAlgorithm={(slug) => { setFocusAlgo({ slug, nonce: Date.now(), editor: true }); setView('algorithms'); }}
+            onOpenInLibrary={(f) => { setFocusAlgo({ ...f, nonce: Date.now() }); setView('algorithms'); }}
+            pendingFill={pendingFill}
             active={view === 'chat'}
             datasetsVersion={dsVer}
           />
@@ -89,9 +93,10 @@ export default function WorkspacePage() {
           />
         )}
         {opened.has('algorithms') && (
-          <div className={`h-full ${view === 'algorithms' ? '' : 'hidden'}`}><AlgorithmsView focusAlgo={focusAlgo} active={view === 'algorithms'} /></div>
+          <div className={`h-full ${view === 'algorithms' ? '' : 'hidden'}`}><AlgorithmsView focusAlgo={focusAlgo} active={view === 'algorithms'}
+            onUseInChat={(text, datasetId) => { setPendingFill({ text, datasetId, nonce: Date.now() }); setView('chat'); }} /></div>
         )}
-        {view === 'templates' && <TemplatesView />}
+        {view === 'templates' && <TemplatesView onRunInChat={(cid) => { setActiveConv(cid); setConvVer((v) => v + 1); setView('chat'); }} />}
         {opened.has('skills') && (
           <div className={`h-full ${view === 'skills' ? '' : 'hidden'}`}><SkillsView /></div>
         )}
