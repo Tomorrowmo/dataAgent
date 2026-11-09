@@ -598,7 +598,10 @@ export default function ChatView({
         setMessages((m) => {
           const last = m[m.length - 1];
           if (last && last.pending) {
-            return [...m.slice(0, -1), { ...last, pending: false, content: `**${t('common.error')}** ${errMsg}` }];
+            // Record the failure on the message itself too, so anything that
+            // inspects the turn (e.g. the demo fallback) sees it as failed.
+            return [...m.slice(0, -1), { ...last, pending: false, content: `**${t('common.error')}** ${errMsg}`,
+              events: [...(last.events ?? []), { kind: 'final', payload: { text: errMsg, error: true, source: 'transport' } } as Event] }];
           }
           return m;
         });

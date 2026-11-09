@@ -157,7 +157,7 @@ export function ProvenanceCard({ ds, onOpenConversation, onOpenTemplate, onNewDa
   ds: Dataset;
   onOpenConversation?: (id: number) => void;
   onOpenTemplate?: (id: number) => void;
-  onNewDataset?: (id: number) => void;
+  onNewDataset?: (id: number, message: string) => void;
 }) {
   const [p, setP] = useState<DatasetProvenance | null>(null);
   const [busy, setBusy] = useState<'' | 'rerun' | 'reproduce'>('');
@@ -175,8 +175,11 @@ export function ProvenanceCard({ ds, onOpenConversation, onOpenTemplate, onNewDa
     setBusy(kind); setMsg('');
     try {
       const res = kind === 'rerun' ? await api.datasetRerun(ds.id) : await api.datasetReproduce(ds.id);
-      setMsg(res.status === 'ok' ? `${kind === 'rerun' ? '重跑' : '复现'}完成（${res.code}），已生成新的中间结果。${res.warning ? ' ' + res.warning : ''}` : `运行失败：${res.error ?? ''}`);
-      if (res.dataset_id) onNewDataset?.(res.dataset_id);
+      const m = res.status === 'ok'
+        ? `${kind === 'rerun' ? '重跑（当前版本）' : '复现（当时的版本）'}完成：${res.code}，下面是新生成的中间结果。${res.warning ? ' ' + res.warning : ''}`
+        : `运行失败：${res.error ?? ''}`;
+      setMsg(m);
+      if (res.dataset_id) onNewDataset?.(res.dataset_id, m);
     } catch (e) { setMsg((e as Error).message); }
     finally { setBusy(''); }
   }

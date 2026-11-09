@@ -22,6 +22,7 @@ type NeedsParser = NonNullable<UploadResp['needs_parser']>;
 export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset, onDatasetsChanged, onOpenConversation, onOpenTemplate }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void; onDatasetsChanged?: () => void; onOpenConversation?: (id: number) => void; onOpenTemplate?: (id: number) => void }) {
   const [filter, setFilter] = useState<DsFilter>(EMPTY_FILTER);
   const [retentionKey, setRetentionKey] = useState(0);
+  const [flash, setFlash] = useState<{ id: number; text: string } | null>(null);
   const t = useT();
   // True after arriving here via "查看完整表格" from a conversation → show a 返回 link.
   const [cameFromChat, setCameFromChat] = useState(false);
@@ -263,9 +264,15 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
         )}
         <RetentionBanner refreshKey={retentionKey} onChanged={() => refresh()} />
         {!selected && <div className="grid place-items-center h-full text-ink-500">{t('ds.select')}</div>}
+        {flash && selected?.id === flash.id && (
+          <div className="mx-6 mt-4 rounded border border-success-200 bg-success-50 px-3 py-2 text-xs text-success-800 flex items-center gap-2">
+            {flash.text}
+            <button type="button" onClick={() => setFlash(null)} className="ml-auto text-success-700 hover:underline">知道了</button>
+          </div>
+        )}
         {selected && <DatasetPreview ds={selected} t={t} datasets={datasets} onPromote={() => handlePromote(selected.id)} onKeep={(k) => handleKeep(selected.id, k)} onSubsetSaved={(d) => { refresh(); setSelected(d); }} onAsk={onAsk}
           onOpenConversation={onOpenConversation} onOpenTemplate={onOpenTemplate}
-          onNewDataset={async (id) => { await refresh(); const d = (await api.listDatasets()).find((x) => x.id === id); if (d) setSelected(d); }} />}
+          onNewDataset={async (id, m) => { await refresh(); const d = (await api.listDatasets()).find((x) => x.id === id); if (d) { setSelected(d); setFlash({ id, text: m }); } }} />}
       </div>
     </div>
   );
@@ -364,7 +371,7 @@ const SUGG_META: Record<string, { zh: string; en: string }> = {
 };
 const RECIPE_SLUGS = new Set<string>(['smooth', 'drivers', 'fit', 'outliers', 'corr', 'pca']);
 
-function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onAsk, onOpenConversation, onOpenTemplate, onNewDataset }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void; onAsk?: (prompt: string, datasetId: number) => void; onOpenConversation?: (id: number) => void; onOpenTemplate?: (id: number) => void; onNewDataset?: (id: number) => void }) {
+function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onAsk, onOpenConversation, onOpenTemplate, onNewDataset }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void; onAsk?: (prompt: string, datasetId: number) => void; onOpenConversation?: (id: number) => void; onOpenTemplate?: (id: number) => void; onNewDataset?: (id: number, message: string) => void }) {
   const cols = ds.schema.columns ?? [];
   const lang = useLangStore((s) => s.lang);
   const isDerived = ds.kind === 'derived' || ds.derived_from != null;
