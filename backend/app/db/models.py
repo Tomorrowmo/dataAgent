@@ -182,6 +182,29 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class Artifact(Base):
+    """A result file produced by running an algorithm (a parquet the UI can
+    preview / chart / export). Files are only ever served BY ID through
+    /api/artifacts/{id}/… after an owner check — never by a client-supplied
+    path. `rel_path` is relative to the upload root (POSIX separators)."""
+
+    __tablename__ = "artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rel_path: Mapped[str] = mapped_column(String(1024))
+    kind: Mapped[str] = mapped_column(String(32), default="result")  # result
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    dataset_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    # active | cleaned  (cleaned = file removed, row kept for provenance)
+    state: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class FormatAdapter(Base):
     """An LLM-generated (or user-uploaded) parser for a file format the
     built-in pandas readers don't understand. Looked up by file extension

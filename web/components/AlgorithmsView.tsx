@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
-import { api, type Algorithm, type Dataset, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
+import { api, downloadFile, type Algorithm, type Dataset, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
 import dynamic from 'next/dynamic';
@@ -611,7 +611,7 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
                 className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5 disabled:opacity-50">
                 {explainingRes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 解读这个结果
               </button>
-              {(result.result_rows ?? 0) > 0 && result.result_path && (
+              {(result.result_rows ?? 0) > 0 && result.artifact_id != null && (
                 <button onClick={() => setShowChart((v) => !v)}
                   className={`text-xs h-7 px-2.5 rounded border flex items-center gap-1.5 ${showChart ? 'bg-ink-900 border-ink-900 text-white' : 'border-ink-300 bg-white text-ink-800 hover:bg-ink-50'}`}>
                   <BarChart3 className="w-3.5 h-3.5" /> {showChart ? '收起图表' : '可视化'}
@@ -623,9 +623,9 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
                 {resultExplain}
               </div>
             )}
-            {showChart && result.result_path && (result.result_rows ?? 0) > 0 && (
+            {showChart && result.artifact_id != null && (result.result_rows ?? 0) > 0 && (
               <div className="rounded-lg ring-1 ring-ink-200 p-2">
-                <DatasetChart resultPath={result.result_path} name={dispName(algo)} />
+                <DatasetChart artifactId={result.artifact_id} name={dispName(algo)} />
               </div>
             )}
           </div>
@@ -649,17 +649,22 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
 
 function RunOutput({ result, t }: { result: RunResult; t: (k: string) => string }) {
   const s = (result.summary || {}) as { type?: string; rows?: number; columns?: string[]; head?: Record<string, unknown>[]; value?: unknown; length?: number };
-  const exp = (fmt: string) => `/api/datasets/export?path=${encodeURIComponent(result.result_path || '')}&format=${fmt}`;
+  const [dlErr, setDlErr] = useState('');
+  const exp = (fmt: 'csv' | 'xlsx') => {
+    setDlErr('');
+    downloadFile(`/artifacts/${result.artifact_id}/export?format=${fmt}`, `result.${fmt}`).catch((e) => setDlErr((e as Error).message));
+  };
 
   return (
     <div className="space-y-2">
       <div className="text-sm bg-white border border-ink-200 rounded px-3 py-2 flex items-center gap-3 flex-wrap">
         <StatusDot tone="ok">执行成功</StatusDot>
         <span className="font-mono text-xs text-ink-600">{result.duration_ms} ms{typeof result.result_rows === 'number' && result.result_rows > 0 ? ` · ${result.result_rows.toLocaleString()} 行` : ''}</span>
-        {result.result_path && (
+        {result.artifact_id != null && (
           <span className="ml-auto flex items-center gap-2 text-xs">
-            下载:<a href={exp('csv')} className="text-brand-600 underline">CSV</a>
-            <a href={exp('xlsx')} className="text-brand-600 underline">Excel</a>
+            下载:<button type="button" onClick={() => exp('csv')} className="text-brand-600 underline">CSV</button>
+            <button type="button" onClick={() => exp('xlsx')} className="text-brand-600 underline">Excel</button>
+            {dlErr && <span className="text-danger-700">{dlErr}</span>}
           </span>
         )}
       </div>

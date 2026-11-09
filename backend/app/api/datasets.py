@@ -19,6 +19,8 @@ from ..services.format_adapter import (
     generate_cleaner_stream, generate_parser_stream, save_adapter, stage_upload, try_saved_adapter,
 )
 from .deps import current_user, get_db, llm_for
+from .artifacts import dataframe_download
+from ..services.storage import scrub, scrub_text, to_rel
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -185,7 +187,7 @@ async def upload(
     return UploadResp(
         status="needs_parser",
         needs_parser={
-            "staging_path": str(staged_path),
+            "staging_path": to_rel(staged_path),  # relative to the upload root — never a server path
             "extension": extension or "(no extension)",
             "filename": file.filename,
             "size_bytes": len(data),
@@ -223,11 +225,11 @@ async def generate_parser_endpoint(
             async for ev in generate_parser_stream(
                 file_path=staged, extension=body.extension, llm=llm, max_attempts=3,
             ):
-                yield f"data: {json.dumps(ev, default=str)}\n\n"
+                yield f"data: {json.dumps(scrub(ev), default=str)}\n\n"
         except Exception as e:
             # Defensive — any unhandled exception turns into a final 'fatal'
             # event so the UI un-sticks instead of hanging on a dead stream.
-            yield f"data: {json.dumps({'event': 'fatal', 'error': f'{type(e).__name__}: {e}'})}\n\n"
+            yield f"data: {json.dumps({'event': 'fatal', 'error': scrub_text(f'{type(e).__name__}: {e}')})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -317,9 +319,9 @@ async def clean_dataset_stream(
         yield ": numetrix-stream-open\n\n"  # prime the proxy pipe (see chat.py)
         try:
             async for ev in generate_cleaner_stream(df=df, llm=llm, max_attempts=2):
-                yield f"data: {json.dumps(ev, default=str)}\n\n"
+                yield f"data: {json.dumps(scrub(ev), default=str)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'event': 'fatal', 'error': f'{type(e).__name__}: {e}'})}\n\n"
+            yield f"data: {json.dumps({'event': 'fatal', 'error': scrub_text(f'{type(e).__name__}: {e}')})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 
@@ -401,9 +403,14 @@ async def delete_adapter(
 def _validate_staged_path(path_str: str, owner_id: int) -> Path:
     """Reject any path outside the user's staging dir — defense against
     path-traversal via the staging_path body field."""
-    settings = get_settings()
-    target = Path(path_str).resolve()
-    staging_root = (settings.upload_path / f"user_{owner_id}" / "staging").resolve()
+    # The client holds a path relative to the upload root (server paths are
+    # scrubbed from responses); legacy absolute paths are accepted too.
+    from ..services.storage import PathNotOwned, resolve_owned
+    try:
+        target = resolve_owned(path_str, owner_id)
+    except PathNotOwned:
+        raise HTTPException(400, "staging_path is outside your user dir")
+    staging_root = (get_settings().upload_path / f"user_{owner_id}" / "staging").resolve()
     try:
         target.relative_to(staging_root)
     except ValueError:
@@ -430,6 +437,9 @@ async def _ingest_parsed(
     stem = Path(original_filename).stem.replace(" ", "_")
     final = user_dir / f"{stem}_{int(time.time() * 1000)}.parquet"
     shutil.copy(parsed_parquet_path, final)
+    # A sandbox scratch output has now been consumed — don't let it pile up.
+    from ..services.artifacts import discard_scratch
+    discard_scratch({"result_path": str(parsed_parquet_path)})
 
     df = pd.read_parquet(final)
     schema = {
@@ -533,73 +543,24 @@ async def gc_datasets(
     )
 
 
-@router.get("/export")
-async def export_result(path: str, format: str = "csv"):
-    """Convert a result/dataset parquet to a FAMILIAR format (CSV or Excel) and
-    serve it as a download — most users don't know what .parquet is. Auth-less
-    (like /api/result-file) but the path must live under the upload dir."""
-    settings = get_settings()
-    target = Path(path).resolve()
+@router.get("/{dataset_id}/export")
+async def export_dataset(
+    dataset_id: int,
+    format: str = "csv",
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Download a dataset as CSV / Excel (owner only)."""
+    ds = (await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
+    )).scalar_one_or_none()
+    if ds is None:
+        raise HTTPException(404, "dataset not found")
     try:
-        target.relative_to(settings.upload_path.resolve())
-    except ValueError:
-        raise HTTPException(400, "path not under upload directory")
-    if not target.exists():
-        raise HTTPException(404, "file not found")
-    try:
-        df = pd.read_parquet(target)
-    except Exception:
-        try:
-            df = pd.read_csv(target)
-        except Exception as e:
-            raise HTTPException(400, f"could not read result file: {e}")
-
-    stem = target.stem
-    if format == "xlsx":
-        buf = io.BytesIO()
-        df.to_excel(buf, index=False)
-        return Response(
-            buf.getvalue(),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{stem}.xlsx"'},
-        )
-    # CSV with BOM so Excel opens Chinese correctly.
-    return Response(
-        df.to_csv(index=False).encode("utf-8-sig"),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'},
-    )
-
-
-@router.get("/preview-file")
-async def preview_file(path: str, limit: int = 500):
-    """Preview rows from a result parquet/CSV that ISN'T a registered dataset yet
-    (e.g. a one-off single-algorithm run output) so it can be visualized directly.
-    Path must live under the upload dir (same guard as /export). Auth-less like
-    /export and /result-file."""
-    settings = get_settings()
-    target = Path(path).resolve()
-    try:
-        target.relative_to(settings.upload_path.resolve())
-    except ValueError:
-        raise HTTPException(400, "path not under upload directory")
-    if not target.exists():
-        raise HTTPException(404, "file not found")
-    try:
-        df = pd.read_parquet(target)
-    except Exception:
-        try:
-            df = pd.read_csv(target)
-        except Exception as e:
-            raise HTTPException(400, f"could not read result file: {e}")
-    n = max(1, min(int(limit), 2000))
-    head = df.head(n)
-    return {
-        "columns": list(map(str, df.columns)),
-        "rows": json.loads(head.to_json(orient="records", date_format="iso")),
-        "total": int(len(df)),
-        "shown": int(len(head)),
-    }
+        df = load_dataset_df(ds)
+    except FileNotFoundError:
+        raise HTTPException(410, "dataset file is no longer available")
+    return dataframe_download(df, ds.name or f"dataset_{ds.id}", format)
 
 
 @router.get("/{dataset_id}/preview")

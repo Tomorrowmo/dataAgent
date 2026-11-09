@@ -200,6 +200,8 @@ async def run_template(
             in_rows, in_cols = int(len(df)), int(df.shape[1])
             try:
                 out_df = pd.read_parquet(rp)
+                from ..services.artifacts import discard_scratch
+                discard_scratch(res)
             except Exception:
                 out_df = None
             if out_df is not None:

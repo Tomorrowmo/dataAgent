@@ -232,11 +232,11 @@ def execute_builtin(
 
         result_path: Optional[str] = None
         if isinstance(result, pd.DataFrame):
-            from ..core.config import get_settings
 
-            settings = get_settings()
-            out_dir = settings.upload_path / "results"
-            out_dir.mkdir(parents=True, exist_ok=True)
+            # Internal scratch only — the caller either consumes it (derived
+            # dataset) or adopts it into the user's tmp/ as an Artifact.
+            from ..services.storage import scratch_dir
+            out_dir = scratch_dir()
             fname = f"builtin_{slug}_{int(time.time() * 1000)}.parquet"
             out_path = out_dir / fname
             result.to_parquet(out_path, index=False)

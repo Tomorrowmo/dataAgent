@@ -156,8 +156,10 @@ async def import_skill_stream(file: UploadFile = File(...), user: User = Depends
     filename = file.filename or "skill.zip"
     llm = llm_for(user)
 
+    from ..services.storage import scrub as _scrub
+
     def ev(stage: str, **kw: Any) -> str:
-        return f"data: {_json.dumps({'stage': stage, **kw}, ensure_ascii=False, default=str)}\n\n"
+        return f"data: {_json.dumps(_scrub({'stage': stage, **kw}), ensure_ascii=False, default=str)}\n\n"
 
     async def stream():
         yield ": import-open\n\n"

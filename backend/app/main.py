@@ -63,7 +63,7 @@ logger.info("importing fastapi + heavy deps…")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
 from .core.config import get_settings
 from .db.base import bootstrap_admin, init_db
@@ -92,6 +92,7 @@ def _warmup(app: "FastAPI") -> None:
         logger.info("warmup: importing routers + heavy deps…")
         from .algorithms import bootstrap as _algo_bootstrap  # noqa: F401  (triggers registration)
         from .api import algorithms as algorithms_api
+        from .api import artifacts as artifacts_api
         from .api import auth as auth_api
         from .api import chat as chat_api
         from .api import datasets as datasets_api
@@ -109,6 +110,7 @@ def _warmup(app: "FastAPI") -> None:
             from .core.oidc import init_oidc
             init_oidc()
         app.include_router(datasets_api.router, prefix="/api")
+        app.include_router(artifacts_api.router, prefix="/api")
         app.include_router(algorithms_api.router, prefix="/api")
         app.include_router(chat_api.router, prefix="/api")
         app.include_router(templates_api.router, prefix="/api")
@@ -143,6 +145,13 @@ async def lifespan(app: FastAPI):
     # a daemon thread that does pure imports + sync include_router (no loop use),
     # so there's no cross-loop hazard.
     await init_db()
+    try:
+        from .services.storage import startup_housekeeping
+        hk = startup_housekeeping()
+        if any(hk.values()):
+            logger.info("storage housekeeping: %s", hk)
+    except Exception:  # noqa: BLE001
+        logger.exception("storage housekeeping failed; continuing")
     # Legacy /save inserted one row per version; fold those into one live row +
     # version history so slug lookups are unambiguous. Light (no pandas).
     try:
@@ -192,11 +201,35 @@ _ALWAYS_OPEN = ("/api/health", "/api/ready", "/api/about", "/openapi.json", "/do
 
 
 @app.middleware("http")
+async def _no_server_paths(request: Request, call_next):
+    """Safety net: no JSON response may leak a server filesystem path (upload
+    root or sandbox temp dir). Endpoints scrub at the source; this catches any
+    path that slips through (error texts, logs, nested results). Streaming
+    responses (SSE) are scrubbed where they are produced (api/chat.py)."""
+    response = await call_next(request)
+    if not response.headers.get("content-type", "").startswith("application/json"):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    from .services.storage import scrub, upload_root
+    markers = (str(upload_root()).encode(), upload_root().as_posix().encode(), b"da_sbox_")
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    if any(m in body or m.replace(b"\\", b"\\\\") in body for m in markers):
+        import json as _json
+        try:
+            body = _json.dumps(scrub(_json.loads(body)), ensure_ascii=False).encode("utf-8")
+        except ValueError:
+            pass
+    from fastapi.responses import Response as _Resp
+    return _Resp(content=body, status_code=response.status_code, headers=headers,
+                 media_type=response.media_type)
+
+
+@app.middleware("http")
 async def _warm_gate(request: Request, call_next):
     """Until warmup mounts the routers, answer data routes with a clear, retryable
     503 instead of a 404 (route not mounted yet) or a hang."""
     path = request.url.path
-    if _WARM["ready"] or path in _ALWAYS_OPEN or path.startswith("/api/result-file"):
+    if _WARM["ready"] or path in _ALWAYS_OPEN:
         return await call_next(request)
     if _WARM["error"]:
         return JSONResponse({"detail": f"backend failed to start: {_WARM['error']}"}, status_code=500)
@@ -229,16 +262,3 @@ async def ready():
     }
 
 
-@app.get("/api/result-file")
-async def download_result(path: str):
-    """Serve a parquet/CSV result back to the browser. The path must live under
-    the configured upload directory — anything else is rejected."""
-    upload_root = settings.upload_path
-    target = Path(path).resolve()
-    try:
-        target.relative_to(upload_root)
-    except ValueError:
-        return JSONResponse({"error": "path not under upload directory"}, status_code=400)
-    if not target.exists():
-        return JSONResponse({"error": "file not found"}, status_code=404)
-    return FileResponse(target, filename=target.name)

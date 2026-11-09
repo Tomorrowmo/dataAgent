@@ -568,6 +568,8 @@ async def _execute_action(
         if ds is not None and result.get("status") == "ok" and result.get("result_path"):
             try:
                 out_df = pd.read_parquet(result["result_path"])
+                from .artifacts import discard_scratch
+                discard_scratch(result)
                 working[ds.id] = out_df
                 # 记一帧:后续步骤若被重塑遮蔽,可回退到"含所需列的最近一帧",
                 # 而不是一路退到磁盘原始数据、把本轮刚算出的派生列丢掉

@@ -519,10 +519,20 @@ async def ingest_tecplot_upload(
     return [ds]
 
 
+def dataset_file(ds: Dataset) -> Path:
+    """The dataset's file on disk — always resolved inside the owner's directory
+    (relative stored paths and legacy absolute ones alike)."""
+    from .storage import PathNotOwned, resolve_owned
+    try:
+        return resolve_owned(ds.storage_path, ds.owner_id)
+    except PathNotOwned:
+        raise FileNotFoundError(f"dataset {ds.id} file is outside its owner's directory")
+
+
 def load_dataset_df(ds: Dataset) -> pd.DataFrame:
-    path = Path(ds.storage_path)
+    path = dataset_file(ds)
     if not path.exists():
-        raise FileNotFoundError(f"dataset file missing: {path}")
+        raise FileNotFoundError(f"dataset {ds.id} file missing")
     return pd.read_parquet(path)
 
 
@@ -750,7 +760,7 @@ async def delete_dataset_tree(
     if not dry_run:
         for d in reversed(victims):
             try:
-                p = Path(d.storage_path)
+                p = dataset_file(d)
                 if p.exists():
                     p.unlink()
             except Exception:
@@ -840,7 +850,7 @@ async def gc_derived_datasets(
         deleted.append({"id": d.id, "name": d.name})
         if not dry_run:
             try:
-                p = Path(d.storage_path)
+                p = dataset_file(d)
                 if p.exists():
                     p.unlink()
             except Exception:

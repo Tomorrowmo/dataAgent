@@ -69,6 +69,31 @@ function safeJSON(s: string): unknown {
   try { return JSON.parse(s); } catch { return s; }
 }
 
+/** Download a file from an authenticated endpoint. A plain <a href> can't send
+ *  the Bearer token, so fetch it with the token and save the Blob — every
+ *  download is checked against the CURRENT logged-in owner (no bearer links). */
+export async function downloadFile(path: string, fallbackName = 'download'): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const r = await fetch(`/api${path}`, { headers });
+  if (!r.ok) {
+    const text = await r.text();
+    const parsed = text ? safeJSON(text) : null;
+    const detail = parsed && typeof parsed === 'object' && 'detail' in (parsed as object) ? (parsed as { detail: unknown }).detail : text;
+    throw new ApiError(typeof detail === 'string' ? detail : `HTTP ${r.status}`, r.status, parsed);
+  }
+  const cd = r.headers.get('content-disposition') || '';
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  const plain = /filename="([^"]+)"/i.exec(cd);
+  const name = star ? decodeURIComponent(star[1]) : plain ? plain[1] : fallbackName;
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const api = {
   signup: (email: string, password: string, name: string) =>
     request<{ access_token: string; user_id: number; email: string; name: string }>(
@@ -255,10 +280,16 @@ export const api = {
   datasetPreview: (id: number, limit = 50) =>
     request<{ columns: string[]; rows: Record<string, unknown>[]; total: number; shown: number }>(
       'GET', `/datasets/${id}/preview?limit=${limit}`),
-  /** Preview a result parquet/CSV by path (a single-run output not yet saved as a dataset). */
-  previewResultFile: (path: string, limit = 500) =>
+  /** Preview a single-run result file by its id (owner-checked on the server). */
+  previewArtifact: (id: number, limit = 500) =>
     request<{ columns: string[]; rows: Record<string, unknown>[]; total: number; shown: number }>(
-      'GET', `/datasets/preview-file?path=${encodeURIComponent(path)}&limit=${limit}`),
+      'GET', `/artifacts/${id}/preview?limit=${limit}`),
+  /** Can a past chat turn's algorithm steps be re-run on the original data? */
+  chatRerunCheck: (convId: number, msgId: number) =>
+    request<{ ok: boolean; reason: string | null; steps: number }>('GET', `/chat/conversations/${convId}/messages/${msgId}/rerun`),
+  /** Re-run them; returns the new assistant message appended to the conversation. */
+  chatRerun: (convId: number, msgId: number) =>
+    request<ChatMessage>('POST', `/chat/conversations/${convId}/messages/${msgId}/rerun`),
   /** 3D point-cloud geometry (X/Y/Z + a field's values) for mesh/CGNS datasets. */
   datasetPoints3d: (id: number, color?: string, maxPoints = 80000) =>
     request<Points3D>('GET', `/datasets/${id}/points3d?max_points=${maxPoints}${color ? `&color=${encodeURIComponent(color)}` : ''}`),
@@ -493,7 +524,8 @@ export type RunResult = {
   duration_ms: number;
   summary: Record<string, unknown>;
   logs: string;
-  result_path: string | null;
+  /** Owner-scoped result file id — preview / export via /api/artifacts/{id}/… */
+  artifact_id?: number | null;
   result_rows: number;
   run_id?: number;
 };

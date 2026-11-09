@@ -13,7 +13,7 @@ import ChartPanel, { type ChartSpec } from '@/components/ChartPanel';
  * inferred from the data (no schema needed), so it works for any stage. Reused
  * in the Datasets view and the mini-program result.
  */
-export default function DatasetChart({ datasetId, resultPath, name, maxPoints = 1000, height = 420 }: { datasetId?: number; resultPath?: string; name?: string; maxPoints?: number; height?: number }) {
+export default function DatasetChart({ datasetId, artifactId, name, maxPoints = 1000, height = 420 }: { datasetId?: number; artifactId?: number; name?: string; maxPoints?: number; height?: number }) {
   const [spec, setSpec] = useState<ChartSpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -21,8 +21,8 @@ export default function DatasetChart({ datasetId, resultPath, name, maxPoints = 
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setErr(''); setSpec(null);
-    const fetchRows = resultPath != null
-      ? api.previewResultFile(resultPath, maxPoints)
+    const fetchRows = artifactId != null
+      ? api.previewArtifact(artifactId, maxPoints)
       : api.datasetPreview(datasetId as number, maxPoints);
     fetchRows.then((p) => {
       if (cancelled) return;
@@ -54,7 +54,7 @@ export default function DatasetChart({ datasetId, resultPath, name, maxPoints = 
       setLoading(false);
     }).catch((e) => { if (!cancelled) { setErr((e as Error).message); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [datasetId, resultPath, maxPoints, name]);
+  }, [datasetId, artifactId, maxPoints, name]);
 
   if (loading) return <div className="py-8 text-center text-sm text-ink-400"><Loader2 className="w-4 h-4 animate-spin inline-block" /> 正在读取数据…</div>;
   if (err) return <div className="py-6 text-center text-sm text-ink-400 flex items-center justify-center gap-1.5"><BarChart3 className="w-4 h-4" /> {err}</div>;

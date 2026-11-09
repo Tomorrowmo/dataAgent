@@ -10,6 +10,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Conversation, Dataset, Message, User
+from ..services.storage import scrub, scrub_text
 from ..services.chat_agent import run_turn
 from ..services.datasets import save_temp_upload
 from ..services.image_parser import IMAGE_EXTS
@@ -133,6 +134,65 @@ async def list_messages(
         select(Message).where(Message.conversation_id == conv_id).order_by(Message.id)
     )).scalars().all()
     return [MessageResp(id=m.id, role=m.role, content=m.content, meta=m.meta or {}) for m in msgs]
+
+
+async def _owned_message(session: AsyncSession, conv_id: int, msg_id: int, user: User):
+    conv = (await session.execute(
+        select(Conversation).where(Conversation.id == conv_id, Conversation.owner_id == user.id)
+    )).scalar_one_or_none()
+    if conv is None:
+        raise HTTPException(404, "conversation not found")
+    msg = (await session.execute(
+        select(Message).where(Message.id == msg_id, Message.conversation_id == conv_id)
+    )).scalar_one_or_none()
+    if msg is None or msg.role != "assistant":
+        raise HTTPException(404, "message not found")
+    return conv, msg
+
+
+@router.get("/conversations/{conv_id}/messages/{msg_id}/rerun")
+async def rerun_check(
+    conv_id: int,
+    msg_id: int,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Can this turn's algorithm steps be re-run? (drives the button state)"""
+    from ..services.rerun import plan_rerun
+    conv, msg = await _owned_message(session, conv_id, msg_id, user)
+    plan, _ = await plan_rerun(session, user.id, conv, (msg.meta or {}).get("events") or [])
+    return {"ok": plan.blocked is None, "reason": plan.blocked, "steps": len(plan.steps)}
+
+
+@router.post("/conversations/{conv_id}/messages/{msg_id}/rerun", response_model=MessageResp)
+async def rerun_message(
+    conv_id: int,
+    msg_id: int,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Replay a past turn's algorithm steps on the original data (no LLM) and
+    append the outcome as a new assistant message in the same conversation."""
+    from ..services.rerun import execute_rerun, plan_rerun
+    conv, msg = await _owned_message(session, conv_id, msg_id, user)
+    plan, resolved = await plan_rerun(session, user.id, conv, (msg.meta or {}).get("events") or [])
+    if plan.blocked:
+        raise HTTPException(409, plan.blocked)
+    events = await execute_rerun(session, user.id, plan, resolved)
+    ok = sum(1 for e in events if e["kind"] == "tool_result" and (e["payload"].get("result") or {}).get("status") == "ok")
+    # The time of the original turn is shown by the client (local timezone)
+    # from meta.rerun_of_at — the server runs in UTC.
+    text = (f"已在原始数据上重新运行这次分析的 {len(plan.steps)} 个算法步骤，结果如下。"
+            if ok == len(plan.steps) else
+            f"重新运行时第 {ok + 1} 步失败，后续步骤没有执行。")
+    events.append({"kind": "final", "payload": {"text": text}})
+    created = msg.created_at.isoformat() if msg.created_at else None
+    new = Message(conversation_id=conv.id, role="assistant", content=text,
+                  meta={"events": events, "rerun_of": msg.id, "rerun_of_at": created})
+    session.add(new)
+    await session.commit()
+    await session.refresh(new)
+    return MessageResp(id=new.id, role=new.role, content=new.content, meta=new.meta or {})
 
 
 @router.get("/conversations/{conv_id}/pipeline")
@@ -328,7 +388,8 @@ async def send_message(
                     pipeline_state=pipeline_state, image_ref=image_ref, image_fresh=image_fresh,
                     skills=skills_selected, skill_catalog=skills_catalog,
                 ):
-                    event = {"kind": step.kind, "payload": step.payload}
+                    # No server paths in what the client sees or what gets stored.
+                    event = scrub({"kind": step.kind, "payload": step.payload})
                     events.append(event)
                     yield await _yield(event)
                     if step.kind == "final":
@@ -350,7 +411,7 @@ async def send_message(
                 # LLM timeout / network / parser crash / sandbox crash. Surface
                 # as a final event the UI can render, plus a diagnostic hint.
                 hint = _diagnostic_hint(e)
-                err_text = f"**Agent error:** {type(e).__name__}: {e}"
+                err_text = scrub_text(f"**Agent error:** {type(e).__name__}: {e}")
                 if hint:
                     err_text += f"\n\n💡 {hint}"
                 event = {"kind": "final", "payload": {

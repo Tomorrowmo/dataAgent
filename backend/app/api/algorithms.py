@@ -12,6 +12,8 @@ from ..db.models import Algorithm, Dataset, Run, User
 from ..sandbox import executor as sandbox_executor
 from ..sandbox.validator import validate_algorithm_code
 from ..services import algo_store
+from ..services import artifacts as artifact_svc
+from ..services.storage import scrub
 from ..services.algo_store import find_algorithm
 from ..services.algo_check import admission_check, diagnose_run
 from ..services.codegen import generate_algorithm, parse_meta
@@ -724,6 +726,7 @@ async def run_to_dataset(
         raise HTTPException(400, f"该算法没有产出表格结果,无法存为数据集（{res.get('error','') or res.get('summary',{})}）")
 
     out_df = pd.read_parquet(res["result_path"])
+    artifact_svc.discard_scratch(res)
     d = await _persist_dataset(
         session, owner_id=user.id, df=out_df,
         name=f"{ds.name} · {label}", filename=f"{body.slug}.parquet",
@@ -768,6 +771,8 @@ async def run_algorithm(
         result = registry.execute_code(row.code, df, body.params)
         algo_id = row.id
 
+    # The output file becomes an owner-scoped Artifact (served only by id).
+    result = await artifact_svc.adopt(session, user.id, result)
     run = Run(
         owner_id=user.id,
         algorithm_id=algo_id or 0,
@@ -777,7 +782,7 @@ async def run_algorithm(
         error=result.get("error", ""),
         duration_ms=int(result.get("duration_ms", 0)),
         result_summary=result.get("summary") or {},
-        result_artifacts=[result["result_path"]] if result.get("result_path") else [],
+        result_artifacts=[result["artifact_id"]] if result.get("artifact_id") else [],
         logs=result.get("logs", ""),
     )
     if algo_id:
@@ -785,7 +790,7 @@ async def run_algorithm(
         await session.commit()
         await session.refresh(run)
         result["run_id"] = run.id
-    return result
+    return scrub(result)
 
 
 # ── 代码编辑器（看源码 / 调试 / 改版 / 历史 / 删除）──────────────────────────────
@@ -983,7 +988,7 @@ async def algorithm_studio(
             schema_hint = str(ds.schema_json)[:4000]
 
     def sse(obj: Dict[str, Any]) -> str:
-        return f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n"
+        return f"data: {json.dumps(scrub(obj), ensure_ascii=False, default=str)}\n\n"
 
     async def stream():
         yield ": studio-open\n\n"

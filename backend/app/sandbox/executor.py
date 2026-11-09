@@ -173,8 +173,10 @@ def execute(
         result_path: Optional[str] = None
         if save_result and parsed.get("status") == "ok" and os.path.exists(output_path):
             # Persist the result inside the upload dir so the API can read it later.
-            dest = settings.upload_path / "results"
-            dest.mkdir(parents=True, exist_ok=True)
+            # Internal scratch only (never served) — callers consume it or adopt
+            # it into the owner's directory via services.artifacts.adopt().
+            from ..services.storage import scratch_dir
+            dest = scratch_dir()
             final = dest / f"{Path(workdir).name}.parquet"
             shutil.copy(output_path, final)
             result_path = str(final)

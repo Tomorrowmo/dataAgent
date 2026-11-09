@@ -23,6 +23,7 @@ type DisplayMsg = {
   events?: Event[];
   pending?: boolean;
   datasetLabel?: string;  // which dataset(s) this turn actually ran on
+  rerunOf?: number;       // server id of the answer this one re-ran (S5)
 };
 
 export default function ChatView({
@@ -259,6 +260,7 @@ export default function ChatView({
         role: m.role as 'user' | 'assistant',
         content: m.content,
         events: (m.meta?.events as Event[] | undefined) ?? undefined,
+        rerunOf: typeof m.meta?.rerun_of === 'number' ? (m.meta.rerun_of as number) : undefined,
       }));
       setMessages(mapped);
       // Seed the workbench with the WHOLE conversation's timeline (every turn,
@@ -534,6 +536,10 @@ export default function ChatView({
   // Top picker shows SOURCE datasets only (+ any currently-selected derived so
   // you can still deselect it). Intermediates live in the 数据集 lineage tree.
   const pickerDatasets = datasets.filter((d) => d.kind !== 'derived' || activeDatasets.includes(d.id));
+  // Which datasets still exist — a result card whose derived dataset is gone
+  // offers a re-run on the original data (改进清单-3 · S5).
+  const datasetIds = new Set(datasets.map((d) => d.id));
+  const rerunTargets = new Set(messages.filter((m) => m.rerunOf != null).map((m) => `m_${m.rerunOf}`));
   const activeDsList = activeDatasets
     .map((id) => datasets.find((d) => d.id === id))
     .filter((d): d is Dataset => Boolean(d));
@@ -626,6 +632,17 @@ export default function ChatView({
               onOpenAlgorithm={onOpenAlgorithm}
               activeSkills={activeSkills}
               onEnableSkill={(id) => setActiveSkills((p) => (p.includes(id) ? p : [...p, id]))}
+              conversationId={conversationId}
+              datasetIds={datasetIds}
+              reran={rerunTargets.has(m.id)}
+              onReran={(nm) => {
+                setMessages((prev) => [...prev, {
+                  id: `m_${nm.id}`, role: 'assistant', content: nm.content,
+                  events: (nm.meta?.events as Event[] | undefined) ?? undefined,
+                  rerunOf: typeof nm.meta?.rerun_of === 'number' ? (nm.meta.rerun_of as number) : undefined,
+                }]);
+                refreshDatasets();
+              }}
             />
           ))
         )}
@@ -1161,10 +1178,11 @@ function Typewriter({ text }: { text: string }) {
   return <Markdown>{text.slice(0, shown)}</Markdown>;
 }
 
-function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm, activeSkills, onEnableSkill }: {
+function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, reviewedSlugs, onToolKept, onOpenAlgorithm, activeSkills, onEnableSkill, conversationId, datasetIds, onReran, reran = false }: {
   msg: DisplayMsg; t: (k: string) => string; liveThought?: string; turnStartedAt?: number; onSuggest?: (prompt: string) => void;
   reviewedSlugs?: Set<string>; onToolKept?: (slug: string) => void; onOpenAlgorithm?: (slug: string) => void;
   activeSkills?: number[]; onEnableSkill?: (id: number) => void;
+  conversationId?: number | null; datasetIds?: Set<number>; onReran?: (m: ChatMessage) => void; reran?: boolean;
 }) {
   if (msg.role === 'user') {
     return (
@@ -1223,6 +1241,14 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   // always shown — and PROCESS chips (thinking / tool calls / progress), which
   // are collapsed by default since the full step detail lives in the 工作台.
   const outputs = visibleEvents.filter(isOutputEvent);
+  // Derived datasets this answer produced that no longer exist → "expired".
+  const serverId = msg.id.startsWith('m_') ? Number(msg.id.slice(2)) : null;
+  const expired = datasetIds && datasetIds.size > 0
+    ? events.flatMap((e) => {
+        const dd = e.kind === 'tool_result' ? (e.payload.result as { derived_dataset?: { id: number; name: string } } | undefined)?.derived_dataset : undefined;
+        return dd && !datasetIds.has(dd.id) ? [dd.name] : [];
+      })
+    : [];
   const procEvents = visibleEvents.filter((e) => !isOutputEvent(e));
   return (
     <div className="flex gap-3 max-w-3xl mx-auto">
@@ -1291,7 +1317,45 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
             </div>
           </div>
         )}
+        {!msg.pending && expired.length > 0 && serverId != null && conversationId != null && onReran && (
+          reran
+            ? <div className="mt-3 pt-3 border-t border-ink-150 text-xs text-ink-600">该结果的数据已清理，已在原始数据上重新运行，见下方。</div>
+            : <RerunBar convId={conversationId} msgId={serverId} names={expired} onReran={onReran} />
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Shown on a past answer whose result data no longer exists (cleaned up, or
+ *  produced before the storage rework): re-run the turn's algorithm steps on
+ *  the original data. Disabled — with the reason — when that isn't possible. */
+function RerunBar({ convId, msgId, names, onReran }: {
+  convId: number; msgId: number; names: string[]; onReran: (m: ChatMessage) => void;
+}) {
+  const [check, setCheck] = useState<{ ok: boolean; reason: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let alive = true;
+    api.chatRerunCheck(convId, msgId).then((c) => { if (alive) setCheck(c); }).catch((e) => { if (alive) setCheck({ ok: false, reason: (e as Error).message }); });
+    return () => { alive = false; };
+  }, [convId, msgId]);
+  async function go() {
+    setBusy(true); setErr('');
+    try { onReran(await api.chatRerun(convId, msgId)); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-3 pt-3 border-t border-ink-150 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+      <span className="text-ink-600">该结果已过期：{names.slice(0, 2).map((n) => `「${n}」`).join('')}{names.length > 2 ? ` 等 ${names.length} 份` : ''}的数据已清理。</span>
+      <button type="button" onClick={go} disabled={busy || !check?.ok}
+        className="h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} 重新运行
+      </button>
+      {check && !check.ok && check.reason && <span className="text-ink-500">{check.reason}</span>}
+      {err && <span className="text-danger-700">{err}</span>}
     </div>
   );
 }
