@@ -61,22 +61,32 @@ export function resolvedStarts(events: Event[]): Set<number> {
 
 const LS_KEY = 'numetrix.workbench.open';
 
-export function useWorkbenchOpen(defaultValue = true): [boolean, (v: boolean) => void] {
-  const [open, setOpen] = useState<boolean>(defaultValue);
+/** Workbench visibility.
+ *  - `set` = the USER toggled it → remembered (localStorage).
+ *  - `auto` = the app opened it (first message of a session) → NOT remembered,
+ *    and ignored when the user has a saved preference or is on a phone.
+ *  With no saved preference the panel starts CLOSED, so an empty session isn't
+ *  a quarter-width "idle" column; it slides open once there is something to show. */
+export function useWorkbenchOpen(): { open: boolean; set: (v: boolean) => void; auto: () => void } {
+  const [open, setOpen] = useState<boolean>(false);
+  const hasPref = useRef(false);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(LS_KEY);
-      if (stored !== null) { setOpen(stored === '1'); return; }
-    } catch { /* SSR */ }
-    // No saved preference → open on desktop, but CLOSED on a phone so the
-    // full-screen workbench overlay doesn't cover the chat on load.
-    if (typeof window !== 'undefined' && window.innerWidth < 768) setOpen(false);
+      if (stored !== null) { hasPref.current = true; setOpen(stored === '1'); }
+    } catch { /* storage unavailable — behave as "no preference" */ }
   }, []);
   const set = (v: boolean) => {
     setOpen(v);
-    try { localStorage.setItem(LS_KEY, v ? '1' : '0'); } catch { /* SSR */ }
+    hasPref.current = true;
+    try { localStorage.setItem(LS_KEY, v ? '1' : '0'); } catch { /* not remembered */ }
   };
-  return [open, set];
+  const auto = () => {
+    if (hasPref.current) return;
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return;  // never cover the chat on a phone
+    setOpen(true);
+  };
+  return { open, set, auto };
 }
 
 export default function WorkbenchPanel({

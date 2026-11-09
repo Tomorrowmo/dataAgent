@@ -80,16 +80,18 @@ export default function Sidebar({
   // clicking the chat icon opens it; clicking it again collapses it.
   const [convPanelOpen, setConvPanelOpen] = useState(false);
 
-  const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
-    { id: 'chat', label: t('side.chat'), icon: <MessagesSquare className="w-5 h-5" /> },
-    { id: 'datasets', label: t('side.datasets'), icon: <Database className="w-5 h-5" /> },
-    { id: 'algorithms', label: t('side.algorithms'), icon: <FunctionSquare className="w-5 h-5" /> },
-    { id: 'templates', label: '流程模板', icon: <Workflow className="w-5 h-5" /> },
-    { id: 'skills', label: '技能 Skills', icon: <Puzzle className="w-5 h-5" /> },
+  // `short` is the always-visible caption under the icon (O5); `label` is the tooltip.
+  const zhUI = t('side.chat') === '对话';
+  const NAV: { id: View; label: string; short: string; icon: React.ReactNode }[] = [
+    { id: 'chat', label: t('side.chat'), short: zhUI ? '对话' : 'Chat', icon: <MessagesSquare className="w-[18px] h-[18px]" /> },
+    { id: 'datasets', label: t('side.datasets'), short: zhUI ? '数据' : 'Data', icon: <Database className="w-[18px] h-[18px]" /> },
+    { id: 'algorithms', label: t('side.algorithms'), short: zhUI ? '算法' : 'Algos', icon: <FunctionSquare className="w-[18px] h-[18px]" /> },
+    { id: 'templates', label: '流程模板', short: zhUI ? '流程' : 'Flows', icon: <Workflow className="w-[18px] h-[18px]" /> },
+    { id: 'skills', label: '技能 Skills', short: zhUI ? '技能' : 'Skills', icon: <Puzzle className="w-[18px] h-[18px]" /> },
     // Feedback inbox is admin-only — it's the boss's triage queue.
-    ...(isAdmin ? [{ id: 'feedback' as View, label: '反馈收件箱', icon: <Inbox className="w-5 h-5" /> }] : []),
-    { id: 'settings', label: t('side.settings'), icon: <Settings className="w-5 h-5" /> },
-    { id: 'about', label: t('side.about'), icon: <Info className="w-5 h-5" /> },
+    ...(isAdmin ? [{ id: 'feedback' as View, label: '反馈收件箱', short: zhUI ? '反馈' : 'Inbox', icon: <Inbox className="w-[18px] h-[18px]" /> }] : []),
+    { id: 'settings', label: t('side.settings'), short: zhUI ? '设置' : 'Settings', icon: <Settings className="w-[18px] h-[18px]" /> },
+    { id: 'about', label: t('side.about'), short: zhUI ? '关于' : 'About', icon: <Info className="w-[18px] h-[18px]" /> },
   ];
 
   return (
@@ -117,13 +119,14 @@ export default function Sidebar({
             }}
             title={n.label}
             aria-current={activeView === n.id ? 'page' : undefined}
-            className={`relative w-9 h-9 grid place-items-center rounded transition-colors ${
+            className={`relative w-12 py-1.5 flex flex-col items-center gap-0.5 rounded transition-colors ${
               activeView === n.id
-                ? 'bg-white text-brand-600 ring-1 ring-ink-200 before:absolute before:-left-[11px] before:top-2.5 before:w-[3px] before:h-4 before:rounded-sm before:bg-brand-600'
+                ? 'bg-white text-brand-600 ring-1 ring-ink-200 before:absolute before:-left-[5px] before:top-3 before:w-[3px] before:h-5 before:rounded-sm before:bg-brand-600'
                 : 'text-ink-500 hover:bg-ink-150 hover:text-ink-800'
             }`}
           >
             {n.icon}
+            <span className={`text-[10px] leading-none ${activeView === n.id ? 'text-ink-900 font-medium' : ''}`}>{n.short}</span>
           </button>
         ))}
         <div className="mt-auto flex flex-col items-center gap-1">

@@ -93,7 +93,7 @@ export default function SkillsView() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex-1 min-w-[240px]">
             <h1 className="text-xl font-semibold flex items-center gap-2"><Puzzle className="w-5 h-5 text-brand-600" />技能 Skills</h1>
-            <p className="text-sm text-ink-500 mt-1">把你的专业分析方法交给智能体：启用后，在对话输入框上方的「Skills」里勾选，智能体就按这个方法来分析。</p>
+            <p className="text-sm text-ink-500 mt-1">技能是写给对话里 AI 的分析规范（比如你们的检测流程、判定标准）。启用后，在对话输入框上方的「Skills」里勾选，AI 就按这个方法来分析；不勾选时 AI 按通用方法处理。</p>
           </div>
           <button onClick={() => fileRef.current?.click()} disabled={importing}
             className="flex items-center gap-1.5 bg-brand-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-brand-700 disabled:opacity-60">

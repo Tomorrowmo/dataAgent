@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Wrench, MessagesSquare, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
+import { Send, Wrench, MessagesSquare, User, Play, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
 import Markdown from '@/components/Markdown';
-import { AiMark } from '@/components/ui';
+import { AiMark, SourceTag } from '@/components/ui';
+import DatasetChart from '@/components/DatasetChart';
 import AnalysisIcon from '@/components/AnalysisIcon';
 import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
@@ -142,7 +143,9 @@ export default function ChatView({
   // Cross-turn pipeline head per dataset (so the user can SEE that "再插值" will
   // continue on the prior result, and reset to the original if they want).
   const [pipeline, setPipeline] = useState<Record<string, { head_id: number; head_name: string; steps: number }>>({});
-  const [workbenchOpen, setWorkbenchOpen] = useWorkbenchOpen(true);
+  const wb = useWorkbenchOpen();
+  const workbenchOpen = wb.open;
+  const setWorkbenchOpen = wb.set;
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -263,6 +266,7 @@ export default function ChatView({
         rerunOf: typeof m.meta?.rerun_of === 'number' ? (m.meta.rerun_of as number) : undefined,
       }));
       setMessages(mapped);
+      if (mapped.length) wb.auto();
       // Seed the workbench with the WHOLE conversation's timeline (every turn,
       // not just the last), a 'turn' divider before each user message — so the
       // right-side trace persists across the entire conversation.
@@ -375,8 +379,7 @@ export default function ChatView({
   // One-click starter: ensure its bundled sample dataset exists (create it from
   // the embedded CSV the first time), then ask its question — so even an empty
   // account can try it instantly. Falls back to filling the box on any failure.
-  async function onStarter(s: Starter) {
-    const q = lang === 'zh' ? s.zh.q : s.en.q;
+  async function ensureStarterDataset(s: Starter): Promise<Dataset | undefined> {
     let ds = datasets.find((d) => d.name === s.datasetName);
     if (!ds) {
       try {
@@ -384,11 +387,67 @@ export default function ChatView({
         const r = await api.uploadDataset(file);
         const created = r.dataset ?? r.datasets?.[0];
         if (created) { ds = created; setDatasets((d) => [created, ...d.filter((x) => x.id !== created.id)]); }
-      } catch { /* fall through to just filling the box */ }
+      } catch { /* caller falls back */ }
     }
+    return ds;
+  }
+
+  async function onStarter(s: Starter) {
+    const q = lang === 'zh' ? s.zh.q : s.en.q;
+    const ds = await ensureStarterDataset(s);
     if (ds) { setActiveDatasets([ds.id]); send(q, [ds.id]); }
     else { setInput(q); inputAreaRef.current?.focus(); }
   }
+
+  // ── O2: "用示例数据体验一次" ──
+  // With a usable model → the full AI flow on the periodic-signal sample. With
+  // none (or when the AI fails / takes > 60 s) → a deterministic built-in demo:
+  // FFT of the same signal, no AI involved.
+  const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null);
+  useEffect(() => { api.me().then((u) => setLlmAvailable(!!u.llm_available)).catch(() => setLlmAvailable(false)); }, []);
+  const [demo, setDemo] = useState<DemoResult | null>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoErr, setDemoErr] = useState('');
+  const [aiDemoAt, setAiDemoAt] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    if (aiDemoAt == null) return;
+    const id = setInterval(() => setNowTick(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, [aiDemoAt]);
+  const signalStarter = STARTERS.find((s) => s.datasetName === '示例·周期信号') ?? STARTERS[0];
+
+  async function runBuiltinDemo() {
+    setDemoBusy(true); setDemoErr('');
+    try {
+      const ds = await ensureStarterDataset(signalStarter);
+      if (!ds) throw new Error(lang === 'zh' ? '示例数据创建失败' : 'Could not create the sample data');
+      const time = ds.schema?.columns?.find((c) => /time/i.test(c.name))?.name;
+      const sig = ds.schema?.columns?.find((c) => c.name !== time && /float|int/.test(c.dtype))?.name ?? 'signal';
+      // 400 samples over 20 s in the bundled signal → fs ≈ 19.95 Hz
+      const fs = 19.95;
+      const r = await api.runAlgorithm('fft_frequency_analysis', { columns: [sig], fs_hz: fs, window: 'hann' }, ds.id);
+      if (r.status !== 'ok' || r.artifact_id == null) throw new Error(r.error || 'FFT failed');
+      const pv = await api.previewArtifact(r.artifact_id, 2000);
+      const ampCol = pv.columns.find((c) => c.endsWith('_amplitude')) ?? pv.columns[1];
+      const pts = pv.rows.map((row) => ({ f: Number(row.frequency_hz), a: Number(row[ampCol]) })).filter((p) => p.f > 0 && Number.isFinite(p.a));
+      const peaks = pts.filter((p, i) => i > 0 && i < pts.length - 1 && p.a >= pts[i - 1].a && p.a >= pts[i + 1].a)
+        .sort((x, y) => y.a - x.a).slice(0, 2);
+      setDemo({ datasetName: ds.name, artifactId: r.artifact_id, fs, peaks, durationMs: r.duration_ms });
+      setAiDemoAt(null);
+    } catch (e) { setDemoErr((e as Error).message); }
+    finally { setDemoBusy(false); }
+  }
+
+  async function runDemo() {
+    if (llmAvailable) { setAiDemoAt(Date.now()); await onStarter(signalStarter); }
+    else await runBuiltinDemo();
+  }
+  // Offer the deterministic demo when the AI demo errors or takes too long.
+  const lastMsg = messages[messages.length - 1];
+  const aiDemoFailed = aiDemoAt != null && !!lastMsg && !lastMsg.pending &&
+    !!(lastMsg.events ?? []).find((e) => e.kind === 'final' && (e.payload as { error?: unknown }).error);
+  const aiDemoSlow = aiDemoAt != null && busy && (nowTick || Date.now()) - aiDemoAt > 60_000;
 
   // Pick a dataset from the @-mention dropdown: replace the @token with @name and
   // make this the (sole) input dataset for the next message.
@@ -409,6 +468,7 @@ export default function ChatView({
     const dsIds = dsOverride ?? activeDatasets;
     setError('');
     setBusy(true);
+    wb.auto();   // something to show now — open the workbench unless the user chose otherwise
     setInput('');
     setMention(null);
     // The message is going out — retire the chip. The dataset stays selected
@@ -609,7 +669,6 @@ export default function ChatView({
             activeIds={activeDatasets}
             uploading={uploading}
             dragOver={dragOver}
-            onToggleDataset={toggleDataset}
             onClickUpload={() => fileInputRef.current?.click()}
             onRecipeClick={onRecipeClick}
             onStarter={onStarter}
@@ -617,6 +676,11 @@ export default function ChatView({
             onPickDataset={(id) => setActiveDatasets([id])}
             onCancelRecipe={() => setPendingRecipe(null)}
             lang={lang}
+            onDemo={runDemo}
+            demoBusy={demoBusy}
+            demo={demo}
+            demoErr={demoErr}
+            onGoSettings={onGoSettings}
           />
         ) : (
           messages.map((m) => (
@@ -646,6 +710,20 @@ export default function ChatView({
             />
           ))
         )}
+        {!isFreshSession && !demo && (aiDemoFailed || aiDemoSlow) && (
+          <div className="max-w-3xl mx-auto text-xs text-ink-700 bg-white border border-ink-200 rounded px-3 py-2 flex flex-wrap items-center gap-2">
+            {aiDemoSlow && !aiDemoFailed
+              ? (lang === 'zh' ? 'AI 响应较慢（超过 60 秒）。' : 'The AI is slow (> 60 s).')
+              : (lang === 'zh' ? 'AI 这次没能给出结果。' : 'The AI could not produce a result.')}
+            <button type="button" onClick={runBuiltinDemo} disabled={demoBusy}
+              className="h-7 px-2.5 rounded border border-ink-300 bg-white hover:bg-ink-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+              {demoBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+              {lang === 'zh' ? '先看内置算法演示' : 'See the built-in demo'}
+            </button>
+            {demoErr && <span className="text-danger-700">{demoErr}</span>}
+          </div>
+        )}
+        {!isFreshSession && demo && <div className="max-w-3xl mx-auto"><DemoResultCard demo={demo} onGoSettings={onGoSettings} lang={lang} /></div>}
         <input
           ref={fileInputRef}
           type="file"
@@ -1006,9 +1084,60 @@ function ChatProfileCard({ ds, lang }: { ds: Dataset; lang: 'en' | 'zh' }) {
   );
 }
 
+/** What each recipe card gives you — shown under its question (O3). */
+const RECIPE_OUTCOME: Record<string, { zh: string; en: string }> = {
+  smooth: { zh: '得到：平滑后的曲线 + 前后对比', en: 'You get: a smoothed curve + before/after' },
+  drivers: { zh: '得到：各因素的影响排序', en: 'You get: factors ranked by influence' },
+  fit: { zh: '得到：拟合公式、R² 和预测曲线', en: 'You get: fitted formula, R², prediction curve' },
+  outliers: { zh: '得到：异常点清单和位置', en: 'You get: list and location of outliers' },
+  corr: { zh: '得到：相关系数矩阵', en: 'You get: a correlation matrix' },
+  pca: { zh: '得到：2–3 个主成分及解释度', en: 'You get: 2–3 components + variance explained' },
+  custom: { zh: '得到：按你的问题选方法', en: 'You get: a method picked for your question' },
+};
+const RECIPES_SHOWN = 4;
+
+export type DemoResult = {
+  datasetName: string;
+  artifactId: number;
+  fs: number;
+  peaks: { f: number; a: number }[];
+  durationMs: number;
+};
+
+/** The deterministic demo (no AI): FFT of the sample periodic signal, with the
+ *  dominant frequencies spelled out and the full provenance underneath. */
+function DemoResultCard({ demo, onGoSettings, lang }: { demo: DemoResult; onGoSettings?: () => void; lang: 'en' | 'zh' }) {
+  const zh = lang === 'zh';
+  const [p1, p2] = demo.peaks;
+  return (
+    <div className="rounded-md bg-white border border-ink-200 border-l-[3px] border-l-brand-600 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-ink-150">
+        <span className="text-sm font-semibold text-ink-900">{zh ? '示例结果 · 周期信号的频谱' : 'Demo · spectrum of a periodic signal'}</span>
+        <SourceTag kind="builtin" />
+        <span className="text-xs text-ink-500">{zh ? '内置算法直接计算，不经过 AI' : 'computed by a built-in algorithm, no AI'}</span>
+      </div>
+      <div className="px-4 py-3 text-sm text-ink-800 leading-relaxed">
+        {p1 ? (zh
+          ? <>这段信号的主频约 <b className="font-mono">{p1.f.toFixed(2)} Hz</b>{p2 ? <>，另有一个 <b className="font-mono">{p2.f.toFixed(2)} Hz</b> 的次要分量</> : null}。</>
+          : <>Dominant frequency ≈ <b className="font-mono">{p1.f.toFixed(2)} Hz</b>{p2 ? <>, with a secondary component at <b className="font-mono">{p2.f.toFixed(2)} Hz</b></> : null}.</>)
+          : (zh ? '已算出频谱。' : 'Spectrum computed.')}
+      </div>
+      <div className="px-2 pb-2"><DatasetChart artifactId={demo.artifactId} name={zh ? '幅值谱' : 'Amplitude spectrum'} height={260} /></div>
+      <div className="px-4 py-2 border-t border-ink-150 bg-ink-50 font-mono text-[11px] text-ink-600 flex flex-wrap gap-x-4 gap-y-1">
+        <span>fft_frequency_analysis</span><span>fs_hz={demo.fs}</span><span>window=hann</span>
+        <span>{zh ? '输入' : 'input'} {demo.datasetName}</span><span>{demo.durationMs} ms</span>
+      </div>
+      <div className="px-4 py-2.5 border-t border-ink-150 text-xs text-ink-600 flex flex-wrap items-center gap-2">
+        {zh ? '配置大模型后，可以直接用大白话提问，AI 会自己挑算法、调参数。' : 'Configure a model to ask in plain language — the AI picks the algorithm and parameters.'}
+        {onGoSettings && <button type="button" onClick={onGoSettings} className="underline text-brand-700">{zh ? '去设置' : 'Settings'}</button>}
+      </div>
+    </div>
+  );
+}
+
 function Welcome({
-  t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onToggleDataset, onClickUpload, onRecipeClick, onStarter,
-  pendingRecipe, onPickDataset, onCancelRecipe, lang,
+  t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onClickUpload, onRecipeClick, onStarter,
+  pendingRecipe, onPickDataset, onCancelRecipe, lang, onDemo, demoBusy, demo, demoErr, onGoSettings,
 }: {
   t: (k: string) => string;
   hasData: boolean;
@@ -1017,7 +1146,6 @@ function Welcome({
   activeIds: number[];
   uploading: boolean;
   dragOver: boolean;
-  onToggleDataset: (id: number) => void;
   onClickUpload: () => void;
   onRecipeClick: (id: RecipeId) => void;
   onStarter: (s: Starter) => void;
@@ -1025,36 +1153,69 @@ function Welcome({
   onPickDataset: (id: number) => void;
   onCancelRecipe: () => void;
   lang: 'en' | 'zh';
+  onDemo: () => void;
+  demoBusy: boolean;
+  demo: DemoResult | null;
+  demoErr: string;
+  onGoSettings?: () => void;
 }) {
   const zh = lang === 'zh';
+  const [moreRecipes, setMoreRecipes] = useState(false);
   // Source datasets only — intermediates live in the 数据集 lineage tree.
-  const recent = datasets.filter((d) => d.kind !== 'derived').slice(0, 6);
+  const sources = datasets.filter((d) => d.kind !== 'derived');
   const pendingTitle = pendingRecipe ? t(RECIPES.find((r) => r.id === pendingRecipe)?.titleKey ?? '') : '';
+  const recipes = moreRecipes ? RECIPES : RECIPES.slice(0, RECIPES_SHOWN);
+  const steps = zh
+    ? ['放入数据：CSV、Excel，或表格截图', '用大白话提问，或选一个分析', '得到带来源、可复现、可导出的结果']
+    : ['Bring in data: CSV, Excel or a table screenshot', 'Ask in plain words, or pick an analysis', 'Get results with provenance — reproducible, exportable'];
   return (
-    <div className="max-w-3xl mx-auto pt-4">
-      <h2 className="text-xl font-semibold mb-1 text-ink-900">{t('welcome.hi')}</h2>
+    <div className="max-w-3xl mx-auto pt-2">
+      {/* O1 — what this is, in one line, and how it works in three steps */}
+      <h2 className="text-xl font-semibold text-ink-900">{zh ? '工程试验数据的分析助手' : 'An analysis assistant for engineering test data'}</h2>
+      <p className="mt-1 text-sm text-ink-600">{zh ? '清洗、平滑、频谱、拟合、找主因、找异常——不用先学算法，每个结果都写明用了什么方法和参数。' : 'Clean, smooth, spectra, fits, key drivers, outliers — no need to know the algorithms; every result states its method and parameters.'}</p>
+      <ol className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2 rounded border border-ink-200 bg-white px-3 py-2 text-xs text-ink-700">
+            <span className="shrink-0 w-5 h-5 rounded-sm bg-ink-150 text-ink-700 grid place-items-center font-mono text-[11px]">{i + 1}</span>
+            <span className="leading-5">{s}</span>
+          </li>
+        ))}
+      </ol>
 
-      <p className="text-sm text-ink-500 mb-4">{lang === 'zh' ? '把你要分析的数据放进来 —— CSV / Excel、表格截图或照片，甚至没见过的格式，AI 都能帮你自动读懂。' : 'Bring in the data you want to analyze — CSV / Excel, screenshots or photos of tables, even formats we’ve never seen. AI reads them all.'}</p>
+      {/* O2 — always available, no matter whether the account already has data */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onDemo} disabled={demoBusy}
+          className="h-9 px-4 rounded border border-brand-600 bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-60 inline-flex items-center gap-2">
+          {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" strokeWidth={1.75} />}
+          {zh ? '用示例数据体验一次' : 'Try it with sample data'}
+        </button>
+        <button type="button" onClick={onClickUpload}
+          className="h-9 px-4 rounded border border-ink-300 bg-white text-ink-800 text-sm hover:bg-ink-50 inline-flex items-center gap-2">
+          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.5} />}
+          {zh ? '上传我的数据' : 'Upload my data'}
+        </button>
+        <span className="text-xs text-ink-500">{zh ? '示例：找出一段周期信号的主频' : 'Demo: find the dominant frequency of a periodic signal'}</span>
+      </div>
+      {demoErr && <div className="mt-2 text-xs text-danger-700">{demoErr}</div>}
+      {demo && <div className="mt-4"><DemoResultCard demo={demo} onGoSettings={onGoSettings} lang={lang} /></div>}
 
-      {/* Drop zone — always here; the primary "get your data in" action */}
+      {/* Drop zone — still here for drag & drop, but compact */}
       <button
         onClick={onClickUpload}
-        className={`w-full rounded-md border border-dashed transition-colors flex flex-col items-center gap-1.5 py-8 ${
-          dragOver ? 'border-brand-600 bg-brand-50' : 'border-ink-300 bg-white hover:border-brand-400 hover:bg-ink-50'
+        className={`mt-5 w-full rounded-md border border-dashed transition-colors flex items-center justify-center gap-2 py-4 text-xs ${
+          dragOver ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-ink-300 bg-white text-ink-600 hover:border-brand-400 hover:bg-ink-50'
         }`}
       >
-        {uploading ? <Loader2 className="w-6 h-6 text-brand-600 animate-spin" /> : <Upload className="text-brand-600 w-6 h-6" strokeWidth={1.5} />}
-        <div className="font-medium text-sm text-ink-900">{uploading ? t('welcome.uploading') : (lang === 'zh' ? '把你要分析的数据拖进来' : 'Drop in the data you want to analyze')}</div>
-        <div className="text-xs text-ink-500">{lang === 'zh' ? 'CSV / Excel · 表格截图 / 照片 · 没见过的格式也自动写解析器' : 'CSV / Excel · table screenshots / photos · unknown formats get an auto-written parser'}</div>
+        <Upload className="w-4 h-4 text-brand-600" strokeWidth={1.5} />
+        {uploading ? t('welcome.uploading') : (zh ? '也可以把文件拖到这里 · CSV / Excel / 表格截图，没见过的格式会自动写解析器' : 'Or drop files here · CSV / Excel / table screenshots; unknown formats get an auto-written parser')}
       </button>
 
       {!hasData ? (
-        /* No data yet → offer one-click samples below the drop zone */
         <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-2 text-ink-600">{lang === 'zh' ? '或点一个示例直接试（自带数据）' : 'Or tap a sample (data included)'}</h3>
+          <h3 className="text-sm font-semibold mb-2 text-ink-700">{zh ? '更多示例（自带数据）' : 'More samples (data included)'}</h3>
           <div className="grid grid-cols-2 gap-3">
             {STARTERS.map((s) => {
-              const x = lang === 'zh' ? s.zh : s.en;
+              const x = zh ? s.zh : s.en;
               return (
                 <button key={s.datasetName} onClick={() => onStarter(s)}
                   className="text-left rounded-md p-3.5 border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 transition-colors">
@@ -1067,60 +1228,57 @@ function Welcome({
           </div>
         </div>
       ) : (
-        /* Has data → understand it first, then what to do with it */
         <div className="mt-6">
           {activeDs && <ChatProfileCard ds={activeDs} lang={lang} />}
-          {activeDs ? (
-            <p className="text-sm text-ink-500 mb-3">
-              {zh ? '当前数据集 ' : 'Dataset '}
-              <span className="font-medium text-ink-700">{activeDs.name}</span>
-              {activeIds.length > 1 && `  +${activeIds.length - 1}${zh ? '（可对比）' : ''}`}
-              {zh ? ' —— 点一个分析，或在下面直接问。' : ' — tap one, or just ask below.'}
-            </p>
-          ) : (
-            /* Nothing selected: say so, and let the user pick right here. When a
-               recipe card was just clicked, this is the "which data?" step. */
-            <div className={`rounded-md p-3.5 mb-4 ${pendingRecipe ? 'border border-brand-600 bg-brand-50' : 'border border-ink-200 bg-white'}`}>
-              <div className="flex items-start gap-2">
-                <div className="text-sm text-ink-700 flex-1">
-                  {pendingRecipe
-                    ? <>{zh ? '「' : '"'}<b>{pendingTitle}</b>{zh ? '」需要一份数据 —— 选一个要分析的数据集：' : '" needs data — pick a dataset to analyze:'}</>
-                    : (zh ? '还没有选择要分析的数据集 —— 先选一个（也可以在右上角「数据集」里选），再点下面的分析。'
-                         : 'No dataset selected yet — pick one (or use the picker at the top right), then choose an analysis.')}
-                </div>
-                {pendingRecipe && (
-                  <button onClick={onCancelRecipe} className="text-xs text-ink-400 hover:text-ink-600 shrink-0">{zh ? '取消' : 'Cancel'}</button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2.5">
-                {recent.map((d) => (
-                  <button key={d.id} onClick={() => onPickDataset(d.id)}
-                    className="text-xs px-2.5 py-1.5 rounded border border-ink-300 bg-white hover:border-brand-400 hover:bg-brand-50 text-left">
-                    <span className="font-medium text-ink-800">{d.name}</span>
-                    <span className="text-ink-500 ml-1.5 font-mono">{d.rows.toLocaleString()} × {d.columns}</span>
-                  </button>
-                ))}
-                <button onClick={onClickUpload}
-                  className="text-xs px-2.5 py-1.5 rounded border border-dashed border-ink-400 text-ink-700 hover:bg-ink-50">
-                  {zh ? '＋ 上传新数据' : '+ Upload new data'}
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {RECIPES.map((r) => (
-              <button
-                key={r.id}
-                onClick={() => onRecipeClick(r.id)}
-                className={`text-left rounded-md p-3.5 bg-white hover:bg-ink-50 transition-colors ${
-                  pendingRecipe === r.id ? 'border border-brand-600' : 'border border-ink-200 hover:border-brand-400'}`}
-              >
-                <div className="text-brand-600 mb-1.5"><AnalysisIcon id={r.id} className="w-[18px] h-[18px]" /></div>
-                <div className="font-medium text-sm">{t(r.titleKey)}</div>
-                <div className="text-xs text-ink-500 mt-1 leading-snug">{t(r.bodyKey)}</div>
-              </button>
-            ))}
+          {/* O3 — one neutral line + a single dropdown instead of a wall of chips */}
+          <div className={`rounded-md p-3 mb-3 flex flex-wrap items-center gap-2 text-sm ${pendingRecipe ? 'border border-brand-600 bg-brand-50' : 'border border-ink-200 bg-white'}`}>
+            <span className="text-ink-700">
+              {pendingRecipe
+                ? <>{zh ? '「' : '"'}<b>{pendingTitle}</b>{zh ? '」要分析哪份数据？' : '" — on which data?'}</>
+                : activeDs
+                  ? (zh ? '分析的数据：' : 'Data:')
+                  : (zh ? '先选要分析的数据：' : 'Pick the data to analyze:')}
+            </span>
+            <select
+              aria-label={zh ? '选择数据集' : 'Choose a dataset'}
+              value={activeDs?.id ?? ''}
+              onChange={(e) => { if (e.target.value === '__upload') onClickUpload(); else if (e.target.value) onPickDataset(Number(e.target.value)); }}
+              className="h-8 min-w-[12rem] max-w-full border border-ink-300 rounded px-2 bg-white text-sm"
+            >
+              {!activeDs && <option value="">{zh ? '— 选择数据集 —' : '— choose —'}</option>}
+              {sources.map((d) => <option key={d.id} value={d.id}>{d.name}（{d.rows.toLocaleString()} × {d.columns}）</option>)}
+              <option value="__upload">{zh ? '＋ 上传新数据…' : '+ Upload new data…'}</option>
+            </select>
+            {activeIds.length > 1 && <span className="text-xs text-ink-500">+{activeIds.length - 1}{zh ? ' 份对比数据' : ' to compare'}</span>}
+            {pendingRecipe && (
+              <button onClick={onCancelRecipe} className="ml-auto text-xs text-ink-500 hover:text-ink-800">{zh ? '取消' : 'Cancel'}</button>
+            )}
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            {recipes.map((r) => {
+              const out = RECIPE_OUTCOME[r.id];
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => onRecipeClick(r.id)}
+                  className={`text-left rounded-md p-3.5 bg-white hover:bg-ink-50 transition-colors ${
+                    pendingRecipe === r.id ? 'border border-brand-600' : 'border border-ink-200 hover:border-brand-400'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-brand-600"><AnalysisIcon id={r.id} className="w-[18px] h-[18px]" /></span>
+                    <span className="font-medium text-sm text-ink-900">{t(r.titleKey)}</span>
+                  </div>
+                  <div className="text-xs text-ink-500 mt-1 leading-snug">{t(r.bodyKey)}</div>
+                  {out && <div className="text-xs text-ink-700 mt-1.5">{zh ? out.zh : out.en}</div>}
+                </button>
+              );
+            })}
+          </div>
+          {RECIPES.length > RECIPES_SHOWN && (
+            <button type="button" onClick={() => setMoreRecipes((v) => !v)} className="mt-2 text-xs text-brand-700 hover:underline">
+              {moreRecipes ? (zh ? '收起' : 'Show fewer') : (zh ? `更多分析（${RECIPES.length - RECIPES_SHOWN}）` : `More analyses (${RECIPES.length - RECIPES_SHOWN})`)}
+            </button>
+          )}
         </div>
       )}
     </div>

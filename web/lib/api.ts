@@ -103,7 +103,7 @@ export const api = {
       'POST', '/auth/login', { email, password }),
   me: () => request<{
     id: number; email: string; name: string; is_admin: boolean;
-    has_llm_key: boolean; llm_base_url: string; llm_model: string;
+    has_llm_key: boolean; llm_available: boolean; llm_base_url: string; llm_model: string;
   }>('GET', '/auth/me'),
   saveLLMConfig: (api_key: string, base_url: string, model: string) =>
     request<{ ok: boolean; has_llm_key: boolean; llm_base_url: string; llm_model: string }>(

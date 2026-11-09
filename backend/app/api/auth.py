@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.security import create_access_token, hash_password, verify_password
 from ..db.models import User
 from ..services.datasets import seed_examples_for_user
-from .deps import current_user, get_db
+from .deps import current_user, get_db, llm_for
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,7 +35,8 @@ class MeResp(BaseModel):
     email: str
     name: str
     is_admin: bool
-    has_llm_key: bool
+    has_llm_key: bool              # the user saved their OWN key
+    llm_available: bool = False    # a model is actually usable: own key OR the server's default
     llm_base_url: str = ""
     llm_model: str = ""
 
@@ -79,6 +80,7 @@ async def me(user: User = Depends(current_user)):
     return MeResp(
         id=user.id, email=user.email, name=user.name,
         is_admin=user.is_admin, has_llm_key=bool(user.llm_api_key),
+        llm_available=llm_for(user).is_configured,
         llm_base_url=user.llm_base_url or "",
         llm_model=user.llm_model or "",
     )

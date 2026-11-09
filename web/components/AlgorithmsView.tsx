@@ -105,8 +105,12 @@ export function TemplatesView() {
             </div>
           </>
         ) : (
-          <div className="h-full grid place-items-center text-sm text-ink-400 p-6 text-center">
-            选择左侧的流程在<b className="mx-1">自由画布</b>上编辑,或「新建流程」开始拖拽编排。
+          <div className="h-full grid place-items-center p-6">
+            <div className="max-w-md text-center space-y-2">
+              <div className="text-base font-semibold text-ink-900">流程：把一次满意的分析固化下来</div>
+              <p className="text-sm text-ink-600 leading-relaxed">流程是一串固定的算法步骤。换一份数据就能一键重跑，<b>不需要 AI</b>，结果可复现。</p>
+              <p className="text-sm text-ink-600 leading-relaxed">在对话里分析满意后，点回答末尾的「存为流程」；也可以在左侧「新建流程」，在画布上拖拽编排。</p>
+            </div>
           </div>
         )}
       </div>
@@ -255,8 +259,12 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
           {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor}
             datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'} />}
           {selected === null && !editor && (
-            <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
-              ← 从左侧选一个算法（或上面的「上传自由算法 / 用 AI 生成」）;在这里填参数、选数据、直接运行
+            <div className="h-full grid place-items-center px-6">
+              <div className="max-w-md text-center space-y-2">
+                <div className="text-base font-semibold text-ink-900">算法库：分析用的工具箱</div>
+                <p className="text-sm text-ink-600 leading-relaxed">对话里 AI 调用的就是这里的算法。你也可以<b>不经过 AI</b>：从左侧选一个算法，选数据、填参数，直接运行。</p>
+                <p className="text-sm text-ink-600 leading-relaxed">需要的算法没有？用左上角「上传自由算法」贴入自己的代码，或「生成算法」让 AI 写一个（确认保留后才能用于流程）。</p>
+              </div>
             </div>
           )}
         </div>
