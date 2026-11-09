@@ -11,7 +11,7 @@ export default function LanguageToggle({ size = 'sm', compact = false }: { size?
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) {
-    return <div className={compact ? 'w-9 h-7' : size === 'sm' ? 'w-14 h-7' : 'w-20 h-9'} />;
+    return <div className={compact ? 'w-7 h-7' : size === 'sm' ? 'w-14 h-7' : 'w-20 h-9'} />;
   }
 
   function pick(next: Lang) {
@@ -28,7 +28,7 @@ export default function LanguageToggle({ size = 'sm', compact = false }: { size?
       <button
         onClick={() => pick(lang === 'zh' ? 'en' : 'zh')}
         title="Language / 语言"
-        className="w-9 h-7 grid place-items-center rounded border border-ink-300 text-xs text-ink-600 hover:bg-white hover:text-ink-900"
+        className="w-7 h-7 grid place-items-center rounded-md text-xs text-ink-500 hover:bg-ink-900/5 hover:text-ink-900"
       >
         {lang === 'zh' ? '中' : 'EN'}
       </button>

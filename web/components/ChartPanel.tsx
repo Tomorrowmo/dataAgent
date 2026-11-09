@@ -45,7 +45,7 @@ type ChartType = 'line' | 'scatter' | 'bar';
 
 const SERIES_COLORS = ['#2e5f8a', '#d0702e', '#4c8c5e', '#b5474e', '#7462a6', '#3b8f98', '#b39027', '#77736b'];
 
-export default function ChartPanel({ spec, height = 300 }: { spec: ChartSpec; height?: number }) {
+export default function ChartPanel({ spec, height = 300, bare = false }: { spec: ChartSpec; height?: number; bare?: boolean }) {
   // An arbitrary Plotly figure (any chart type the agent generated) renders
   // directly — this is the "generate anything" path.
   if (spec.plotly?.data) {
@@ -83,9 +83,9 @@ export default function ChartPanel({ spec, height = 300 }: { spec: ChartSpec; he
   const activeY = yKeys.filter((c) => c !== xKey);
 
   return (
-    <div className="w-full my-2 rounded-xl ring-1 ring-ink-200 bg-white p-3">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+    <div className={bare ? 'w-full' : 'w-full my-2 rounded-xl ring-1 ring-ink-200 bg-white p-3'}>
+      {/* Controls (hidden in the bare, read-only variant used on the home card) */}
+      <div className={`flex flex-wrap items-center gap-2 mb-3 text-xs ${bare ? 'hidden' : ''}`}>
         {spec.title && <span className="font-medium text-ink-700 mr-1">{spec.title}</span>}
 
         <div className="inline-flex rounded-lg ring-1 ring-ink-200 overflow-hidden">

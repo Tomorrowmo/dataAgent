@@ -1,5 +1,6 @@
 'use client';
 
+import HomeExamplesEditor from '@/components/HomeExamplesEditor';
 import { useEffect, useState } from 'react';
 import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { api, type RetentionPolicy } from '@/lib/api';
@@ -227,6 +228,7 @@ export default function SettingsView() {
         {error && <div className="mt-3 text-sm text-red-600 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div>}
       </div>
       {isAdmin && <RetentionSettings />}
+      {isAdmin && <HomeExamplesEditor />}
     </div>
   );
 }

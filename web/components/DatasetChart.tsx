@@ -13,7 +13,7 @@ import ChartPanel, { type ChartSpec } from '@/components/ChartPanel';
  * inferred from the data (no schema needed), so it works for any stage. Reused
  * in the Datasets view and the mini-program result.
  */
-export default function DatasetChart({ datasetId, artifactId, name, maxPoints = 1000, height = 420 }: { datasetId?: number; artifactId?: number; name?: string; maxPoints?: number; height?: number }) {
+export default function DatasetChart({ datasetId, artifactId, name, maxPoints = 1000, height = 420, bare = false }: { datasetId?: number; artifactId?: number; name?: string; maxPoints?: number; height?: number; bare?: boolean }) {
   const [spec, setSpec] = useState<ChartSpec | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -59,5 +59,5 @@ export default function DatasetChart({ datasetId, artifactId, name, maxPoints = 
   if (loading) return <div className="py-8 text-center text-sm text-ink-400"><Loader2 className="w-4 h-4 animate-spin inline-block" /> 正在读取数据…</div>;
   if (err) return <div className="py-6 text-center text-sm text-ink-400 flex items-center justify-center gap-1.5"><BarChart3 className="w-4 h-4" /> {err}</div>;
   if (!spec) return null;
-  return <ChartPanel spec={spec} height={height} />;
+  return <ChartPanel spec={spec} height={height} bare={bare} />;
 }

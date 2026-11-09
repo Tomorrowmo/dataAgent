@@ -114,6 +114,13 @@ export const api = {
   oidcConfig: () => request<{ enabled: boolean }>('GET', '/auth/oidc/config'),
 
   listDatasets: () => request<Dataset[]>('GET', '/datasets'),
+  /** Home-page example questions (admin-maintained; `tabs: null` = built-in defaults). */
+  getHomeExamples: () => request<{ tabs: import('./homeExamples').ExampleTab[] | null }>('GET', '/home/examples'),
+  putHomeExamples: (tabs: import('./homeExamples').ExampleTab[] | null) =>
+    request<{ tabs: import('./homeExamples').ExampleTab[] | null }>('PUT', '/home/examples', { tabs }),
+  homeExampleRuns: () => request<{ id: number; code: string; slug: string; label: string; created_at: string | null; rows: number; columns: string[] }[]>('GET', '/home/examples/runs'),
+  homeExampleSnapshot: (run_id: number, x: string, ys: string[], title?: string) =>
+    request<import('./homeExamples').ExampleSnapshot>('POST', '/home/examples/snapshot', { run_id, x, ys, title }),
   getDataset: (id: number) => request<Dataset>('GET', `/datasets/${id}`),
   uploadDataset: (file: File, name?: string, description?: string) => {
     const fd = new FormData();
