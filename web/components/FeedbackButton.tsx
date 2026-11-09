@@ -1,8 +1,14 @@
 'use client';
 
-import { useState, type ClipboardEvent, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type PointerEvent } from 'react';
 import { api, type FeedbackKind } from '@/lib/api';
 import { useLangStore } from '@/lib/i18n';
+
+type Pos = { right: number; bottom: number };
+const DEFAULT_POS: Pos = { right: 16, bottom: 16 };
+const EDGE = 8;              // keep at least this far from the viewport edge
+const DRAG_THRESHOLD = 4;    // px of movement before a press counts as a drag (not a click)
+const POS_KEY = 'rlab.feedbackPos';
 
 /** Read an image File and re-encode it downscaled (≤1600px wide) as a JPEG data
  *  URL, so a pasted full-res screenshot doesn't bloat the payload / storage. */
@@ -59,6 +65,65 @@ export default function FeedbackButton({ view, conversationId, datasetId }: Prop
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
+  // ── draggable trigger ──
+  // Position is kept as offsets from the bottom-right corner (so it stays put
+  // when the window is resized) and remembered per browser in localStorage.
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<Pos>(DEFAULT_POS);
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
+  const dragged = useRef(false);   // true once the pointer moved past the threshold → suppress the click
+
+  const clamp = (p: Pos): Pos => {
+    const el = btnRef.current;
+    const w = el?.offsetWidth ?? 90, h = el?.offsetHeight ?? 32;
+    const maxR = Math.max(EDGE, window.innerWidth - w - EDGE);
+    const maxB = Math.max(EDGE, window.innerHeight - h - EDGE);
+    return { right: Math.min(Math.max(EDGE, p.right), maxR), bottom: Math.min(Math.max(EDGE, p.bottom), maxB) };
+  };
+  function placeAt(p: Pos) {
+    const c = clamp(p);
+    setPos(c);
+    try { localStorage.setItem(POS_KEY, JSON.stringify(c)); } catch { /* storage unavailable — position just isn't remembered */ }
+  }
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw) as Partial<Pos>;
+        if (typeof p.right === 'number' && typeof p.bottom === 'number') setPos(clamp({ right: p.right, bottom: p.bottom }));
+      }
+    } catch { /* ignore — fall back to the default corner */ }
+    const onResize = () => setPos((p) => clamp(p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function onPointerDown(e: PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0) return;
+    dragStart.current = { x: e.clientX, y: e.clientY, right: pos.right, bottom: pos.bottom };
+    dragged.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e: PointerEvent<HTMLButtonElement>) {
+    const s = dragStart.current; if (!s) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (!dragged.current && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    dragged.current = true; setDragging(true);
+    setPos(clamp({ right: s.right - dx, bottom: s.bottom - dy }));
+  }
+  function onPointerUp(e: PointerEvent<HTMLButtonElement>) {
+    if (!dragStart.current) return;
+    dragStart.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    if (dragged.current) {
+      setDragging(false);
+      placeAt(pos);
+      // the click event fires right after pointerup — let it see `dragged`, then clear
+      setTimeout(() => { dragged.current = false; }, 0);
+    }
+  }
+
   function reset() {
     setKind('idea'); setText(''); setShot(null); setDragOver(false); setSending(false); setDone(false); setError('');
   }
@@ -106,16 +171,30 @@ export default function FeedbackButton({ view, conversationId, datasetId }: Prop
 
   return (
     <>
-      {/* Floating trigger — always reachable, low-key */}
+      {/* Floating trigger — always reachable, low-key. Draggable so it never
+          sits on top of a button the user needs (position remembered locally). */}
       <button
-        onClick={() => setOpen(true)}
-        title={zh ? '标记 / 反馈' : 'Mark / feedback'}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded border border-ink-300 bg-white px-2.5 h-8
-                   text-xs font-medium text-ink-700 shadow-md transition-colors
-                   hover:bg-ink-50 hover:text-ink-900"
+        ref={btnRef}
+        onClick={() => { if (!dragged.current) setOpen(true); }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDoubleClick={(e) => { e.preventDefault(); placeAt(DEFAULT_POS); }}
+        title={zh ? '标记 / 反馈 · 按住可拖动，双击回到右下角' : 'Mark / feedback · drag to move, double-click to reset'}
+        style={{ right: pos.right, bottom: pos.bottom, touchAction: 'none' }}
+        className={`fixed z-40 flex items-center gap-1 rounded border border-ink-300 bg-white pl-1 pr-2.5 h-8
+                   text-xs font-medium text-ink-700 shadow-md transition-colors select-none
+                   hover:bg-ink-50 hover:text-ink-900 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       >
+        {/* grip: tells the user it can be moved */}
+        <svg viewBox="0 0 24 24" width="12" height="14" fill="currentColor" className="text-ink-400" aria-hidden="true">
+          <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+        </svg>
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 21V5a2 2 0 0 1 2-2h10l4 4v8a2 2 0 0 1-2 2H9l-5 4z" />
         </svg>
         {zh ? '反馈' : 'Feedback'}
