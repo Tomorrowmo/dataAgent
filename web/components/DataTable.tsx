@@ -219,7 +219,7 @@ export default function DataTable({ ds, onSaved }: { ds: Dataset; onSaved?: (d: 
                 <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="选择当前可见的所有行" />
               </th>
               {columns.map((c) => (
-                <th key={c} className="text-left px-2 py-1.5 border-b border-ink-200 whitespace-nowrap">
+                <th key={c} className={`${numericCols.has(c) ? 'text-right' : 'text-left'} px-2 py-1.5 border-b border-ink-200 whitespace-nowrap`}>
                   <button onClick={() => toggleSort(c)} className="inline-flex items-center gap-1 font-medium text-ink-700 hover:text-brand-700">
                     {c}
                     {sort?.col === c ? (sort.desc ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 text-ink-300" />}
@@ -247,7 +247,7 @@ export default function DataTable({ ds, onSaved }: { ds: Dataset; onSaved?: (d: 
                 <td className="px-2 py-1 text-center">
                   <input type="checkbox" checked={selected.has(i)} onChange={() => toggleRow(i)} />
                 </td>
-                {columns.map((c) => <td key={c} className="px-2 py-1 font-mono whitespace-nowrap text-ink-700">{cellStr(row[c])}</td>)}
+                {columns.map((c) => <td key={c} className={`px-2 py-1 font-mono whitespace-nowrap text-ink-800 ${numericCols.has(c) ? 'text-right' : ''}`}>{cellStr(row[c])}</td>)}
               </tr>
             ))}
             {view.length === 0 && (

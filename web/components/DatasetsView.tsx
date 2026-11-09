@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Trash2, Database, Loader2, AlertTriangle, GitBranch, Bookmark, ChevronRight, Pin, PinOff, Recycle, BarChart3, Box, Sparkles } from 'lucide-react';
+import { Upload, Trash2, Database, Loader2, AlertTriangle, GitBranch, Bookmark, ChevronRight, Pin, PinOff, Recycle, BarChart3, Box } from 'lucide-react';
+import { AiMark, SourceTag } from '@/components/ui';
+import AnalysisIcon from '@/components/AnalysisIcon';
 import type { ReactNode } from 'react';
 import Markdown from '@/components/Markdown';
 import { api, type Dataset, type DatasetProfile, type UploadResp } from '@/lib/api';
@@ -195,7 +197,7 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
         />
       )}
       <div
-        className={`w-full md:w-80 border-r bg-white flex flex-col transition-colors ${selected ? 'max-md:hidden' : ''} ${dragOver ? 'border-brand-400 bg-brand-50/40' : 'border-ink-200'}`}
+        className={`w-full md:w-80 border-r flex flex-col transition-colors ${selected ? 'max-md:hidden' : ''} ${dragOver ? 'border-brand-400 bg-brand-50' : 'border-ink-200 bg-ink-50'}`}
         onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
         onDrop={onDrop}
@@ -283,7 +285,7 @@ function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
     return (
       <div key={d.id}>
         <div
-          className={`group flex items-center gap-1 rounded-lg pr-1 ${selectedId === d.id ? 'bg-brand-50 ring-1 ring-brand-200' : 'hover:bg-ink-100'}`}
+          className={`group flex items-center gap-1 rounded pr-1 ${selectedId === d.id ? 'bg-white ring-1 ring-ink-200' : 'hover:bg-ink-150'}`}
           style={{ paddingLeft: 4 + depth * 14 }}
         >
           {kids.length > 0 ? (
@@ -292,11 +294,11 @@ function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
             </button>
           ) : <span className="w-4 shrink-0" />}
           <button onClick={() => onSelect(d)} className="flex-1 min-w-0 text-left py-1.5 flex items-center gap-1.5">
-            {isDerived ? <GitBranch className="w-3.5 h-3.5 text-violet-500 shrink-0" /> : <Database className="w-3.5 h-3.5 text-brand-500 shrink-0" />}
-            <span className="truncate text-sm">{label}</span>
-            <span className="text-[11px] text-ink-400 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
+            {isDerived ? <span className="font-mono text-xs text-ink-500 shrink-0 w-3.5 text-center">↳</span> : <Database className="w-3.5 h-3.5 text-brand-600 shrink-0" strokeWidth={1.5} />}
+            <span className={`truncate text-[13px] ${isDerived ? 'font-mono text-xs' : ''}`}>{label}</span>
+            <span className="text-[11px] font-mono text-ink-500 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
             {kids.length > 0 && <span className="text-[10px] text-ink-400 shrink-0">· {kids.length} 步</span>}
-            {isDerived && d.kept && <Pin className="w-3 h-3 text-amber-500 shrink-0" />}
+            {isDerived && d.kept && <Pin className="w-3 h-3 text-ink-500 shrink-0" />}
           </button>
           {isDerived && (
             <button
@@ -317,19 +319,19 @@ function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
   return <div className="space-y-0.5">{roots.map((r) => renderNode(r, 0))}</div>;
 }
 
-// A suggestion slug → its chip label (zh/en) + emoji. Slugs come from the
+// A suggestion slug → its chip label (zh/en); icon via AnalysisIcon. Slugs come from the
 // backend profile; recipe slugs also exist in lib/recipes (→ chat prompt).
-const SUGG_META: Record<string, { zh: string; en: string; emoji: string }> = {
-  chart:    { zh: '可视化', en: 'Visualize', emoji: '📊' },
-  mesh3d:   { zh: '3D 网格', en: '3D mesh', emoji: '🧊' },
-  smooth:   { zh: '平滑降噪', en: 'Smooth', emoji: '🌊' },
-  drivers:  { zh: '找主因', en: 'Key drivers', emoji: '🎯' },
-  fit:      { zh: '拟合关系', en: 'Fit a relation', emoji: '📈' },
-  outliers: { zh: '找异常点', en: 'Outliers', emoji: '🚨' },
-  corr:     { zh: '相关性', en: 'Correlations', emoji: '🔗' },
-  pca:      { zh: '降维看结构', en: 'Reduce dims', emoji: '🧭' },
-  clean:    { zh: '清洗数据', en: 'Clean', emoji: '🧹' },
-  explain:  { zh: 'AI 详解', en: 'AI explain', emoji: '✨' },
+const SUGG_META: Record<string, { zh: string; en: string }> = {
+  chart:    { zh: '可视化', en: 'Visualize' },
+  mesh3d:   { zh: '3D 网格', en: '3D mesh' },
+  smooth:   { zh: '平滑降噪', en: 'Smooth' },
+  drivers:  { zh: '找主因', en: 'Key drivers' },
+  fit:      { zh: '拟合关系', en: 'Fit a relation' },
+  outliers: { zh: '找异常点', en: 'Outliers' },
+  corr:     { zh: '相关性', en: 'Correlations' },
+  pca:      { zh: '降维看结构', en: 'Reduce dims' },
+  clean:    { zh: '清洗数据', en: 'Clean' },
+  explain:  { zh: '解释', en: 'Explain' },
 };
 const RECIPE_SLUGS = new Set<string>(['smooth', 'drivers', 'fit', 'outliers', 'corr', 'pca']);
 
@@ -391,53 +393,52 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
       <div className="mb-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold truncate">{ds.name}</h2>
-            {isDerived && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 shrink-0">中间结果</span>}
+            <h2 className="text-xl font-semibold truncate text-ink-900">{ds.name}</h2>
+            {isDerived && <SourceTag kind="derived" className="shrink-0">中间结果</SourceTag>}
           </div>
-          <p className="text-sm text-ink-500">{ds.filename} · {ds.file_format} · {ds.rows.toLocaleString()} {t('side.rows')} × {ds.columns} {t('side.cols')}</p>
+          <p className="mt-0.5 text-xs font-mono text-ink-600">{ds.filename} · {ds.file_format} · {ds.rows.toLocaleString()} {t('side.rows')} × {ds.columns} {t('side.cols')}</p>
         </div>
         <div className="shrink-0 flex items-center gap-2">
           <button onClick={explain} disabled={explaining}
-            className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ring-1 ring-violet-200 text-violet-700 hover:bg-violet-50 disabled:opacity-50">
-            {explaining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} AI 解释
+            className="inline-flex items-center gap-1.5 text-[13px] h-8 px-3 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 disabled:opacity-50">
+            {explaining ? <Loader2 className="w-4 h-4 animate-spin" /> : <AiMark />} 解释
           </button>
           {isMesh && (
             <button onClick={() => { setShowMesh((v) => !v); }}
-              className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ring-1 ${showMesh ? 'bg-indigo-600 text-white ring-transparent hover:bg-indigo-700' : 'ring-indigo-200 text-indigo-700 hover:bg-indigo-50'}`}>
+              className={`inline-flex items-center gap-1.5 text-[13px] h-8 px-3 rounded border ${showMesh ? 'bg-ink-900 text-white border-ink-900 hover:bg-ink-800' : 'bg-white text-ink-800 border-ink-300 hover:bg-ink-50'}`}>
               <Box className="w-4 h-4" /> {showMesh ? '收起 3D' : '3D 网格'}
             </button>
           )}
           <button onClick={() => setShowChart((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg ring-1 ${showChart ? 'bg-brand-600 text-white ring-transparent hover:bg-brand-700' : 'ring-brand-200 text-brand-700 hover:bg-brand-50'}`}>
+            className={`inline-flex items-center gap-1.5 text-[13px] h-8 px-3 rounded border ${showChart ? 'bg-ink-900 text-white border-ink-900 hover:bg-ink-800' : 'bg-white text-ink-800 border-ink-300 hover:bg-ink-50'}`}>
             <BarChart3 className="w-4 h-4" /> {showChart ? '收起图表' : '可视化'}
           </button>
         </div>
       </div>
       {profile && (
-        <div className="mb-5 rounded-2xl bg-white ring-1 ring-brand-200 shadow-sm overflow-hidden flex items-stretch">
-          <div className="w-1.5 shrink-0 bg-gradient-to-b from-brand-500 to-violet-500" />
+        <div className="mb-5 rounded-md bg-white border border-ink-200 overflow-hidden flex items-stretch">
           <div className="flex-1 p-4">
-            <div className="flex items-center gap-1.5 text-brand-700 font-semibold text-sm mb-1.5">
-              <Sparkles className="w-4 h-4" /> {lang === 'zh' ? '认识这份数据' : 'Know this data'}
+            <div className="flex items-center gap-2 text-ink-800 font-semibold text-[13px] mb-1.5">
+              {lang === 'zh' ? '数据概况' : 'Data profile'}<span className="text-xs font-normal text-ink-500">{lang === 'zh' ? '自动生成' : 'auto-generated'}</span>
             </div>
-            <p className="text-[15px] text-ink-900 font-medium leading-relaxed">{profile.headline}</p>
+            <p className="text-sm text-ink-900 leading-relaxed">{profile.headline}</p>
             {profile.facts.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-2">
                 {profile.facts.map((f, i) => (
-                  <span key={i} className="inline-flex items-center text-xs text-ink-600 bg-ink-50 ring-1 ring-ink-200/70 rounded-full px-2.5 py-1">{f}</span>
+                  <span key={i} className="inline-flex items-center text-xs text-ink-700 bg-ink-50 border border-ink-200 rounded-sm px-2 py-0.5">{f}</span>
                 ))}
               </div>
             )}
             {profile.semantic && profile.semantic.length > 0 && (
-              <div className="mt-3 rounded-lg bg-emerald-50/70 ring-1 ring-emerald-200 px-3 py-2">
-                <div className="text-xs text-emerald-700 font-medium mb-1.5">
+              <div className="mt-3 rounded border border-ink-200 bg-ink-50 px-3 py-2">
+                <div className="text-xs text-ink-600 font-medium mb-1.5">
                   {lang === 'zh' ? '已套用专家规则（列含义）' : 'Applied expert rules (column meanings)'}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {profile.semantic.map((m) => (
-                    <span key={m.rule_id + m.column} className="inline-flex items-center gap-1 text-xs text-emerald-800 bg-white ring-1 ring-emerald-200 rounded-full px-2.5 py-1">
-                      <code className="text-emerald-900">{m.column}</code>
-                      <span className="text-emerald-400">→</span>
+                    <span key={m.rule_id + m.column} className="inline-flex items-center gap-1 text-xs text-ink-800 bg-white border border-ink-200 rounded-sm px-2 py-0.5">
+                      <code className="font-mono text-ink-900">{m.column}</code>
+                      <span className="text-ink-400">→</span>
                       <span className="font-medium">{m.label}</span>
                     </span>
                   ))}
@@ -452,8 +453,8 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
                     const m = SUGG_META[s.slug];
                     return (
                       <button key={s.slug} onClick={() => onSuggest(s.slug)} title={s.why}
-                        className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-brand-50 ring-1 ring-brand-200 text-brand-700 font-medium hover:bg-brand-100 hover:ring-brand-300 transition">
-                        <span>{m?.emoji ?? '•'}</span>{m ? (lang === 'zh' ? m.zh : m.en) : s.slug}
+                        className="inline-flex items-center gap-1.5 text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 transition-colors">
+                        <span className="text-ink-500"><AnalysisIcon id={s.slug} className="w-3.5 h-3.5" /></span>{m ? (lang === 'zh' ? m.zh : m.en) : s.slug}
                       </button>
                     );
                   })}
@@ -464,8 +465,8 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
         </div>
       )}
       {(explaining || explanation) && (
-        <div className="mb-5 rounded-2xl bg-violet-50/60 ring-1 ring-violet-100 p-4 text-sm text-ink-700">
-          <div className="flex items-center gap-1.5 text-violet-700 font-medium mb-1.5"><Sparkles className="w-4 h-4" /> AI 解释</div>
+        <div className="mb-5 rounded-md bg-white border border-dashed border-ink-500 p-4 text-sm text-ink-700">
+          <div className="flex items-center gap-1.5 text-ink-800 font-medium mb-1.5"><AiMark /> 解释 <span className="text-xs font-normal text-ink-500">AI 生成，仅供参考</span></div>
           {explaining ? <div className="text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> 正在解读…</div>
             : <div className="prose-tight leading-relaxed"><Markdown>{explanation}</Markdown></div>}
         </div>
@@ -482,22 +483,22 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
       )}
 
       {isDerived && (
-        <div className="mb-5 rounded-xl bg-violet-50/60 ring-1 ring-violet-100 px-4 py-3 text-sm">
+        <div className="mb-5 rounded-md bg-white border border-ink-200 px-4 py-3 text-sm">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <GitBranch className="w-4 h-4 text-violet-500 shrink-0" />
+            <GitBranch className="w-4 h-4 text-ink-500 shrink-0" strokeWidth={1.5} />
             <span className="text-ink-500 mr-1">血缘:</span>
             {chain.map((c, i) => (
               <span key={c.id} className="inline-flex items-center gap-1.5">
                 {i > 0 && <span className="text-ink-300">▸</span>}
                 {i === 0
                   ? <span className="font-medium text-ink-700">{c.name}</span>
-                  : <span className={`font-mono px-1.5 py-0.5 rounded ${c.id === ds.id ? 'bg-violet-600 text-white' : 'bg-white ring-1 ring-violet-200'}`}>{c.lineage?.op?.label || '处理'}</span>}
+                  : <span className={`font-mono text-xs px-1.5 py-0.5 rounded-sm ${c.id === ds.id ? 'bg-brand-600 text-white' : 'bg-white border border-ink-300'}`}>{c.lineage?.op?.label || '处理'}</span>}
               </span>
             ))}
             <div className="ml-auto flex items-center gap-1.5">
               <button onClick={() => onKeep(!ds.kept)}
                 title={ds.kept ? '取消保留后,可被自动清理' : '保留在中间结果树里,不被自动清理'}
-                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg ring-1 ${ds.kept ? 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100' : 'bg-white text-ink-600 ring-ink-200 hover:bg-ink-50'}`}>
+                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg ring-1 ${ds.kept ? 'bg-ink-150 text-ink-800 ring-ink-300 hover:bg-ink-200' : 'bg-white text-ink-600 ring-ink-200 hover:bg-ink-50'}`}>
                 {ds.kept ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />} {ds.kept ? '已保留' : '保留'}
               </button>
               <button onClick={onPromote} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700">
