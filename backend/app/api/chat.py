@@ -41,6 +41,7 @@ class ConvResp(BaseModel):
     id: int
     title: str
     dataset_id: Optional[int]
+    created_at: Optional[str] = None
 
 
 class MessageResp(BaseModel):
@@ -72,7 +73,7 @@ async def list_convs(user: User = Depends(current_user), session: AsyncSession =
     rows = (await session.execute(
         select(Conversation).where(Conversation.owner_id == user.id).order_by(Conversation.id.desc())
     )).scalars().all()
-    return [ConvResp(id=c.id, title=c.title, dataset_id=c.dataset_id) for c in rows]
+    return [ConvResp(id=c.id, title=c.title, dataset_id=c.dataset_id, created_at=c.created_at.isoformat() if c.created_at else None) for c in rows]
 
 
 class RenameConvReq(BaseModel):

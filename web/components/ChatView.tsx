@@ -6,9 +6,10 @@ import Markdown from '@/components/Markdown';
 import { AiMark, SourceTag } from '@/components/ui';
 import DatasetChart from '@/components/DatasetChart';
 import AnalysisIcon from '@/components/AnalysisIcon';
+import RecipeThumb, { SampleResultChart } from '@/components/RecipeThumb';
 import type { FocusAlgo } from '@/components/AlgorithmsView';
 import { runStepsOf, flowFromSteps, type RunStep } from '@/lib/flowSteps';
-import { api, streamChat, type ChatMessage, type TemplateStep, type FlowTemplate, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
+import { api, streamChat, type ChatMessage, type TemplateStep, type FlowTemplate, type Conversation, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
@@ -300,6 +301,8 @@ export default function ChatView({
   }, [conversationId]);
 
   useEffect(() => {
+    // The home page reads top-down; only a conversation follows its tail.
+    if (messages.length === 0) { scrollRef.current?.scrollTo({ top: 0 }); return; }
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
@@ -424,6 +427,10 @@ export default function ChatView({
   // FFT of the same signal, no AI involved.
   const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null);
   useEffect(() => { api.me().then((u) => setLlmAvailable(!!u.llm_available)).catch(() => setLlmAvailable(false)); }, []);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  useEffect(() => {
+    if (conversationId == null) api.listConversations().then(setConversations).catch(() => {});
+  }, [conversationId]);
   const [demo, setDemo] = useState<DemoResult | null>(null);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoErr, setDemoErr] = useState('');
@@ -706,6 +713,9 @@ export default function ChatView({
             demoErr={demoErr}
             onGoSettings={onGoSettings}
             onFlowRan={(cid) => onConversationCreated(cid)}
+            conversations={conversations}
+            onOpenConversation={(cid) => onConversationCreated(cid)}
+            onViewDataset={onViewDataset}
           />
         ) : (
           messages.map((m) => (
@@ -771,7 +781,7 @@ export default function ChatView({
       )}
 
       <div
-        className={`border-t bg-white p-4 relative transition ${
+        className={`border-t bg-white p-4 relative transition [&>*]:max-w-[1600px] [&>*]:mx-auto ${
           dragOver ? 'border-brand-400 ring-2 ring-brand-100 bg-brand-50/40' : 'border-ink-200'
         }`}
         // Drop anywhere in the input area (not just on textarea) so a big
@@ -1121,7 +1131,6 @@ const RECIPE_OUTCOME: Record<string, { zh: string; en: string }> = {
   pca: { zh: '得到：2–3 个主成分及解释度', en: 'You get: 2–3 components + variance explained' },
   custom: { zh: '得到：按你的问题选方法', en: 'You get: a method picked for your question' },
 };
-const RECIPES_SHOWN = 4;
 
 export type DemoResult = {
   datasetName: string;
@@ -1163,8 +1172,9 @@ function DemoResultCard({ demo, onGoSettings, lang }: { demo: DemoResult; onGoSe
 }
 
 function Welcome({
-  t, hasData, datasets, activeDs, activeIds, uploading, dragOver, onClickUpload, onRecipeClick, onStarter,
-  pendingRecipe, onPickDataset, onCancelRecipe, lang, onDemo, demoBusy, demo, demoErr, onGoSettings, onFlowRan,
+  t, hasData, datasets, activeDs, activeIds, uploading, onClickUpload, onRecipeClick, onStarter,
+  pendingRecipe, onPickDataset, onCancelRecipe, lang, onDemo, demoBusy, demo, demoErr, onGoSettings,
+  onFlowRan, conversations, onOpenConversation, onViewDataset,
 }: {
   t: (k: string) => string;
   hasData: boolean;
@@ -1186,133 +1196,284 @@ function Welcome({
   demoErr: string;
   onGoSettings?: () => void;
   onFlowRan: (conversationId: number) => void;
+  conversations: Conversation[];
+  onOpenConversation: (id: number) => void;
+  onViewDataset?: (id: number) => void;
 }) {
   const zh = lang === 'zh';
-  const [moreRecipes, setMoreRecipes] = useState(false);
-  // Source datasets only — intermediates live in the 数据集 lineage tree.
-  const sources = datasets.filter((d) => d.kind !== 'derived');
+  const sources = datasets.filter((d) => d.kind !== 'derived')
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '') || b.id - a.id);
   const pendingTitle = pendingRecipe ? t(RECIPES.find((r) => r.id === pendingRecipe)?.titleKey ?? '') : '';
-  const recipes = moreRecipes ? RECIPES : RECIPES.slice(0, RECIPES_SHOWN);
-  const steps = zh
-    ? ['放入数据：CSV、Excel，或表格截图', '用大白话提问，或选一个分析', '得到带来源、可复现、可导出的结果']
-    : ['Bring in data: CSV, Excel or a table screenshot', 'Ask in plain words, or pick an analysis', 'Get results with provenance — reproducible, exportable'];
+  const recipes = RECIPES.filter((r) => r.id !== 'custom');
+  // The user's most recent result (a derived dataset produced by a recorded run).
+  const recent = datasets
+    .filter((d) => d.kind === 'derived' && d.state !== 'cleaned' && d.origin?.code)
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '') || b.id - a.id)[0] ?? null;
   return (
-    <div className="max-w-3xl mx-auto pt-2">
-      {/* O1 — what this is, in one line, and how it works in three steps */}
-      <h2 className="text-xl font-semibold text-ink-900">{zh ? '工程试验数据的分析助手' : 'An analysis assistant for engineering test data'}</h2>
-      <p className="mt-1 text-sm text-ink-600">{zh ? '清洗、平滑、频谱、拟合、找主因、找异常——不用先学算法，每个结果都写明用了什么方法和参数。' : 'Clean, smooth, spectra, fits, key drivers, outliers — no need to know the algorithms; every result states its method and parameters.'}</p>
-      <ol className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {steps.map((s, i) => (
-          <li key={i} className="flex items-start gap-2 rounded border border-ink-200 bg-white px-3 py-2 text-xs text-ink-700">
-            <span className="shrink-0 w-5 h-5 rounded-sm bg-ink-150 text-ink-700 grid place-items-center font-mono text-[11px]">{i + 1}</span>
-            <span className="leading-5">{s}</span>
-          </li>
-        ))}
-      </ol>
-
-      {/* O2 — always available, no matter whether the account already has data */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onDemo} disabled={demoBusy}
-          className="h-9 px-4 rounded border border-brand-600 bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-60 inline-flex items-center gap-2">
-          {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" strokeWidth={1.75} />}
-          {zh ? '用示例数据体验一次' : 'Try it with sample data'}
-        </button>
-        <button type="button" onClick={onClickUpload}
-          className="h-9 px-4 rounded border border-ink-300 bg-white text-ink-800 text-sm hover:bg-ink-50 inline-flex items-center gap-2">
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.5} />}
-          {zh ? '上传我的数据' : 'Upload my data'}
-        </button>
-        <span className="text-xs text-ink-500">{zh ? '示例：找出一段周期信号的主频' : 'Demo: find the dominant frequency of a periodic signal'}</span>
-      </div>
-      {demoErr && <div className="mt-2 text-xs text-danger-700">{demoErr}</div>}
-      {demo && <div className="mt-4"><DemoResultCard demo={demo} onGoSettings={onGoSettings} lang={lang} /></div>}
-
-      {/* Drop zone — still here for drag & drop, but compact */}
-      <button
-        onClick={onClickUpload}
-        className={`mt-5 w-full rounded-md border border-dashed transition-colors flex items-center justify-center gap-2 py-4 text-xs ${
-          dragOver ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-ink-300 bg-white text-ink-600 hover:border-brand-400 hover:bg-ink-50'
-        }`}
-      >
-        <Upload className="w-4 h-4 text-brand-600" strokeWidth={1.5} />
-        {uploading ? t('welcome.uploading') : (zh ? '也可以把文件拖到这里 · CSV / Excel / 表格截图，没见过的格式会自动写解析器' : 'Or drop files here · CSV / Excel / table screenshots; unknown formats get an auto-written parser')}
-      </button>
-
-      {!hasData ? (
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold mb-2 text-ink-700">{zh ? '更多示例（自带数据）' : 'More samples (data included)'}</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {STARTERS.map((s) => {
-              const x = zh ? s.zh : s.en;
-              return (
-                <button key={s.datasetName} onClick={() => onStarter(s)}
-                  className="text-left rounded-md p-3.5 border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 transition-colors">
-                  <div className="text-brand-600 mb-1.5"><AnalysisIcon id={s.datasetName} className="w-[18px] h-[18px]" /></div>
-                  <div className="font-medium text-sm">{x.t}</div>
-                  <div className="text-xs text-ink-500 mt-1 leading-snug line-clamp-2">{x.q}</div>
-                </button>
-              );
-            })}
+    <div className="mx-auto max-w-[1600px] grid grid-cols-1 min-[1100px]:grid-cols-[minmax(0,1fr)_320px] min-[1700px]:grid-cols-[minmax(0,1fr)_380px] gap-5 items-start">
+      {/* ── left: start an analysis ── */}
+      <div className="min-w-0">
+        <div className="rounded-md border border-ink-200 bg-white px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-semibold text-ink-900">{zh ? '工程试验数据的分析助手' : 'An analysis assistant for engineering test data'}</h2>
+            <p className="mt-1 text-sm text-ink-600">{zh ? '清洗、平滑、频谱、拟合、找主因、找异常——不用先学算法，每个结果都写明用了什么方法和参数。' : 'Clean, smooth, spectra, fits, key drivers, outliers — no need to know the algorithms; every result states its method and parameters.'}</p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-600">
+              {(zh ? ['放入数据', '用大白话提问，或点下面一个分析', '得到带来源、可复现、可导出的结果'] : ['Bring in data', 'Ask in plain words, or pick an analysis below', 'Get reproducible results with provenance']).map((s, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5">
+                  {i > 0 && <span className="text-ink-400">→</span>}
+                  <span className="w-[18px] h-[18px] rounded-sm bg-ink-150 text-ink-700 grid place-items-center font-mono text-[11px]">{i + 1}</span>{s}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 shrink-0">
+            <button type="button" onClick={onDemo} disabled={demoBusy}
+              className="h-9 px-4 rounded border border-brand-600 bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-60 inline-flex items-center justify-center gap-2">
+              {demoBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" strokeWidth={1.75} />}
+              {zh ? '用示例数据体验一次' : 'Try it with sample data'}
+            </button>
+            <button type="button" onClick={onClickUpload}
+              className="h-9 px-4 rounded border border-ink-300 bg-white text-ink-800 text-sm hover:bg-ink-50 inline-flex items-center justify-center gap-2">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.5} />}
+              {zh ? '上传我的数据' : 'Upload my data'}
+            </button>
           </div>
         </div>
-      ) : (
-        <div className="mt-6">
-          {activeDs && <ChatProfileCard ds={activeDs} lang={lang} />}
-          {/* O3 — one neutral line + a single dropdown instead of a wall of chips */}
-          <div className={`rounded-md p-3 mb-3 flex flex-wrap items-center gap-2 text-sm ${pendingRecipe ? 'border border-brand-600 bg-brand-50' : 'border border-ink-200 bg-white'}`}>
-            <span className="text-ink-700">
+        {demoErr && <div className="mt-2 text-xs text-danger-700">{demoErr}</div>}
+
+        {/* analyses, each with a schematic of what you get */}
+        <section className="mt-5">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="text-sm font-semibold text-ink-900">{zh ? '从一个问题开始' : 'Start from a question'}</h3>
+            <span className="text-xs text-ink-500">
               {pendingRecipe
-                ? <>{zh ? '「' : '"'}<b>{pendingTitle}</b>{zh ? '」要分析哪份数据？' : '" — on which data?'}</>
+                ? <span className="text-brand-700">{zh ? `「${pendingTitle}」需要一份数据 —— 在右侧「我的数据」里点一份。` : `"${pendingTitle}" needs data — pick one under My data.`}
+                    <button type="button" onClick={onCancelRecipe} className="ml-2 text-ink-500 hover:text-ink-800">{zh ? '取消' : 'Cancel'}</button></span>
                 : activeDs
-                  ? (zh ? '分析的数据：' : 'Data:')
-                  : (zh ? '先选要分析的数据：' : 'Pick the data to analyze:')}
+                  ? <>{zh ? '点一下就在当前数据上分析 · 当前数据：' : 'Runs on the current data · '}<span className="font-mono text-ink-700">{activeDs.name}</span>{activeIds.length > 1 ? (zh ? ` 等 ${activeIds.length} 份` : ` +${activeIds.length - 1}`) : ''}</>
+                  : (zh ? '先在右侧选一份数据，或直接点一个分析' : 'Pick data on the right, or just tap an analysis')}
             </span>
-            <select
-              aria-label={zh ? '选择数据集' : 'Choose a dataset'}
-              value={activeDs?.id ?? ''}
-              onChange={(e) => { if (e.target.value === '__upload') onClickUpload(); else if (e.target.value) onPickDataset(Number(e.target.value)); }}
-              className="h-8 min-w-[12rem] max-w-full border border-ink-300 rounded px-2 bg-white text-sm"
-            >
-              {!activeDs && <option value="">{zh ? '— 选择数据集 —' : '— choose —'}</option>}
-              {sources.map((d) => <option key={d.id} value={d.id}>{d.name}（{d.rows.toLocaleString()} × {d.columns}）</option>)}
-              <option value="__upload">{zh ? '＋ 上传新数据…' : '+ Upload new data…'}</option>
-            </select>
-            {activeIds.length > 1 && <span className="text-xs text-ink-500">+{activeIds.length - 1}{zh ? ' 份对比数据' : ' to compare'}</span>}
-            {pendingRecipe && (
-              <button onClick={onCancelRecipe} className="ml-auto text-xs text-ink-500 hover:text-ink-800">{zh ? '取消' : 'Cancel'}</button>
-            )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 min-[1300px]:grid-cols-3 gap-3">
             {recipes.map((r) => {
               const out = RECIPE_OUTCOME[r.id];
               return (
-                <button
-                  key={r.id}
-                  onClick={() => onRecipeClick(r.id)}
-                  className={`text-left rounded-md p-3.5 bg-white hover:bg-ink-50 transition-colors ${
-                    pendingRecipe === r.id ? 'border border-brand-600' : 'border border-ink-200 hover:border-brand-400'}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-brand-600"><AnalysisIcon id={r.id} className="w-[18px] h-[18px]" /></span>
-                    <span className="font-medium text-sm text-ink-900">{t(r.titleKey)}</span>
+                <button key={r.id} type="button" onClick={() => onRecipeClick(r.id)}
+                  className={`text-left rounded-md overflow-hidden bg-white transition-colors border ${pendingRecipe === r.id ? 'border-brand-600 ring-1 ring-brand-600' : 'border-ink-200 hover:border-brand-400'}`}>
+                  <RecipeThumb id={r.id} />
+                  <div className="px-3 pt-2.5 pb-3">
+                    <div className="text-sm font-medium text-ink-900">{t(r.titleKey)}</div>
+                    <div className="text-xs text-ink-500 mt-0.5 leading-snug">{t(r.bodyKey)}</div>
+                    {out && <div className="text-xs text-ink-700 mt-1.5">{zh ? out.zh : out.en}</div>}
                   </div>
-                  <div className="text-xs text-ink-500 mt-1 leading-snug">{t(r.bodyKey)}</div>
-                  {out && <div className="text-xs text-ink-700 mt-1.5">{zh ? out.zh : out.en}</div>}
                 </button>
               );
             })}
           </div>
-          <MyFlows activeDs={activeDs} sources={sources} onRan={onFlowRan} lang={lang} />
-          {RECIPES.length > RECIPES_SHOWN && (
-            <button type="button" onClick={() => setMoreRecipes((v) => !v)} className="mt-2 text-xs text-brand-700 hover:underline">
-              {moreRecipes ? (zh ? '收起' : 'Show fewer') : (zh ? `更多分析（${RECIPES.length - RECIPES_SHOWN}）` : `More analyses (${RECIPES.length - RECIPES_SHOWN})`)}
+        </section>
+
+        {/* what a result looks like: the demo, the user's latest result, or a sample */}
+        <section className="mt-5">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
+            <h3 className="text-sm font-semibold text-ink-900">{demo ? (zh ? '示例结果' : 'Demo result') : recent ? (zh ? '最近的结果' : 'Latest result') : (zh ? '你会得到这样的结果' : 'You get results like this')}</h3>
+            {!demo && !recent && <span className="text-xs text-ink-500">{zh ? '示例 · 跑过分析后这里换成你最近的一个结果' : 'Sample · replaced by your latest result once you run an analysis'}</span>}
+          </div>
+          {demo ? <DemoResultCard demo={demo} onGoSettings={onGoSettings} lang={lang} />
+            : recent ? <RecentResultCard ds={recent} onOpenConversation={onOpenConversation} onViewDataset={onViewDataset} lang={lang} />
+            : <SampleResultCard lang={lang} />}
+        </section>
+
+        {!hasData && (
+          <section className="mt-5">
+            <h3 className="mb-2 text-sm font-semibold text-ink-900">{zh ? '更多示例（自带数据）' : 'More samples (data included)'}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {STARTERS.map((s) => {
+                const x = zh ? s.zh : s.en;
+                return (
+                  <button key={s.datasetName} onClick={() => onStarter(s)}
+                    className="text-left rounded-md p-3 border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 transition-colors">
+                    <div className="font-medium text-sm">{x.t}</div>
+                    <div className="text-xs text-ink-500 mt-1 leading-snug line-clamp-2">{x.q}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* ── right: my work ── */}
+      <aside className="flex flex-col gap-3 min-w-0">
+        <div className={`rounded-md border bg-white ${pendingRecipe ? 'border-brand-600 ring-1 ring-brand-600' : 'border-ink-200'}`}>
+          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-ink-150">
+            <span className="text-sm font-semibold text-ink-900">{zh ? '我的数据' : 'My data'}</span>
+            <button type="button" onClick={onClickUpload} className="ml-auto h-7 px-2.5 rounded border border-ink-300 bg-white text-xs text-ink-800 hover:bg-ink-50 inline-flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5" strokeWidth={1.5} /> {zh ? '上传' : 'Upload'}
             </button>
-          )}
+          </div>
+          <ul className="p-1.5 space-y-0.5 max-h-[260px] overflow-y-auto scroll-hide">
+            {sources.length === 0 && <li className="px-2 py-3 text-xs text-ink-500">{zh ? '还没有数据。上传一份，或点「用示例数据体验一次」。' : 'No data yet — upload one, or try the sample.'}</li>}
+            {sources.slice(0, 8).map((d) => {
+              const cur = activeIds.includes(d.id);
+              return (
+                <li key={d.id}>
+                  <button type="button" onClick={() => onPickDataset(d.id)} title={zh ? '选为当前分析的数据' : 'Use for the next analysis'}
+                    className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded ${cur ? 'bg-brand-50 ring-1 ring-brand-100' : 'hover:bg-ink-50'}`}>
+                    <Database className="w-3.5 h-3.5 text-brand-600 shrink-0" strokeWidth={1.5} />
+                    <span className="min-w-0 flex flex-col">
+                      <span className="truncate text-[13px] text-ink-900">{d.name}</span>
+                      <span className="font-mono text-[11px] text-ink-500">{d.rows.toLocaleString()} × {d.columns}{cur ? (zh ? ' · 当前' : ' · current') : ''}</span>
+                    </span>
+                    <span className="ml-auto text-[11px] text-ink-500 shrink-0">{shortDate(d.created_at)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mx-2 mb-2 rounded border border-dashed border-ink-300 px-2 py-1.5 text-center text-[11px] text-ink-500">
+            {zh ? '把文件拖到页面任意位置即可上传 · CSV / Excel / 表格截图' : 'Drop files anywhere on the page · CSV / Excel / table screenshots'}
+          </div>
         </div>
-      )}
+
+        <div className="rounded-md border border-ink-200 bg-white">
+          <div className="px-3.5 py-2.5 border-b border-ink-150 text-sm font-semibold text-ink-900">{zh ? '最近的分析' : 'Recent analyses'}</div>
+          <ul className="p-1.5 space-y-0.5">
+            {conversations.length === 0 && <li className="px-2 py-3 text-xs text-ink-500">{zh ? '还没有分析记录。点左侧一个问题，或在下面直接提问。' : 'No analyses yet — tap a question or just ask below.'}</li>}
+            {conversations.slice(0, 5).map((c) => {
+              const results = datasets.filter((d) => d.origin?.conversation?.id === c.id && d.state !== 'cleaned');
+              const expiring = results.filter((d) => !d.kept && d.expires_at && (new Date(d.expires_at.endsWith('Z') || /[+-]\d\d:\d\d$/.test(d.expires_at) ? d.expires_at : d.expires_at + 'Z').getTime() - Date.now()) / 86_400_000 <= 3).length;
+              return (
+                <li key={c.id}>
+                  <button type="button" onClick={() => onOpenConversation(c.id)} className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ink-50">
+                    <span className="min-w-0 flex flex-col">
+                      <span className="truncate text-[13px] text-ink-900">{c.title}</span>
+                      <span className="text-[11px] text-ink-500">
+                        {results.length > 0 ? (zh ? `${results.length} 个结果` : `${results.length} results`) : (zh ? '对话' : 'chat')}
+                        {expiring > 0 && <span className="ml-1.5 px-1 rounded-sm border border-warning-200 bg-warning-50 text-warning-700">{zh ? `${expiring} 份将清理` : `${expiring} expiring`}</span>}
+                      </span>
+                    </span>
+                    <span className="ml-auto text-[11px] text-ink-500 shrink-0">{shortDate(c.created_at)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <HomeFlows activeDs={activeDs} onRan={onFlowRan} lang={lang} />
+      </aside>
     </div>
   );
 }
+
+/** "今天 14:32" / "11-08" in the viewer's time zone. */
+function shortDate(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  const today = new Date();
+  return d.toDateString() === today.toDateString() ? `今天 ${p(d.getHours())}:${p(d.getMinutes())}` : `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Static sample of what a finished analysis looks like (until the user has one). */
+function SampleResultCard({ lang }: { lang: 'en' | 'zh' }) {
+  const zh = lang === 'zh';
+  return (
+    <div className="rounded-md border border-ink-200 bg-white overflow-hidden">
+      <div className="flex items-center gap-2.5 px-3.5 py-2 border-b border-ink-150 text-[13px]">
+        <span className="font-mono text-xs text-ink-500">R-0012.2</span>
+        <span className="font-semibold text-ink-900">{zh ? '放电曲线平滑与容量衰减' : 'Discharge curves: smoothing & capacity fade'}</span>
+        <SourceTag kind="builtin" />
+        <span className="ml-auto text-xs text-ink-500">{zh ? '示例' : 'sample'}</span>
+      </div>
+      <div className="grid grid-cols-1 min-[1300px]:grid-cols-[1.3fr_1fr]">
+        <div className="px-2 py-1.5"><SampleResultChart /></div>
+        <div className="border-t min-[1300px]:border-t-0 min-[1300px]:border-l border-ink-150">
+          <table className="w-full text-xs">
+            <thead><tr className="bg-ink-50 text-ink-600"><th className="text-left font-medium px-3.5 py-1.5">{zh ? '指标' : 'Metric'}</th><th className="text-right font-medium px-3.5">{zh ? '第 1 圈' : 'Cycle 1'}</th><th className="text-right font-medium px-3.5">{zh ? '第 50 圈' : 'Cycle 50'}</th><th className="text-right font-medium px-3.5">{zh ? '变化' : 'Δ'}</th></tr></thead>
+            <tbody className="font-mono">
+              {[['放电容量 (Ah)', '2.310', '2.190', '−5.2 %'], ['平台电压 (V)', '3.652', '3.648', '−4 mV'], ['内阻 (mΩ)', '18.4', '21.0', '+14 %']].map((r) => (
+                <tr key={r[0]} className="border-t border-ink-150"><td className="px-3.5 py-1.5 font-sans">{r[0]}</td><td className="text-right px-3.5">{r[1]}</td><td className="text-right px-3.5">{r[2]}</td><td className="text-right px-3.5">{r[3]}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-3.5 py-2 border-t border-ink-150 text-xs text-ink-700 leading-relaxed">{zh ? '结论：容量衰减 5.2 %，平台电压基本不变，内阻上升是主要原因。' : 'Capacity fades 5.2 %; plateau voltage is stable; rising resistance is the main cause.'}</div>
+        </div>
+      </div>
+      <div className="px-3.5 py-1.5 border-t border-ink-150 bg-ink-50 font-mono text-[11px] text-ink-600 flex flex-wrap gap-x-4 gap-y-1">
+        <span>savgol_filter v1.2</span><span>window=11 order=3</span><span>{zh ? '输入' : 'input'} cell_A12_cycles.csv</span><span>0.82 s</span>
+      </div>
+    </div>
+  );
+}
+
+/** The user's most recent result: chart of the data + where it came from. */
+function RecentResultCard({ ds, onOpenConversation, onViewDataset, lang }: {
+  ds: Dataset; onOpenConversation: (id: number) => void; onViewDataset?: (id: number) => void; lang: 'en' | 'zh';
+}) {
+  const zh = lang === 'zh';
+  const o = ds.origin;
+  return (
+    <div className="rounded-md border border-ink-200 bg-white overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2.5 px-3.5 py-2 border-b border-ink-150 text-[13px]">
+        {o?.code && <span className="font-mono text-xs text-ink-500">{o.code}</span>}
+        <span className="font-semibold text-ink-900 truncate">{ds.name}</span>
+        <span className="ml-auto text-xs text-ink-500">{shortDate(ds.created_at)}</span>
+      </div>
+      <div className="px-2 py-1"><DatasetChart datasetId={ds.id} name={ds.name} height={220} /></div>
+      <div className="px-3.5 py-1.5 border-t border-ink-150 bg-ink-50 text-[11px] text-ink-600 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {o?.algorithm && <span className="font-mono">{o.algorithm.slug}{o.algorithm.version != null ? ` v${o.algorithm.version}` : ''}</span>}
+        <span className="font-mono">{ds.rows.toLocaleString()} × {ds.columns}</span>
+        <span className="ml-auto flex gap-3">
+          {o?.conversation?.exists && <button type="button" onClick={() => onOpenConversation(o.conversation!.id)} className="text-brand-700 hover:underline">{zh ? '回到对话' : 'Open chat'}</button>}
+          {onViewDataset && <button type="button" onClick={() => onViewDataset(ds.id)} className="text-brand-700 hover:underline">{zh ? '查看数据' : 'View data'}</button>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** My flows — run one on the current data without the AI (L4). */
+function HomeFlows({ activeDs, onRan, lang }: { activeDs: Dataset | null; onRan: (conversationId: number) => void; lang: 'en' | 'zh' }) {
+  const zh = lang === 'zh';
+  const [tpls, setTpls] = useState<FlowTemplate[]>([]);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { api.listTemplates().then((t) => setTpls(t.filter((x) => x.n_steps > 0))).catch(() => {}); }, []);
+  async function run(id: number) {
+    if (!activeDs) { setErr(zh ? '先在「我的数据」里选一份数据' : 'Pick the data first'); return; }
+    setBusy(id); setErr('');
+    try { const r = await api.runTemplateInChat(id, activeDs.id); onRan(r.conversation_id); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+  return (
+    <div className="rounded-md border border-ink-200 bg-white">
+      <div className="flex items-baseline gap-2 px-3.5 py-2.5 border-b border-ink-150">
+        <span className="text-sm font-semibold text-ink-900">{zh ? '我的流程' : 'My flows'}</span>
+        <span className="ml-auto text-[11px] text-ink-500">{zh ? '不经过 AI，在当前数据上重跑' : 'Re-run on the current data, no AI'}</span>
+      </div>
+      <ul className="p-1.5 space-y-0.5">
+        {tpls.length === 0 && <li className="px-2 py-3 text-xs text-ink-500">{zh ? '还没有流程。在对话回答末尾点「存为流程」即可保存。' : 'No flows yet — use 「存为流程」 under an answer.'}</li>}
+        {tpls.slice(0, 5).map((t) => (
+          <li key={t.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ink-50">
+            <span className="min-w-0 flex flex-col">
+              <span className="truncate text-[13px] text-ink-900">{t.name}</span>
+              <span className="text-[11px] text-ink-500">{t.n_steps} {zh ? '步' : 'steps'}</span>
+            </span>
+            <button type="button" onClick={() => run(t.id)} disabled={busy != null}
+              className="ml-auto h-7 px-2.5 rounded border border-ink-300 bg-white text-xs text-ink-800 hover:bg-ink-100 disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0">
+              {busy === t.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{zh ? '运行' : 'Run'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {err && <div className="px-3.5 pb-2 text-xs text-danger-700">{err}</div>}
+    </div>
+  );
+}
+
 
 function inputLabel(s: RunStep, steps: RunStep[], dsById?: Map<number, Dataset>): string {
   const inp = s.prov.input;
@@ -1424,51 +1585,6 @@ function AnswerSteps({ steps, excluded, dsById, onOpenInLibrary }: {
           {err && <div className="text-danger-700">{err}</div>}
         </div>
       )}
-    </div>
-  );
-}
-
-/** L4: the user's saved flows on the chat home — pick one, run it on the
- *  selected data without the AI; the outcome lands in a conversation. */
-function MyFlows({ activeDs, sources, onRan, lang }: {
-  activeDs: Dataset | null; sources: Dataset[]; onRan: (conversationId: number) => void; lang: 'en' | 'zh';
-}) {
-  const zh = lang === 'zh';
-  const [tpls, setTpls] = useState<FlowTemplate[]>([]);
-  const [dsId, setDsId] = useState<number | null>(activeDs?.id ?? null);
-  const [busy, setBusy] = useState<number | null>(null);
-  const [err, setErr] = useState('');
-  useEffect(() => { api.listTemplates().then((t) => setTpls(t.filter((x) => x.n_steps > 0))).catch(() => {}); }, []);
-  useEffect(() => { if (activeDs) setDsId(activeDs.id); }, [activeDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (tpls.length === 0) return null;
-  async function run(id: number) {
-    if (dsId == null) { setErr(zh ? '先选一份数据' : 'Pick the data first'); return; }
-    setBusy(id); setErr('');
-    try { const r = await api.runTemplateInChat(id, dsId); onRan(r.conversation_id); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(null); }
-  }
-  return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <h3 className="text-sm font-semibold text-ink-700">{zh ? '我的流程' : 'My flows'}</h3>
-        <span className="text-xs text-ink-500">{zh ? '不经过 AI，在这份数据上直接重跑：' : 'Re-run on this data without the AI:'}</span>
-        <select aria-label={zh ? '流程使用的数据' : 'Data for the flow'} value={dsId ?? ''} onChange={(e) => setDsId(e.target.value ? Number(e.target.value) : null)}
-          className="h-7 border border-ink-300 rounded px-2 bg-white text-xs max-w-[14rem]">
-          <option value="">{zh ? '选择数据…' : 'Choose data…'}</option>
-          {sources.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {tpls.slice(0, 6).map((t) => (
-          <button key={t.id} type="button" onClick={() => run(t.id)} disabled={busy != null}
-            className="text-left rounded border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 px-3 py-2 disabled:opacity-50">
-            <div className="text-sm text-ink-900 flex items-center gap-1.5">{busy === t.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{t.name}</div>
-            <div className="text-[11px] text-ink-500">{t.n_steps} {zh ? '步' : 'steps'}</div>
-          </button>
-        ))}
-      </div>
-      {err && <div className="mt-1.5 text-xs text-danger-700">{err}</div>}
     </div>
   );
 }

@@ -580,7 +580,7 @@ export type GenerationResult = {
   all_tests_passed: boolean;
 };
 
-export type Conversation = { id: number; title: string; dataset_id: number | null };
+export type Conversation = { id: number; title: string; dataset_id: number | null; created_at?: string | null };
 
 export type TemplateStep = {
   action: string; slug?: string; params?: Record<string, unknown>; label?: string;
