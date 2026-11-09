@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Save, X, Sparkles, AlertTriangle } from 'lucide-react';
+import { Loader2, Save, X, AlertTriangle } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, type Algorithm, type ParamSpec } from '@/lib/api';
 import { coerceParam, paramToStr, CAT_ZH } from '@/lib/algoMeta';
 
@@ -147,7 +148,7 @@ export default function SaveToolModal({ slug, meta, onSaved, onReused, onCancel,
         </div>
 
         <div className="px-4 py-3 space-y-3 overflow-y-auto scroll-hide">
-          <div className="text-[11px] text-ink-500 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-violet-500" /> {hint ?? '名称、说明、参数已由 AI 预填,确认或修改后保存 —— 这样它就是个通用工具,以后任何数据都能复用。'}</div>
+          <div className="text-[11px] text-ink-500 flex items-center gap-1.5"><AiMark /> {hint ?? '名称、说明、参数已由 AI 预填,确认或修改后保存 —— 这样它就是个通用工具,以后任何数据都能复用。'}</div>
 
           {showReuse && similar.length > 0 && (
             <div className="text-[11px] text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-2.5 py-2">
@@ -227,7 +228,7 @@ export default function SaveToolModal({ slug, meta, onSaved, onReused, onCancel,
             {showReuse && (
               <div className="mt-2.5 rounded-lg bg-violet-50/60 ring-1 ring-violet-100 p-2.5">
                 <div className="flex items-center gap-1.5 text-[11px] text-violet-700 font-medium mb-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> 想要别的参数 / 能力?一句话说清,让 AI 重写这个工具(代码+参数一起改,保证真能用)
+                  <AiMark /> 想要别的参数 / 能力?一句话说清,让 AI 重写这个工具(代码+参数一起改,保证真能用)
                 </div>
                 <div className="flex gap-1.5">
                   <input value={refineIntent} onChange={(e) => setRefineIntent(e.target.value)}
@@ -236,7 +237,7 @@ export default function SaveToolModal({ slug, meta, onSaved, onReused, onCancel,
                     className="flex-1 border border-ink-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:border-violet-400" />
                   <button onClick={refine} disabled={refining || !refineIntent.trim()}
                     className="text-xs px-2.5 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 inline-flex items-center gap-1 shrink-0">
-                    {refining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 让 AI 改
+                    {refining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 让 AI 改
                   </button>
                 </div>
                 {refineMsg && <div className="text-[11px] text-ink-600 mt-1.5 leading-snug">{refineMsg}</div>}

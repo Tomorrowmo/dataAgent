@@ -43,7 +43,7 @@ export type ChartSpec = {
 
 type ChartType = 'line' | 'scatter' | 'bar';
 
-const SERIES_COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
+const SERIES_COLORS = ['#2e5f8a', '#d0702e', '#4c8c5e', '#b5474e', '#7462a6', '#3b8f98', '#b39027', '#77736b'];
 
 export default function ChartPanel({ spec, height = 300 }: { spec: ChartSpec; height?: number }) {
   // An arbitrary Plotly figure (any chart type the agent generated) renders
@@ -187,9 +187,9 @@ function renderSeriesChart(
   type: ChartType,
   series: { label: string; points: { x: number; y: number | null }[] }[],
 ) {
-  const axisProps = { tick: { fontSize: 11 }, stroke: '#94a3b8' } as const;
-  const grid = <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />;
-  const tip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />;
+  const axisProps = { tick: { fontSize: 11 }, stroke: '#69707a' } as const;
+  const grid = <CartesianGrid stroke="#eceef1" />;
+  const tip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dfe2e6' }} />;
   const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
 
   if (type === 'scatter') {
@@ -234,8 +234,8 @@ function renderChart(
   yKeys: string[],
   data: Record<string, number | null>[],
 ) {
-  const axisProps = { tick: { fontSize: 11 }, stroke: '#94a3b8' } as const;
-  const grid = <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />;
+  const axisProps = { tick: { fontSize: 11 }, stroke: '#69707a' } as const;
+  const grid = <CartesianGrid stroke="#eceef1" />;
   // A numeric x MUST be a number axis. Recharts' default is a CATEGORY axis,
   // which lays points out in row order and prints ticks unsorted — a scatter of
   // residual vs quality came out as a shapeless blob with ticks running
@@ -251,7 +251,7 @@ function renderChart(
     ? <XAxis type="number" dataKey={xKey} domain={['auto', 'auto']} {...axisProps} />
     : <XAxis dataKey={xKey} {...axisProps} />;
   const y = <YAxis {...axisProps} />;
-  const tip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />;
+  const tip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 4, borderColor: '#dfe2e6' }} />;
   const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
 
   if (type === 'scatter') {

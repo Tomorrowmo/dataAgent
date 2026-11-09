@@ -99,10 +99,10 @@ export default function LoginPage() {
         </p>
       </div>
       <style jsx global>{`
-        .input { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #e4e4e7; border-radius: 0.6rem; background: #fff; }
-        .input:focus { outline: none; border-color: #3e4ee0; box-shadow: 0 0 0 3px #eaeefe; }
-        .btn-primary { background: #2d36c0; color: #fff; padding: 0.6rem 0.8rem; border-radius: 0.6rem; font-weight: 500; }
-        .btn-primary:hover { background: #252c97; }
+        .input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #c6cbd1; border-radius: 4px; background: #fff; }
+        .input:focus { outline: none; border-color: #2b4c6f; box-shadow: 0 0 0 3px #dce4ec; }
+        .btn-primary { background: #2b4c6f; color: #fff; padding: 0.55rem 0.8rem; border-radius: 4px; font-weight: 500; }
+        .btn-primary:hover { background: #213c59; }
         .btn-primary:disabled { opacity: 0.6; }
       `}</style>
     </main>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Database, Wrench, BarChart3, Sparkles, List, Info, MessageSquare, CheckCircle2, AlertTriangle, ChevronDown, Save, Loader2, Pencil, X } from 'lucide-react';
+import { Database, Wrench, BarChart3, Code2, List, Info, MessageSquare, CheckCircle2, AlertTriangle, ChevronDown, Save, Loader2, Pencil, X } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate } from '@/lib/api';
 import type { Event } from '@/components/WorkbenchPanel';
 import dynamic from 'next/dynamic';
@@ -48,7 +48,7 @@ function actionIcon(node: FlowNode) {
     case 'visualize': return BarChart3;
     case 'visualize_batch': return BarChart3;
     case 'generate_viz': return BarChart3;
-    case 'generate_tool': return Sparkles;
+    case 'generate_tool': return Code2;
     case 'list_tools': return List;
     case 'describe_tool': return Info;
     default: return Wrench;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Play, Loader2, CheckCircle2, AlertTriangle, GitBranch, ArrowRight, ChevronLeft, Database, Sparkles, Workflow, BarChart3 } from 'lucide-react';
+import { Play, Loader2, CheckCircle2, AlertTriangle, GitBranch, ArrowRight, ChevronLeft, Database, Workflow, BarChart3 } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate, type TemplateRunResult } from '@/lib/api';
 import { ALGO_ZH, coerceParam, cellStr } from '@/lib/algoMeta';
 import ParamField from '@/components/ParamField';
@@ -103,7 +103,7 @@ export default function RunApp({ tpl, datasets, algos, onBack }: {
         {/* 2. params (only the ones the author exposed) */}
         {runtime.length > 0 && (
           <div className="bg-white rounded-2xl ring-1 ring-ink-200 p-5 space-y-3">
-            <div className="text-sm font-medium flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-amber-500" /> 2. 填写参数</div>
+            <div className="text-sm font-medium flex items-center gap-1.5">2. 填写参数</div>
             {runtime.map((r) => {
               const spec = bySlug.get(r.slug ?? '')?.params_schema?.[r.param];
               const key = `${r.stepIndex}::${r.param}`;

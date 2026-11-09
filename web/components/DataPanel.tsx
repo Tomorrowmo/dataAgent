@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Database, Table2, Sparkles, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
+import { Database, Table2, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, type Dataset } from '@/lib/api';
 
 /** Heuristic: does this dataset look structurally messy (worth an AI cleanup)? */
@@ -94,7 +95,7 @@ export default function DataPanel({ datasets, onClean, onViewFull }: { datasets:
               : 'bg-white text-ink-600 ring-ink-200 hover:bg-ink-50'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5" /> 用 AI 整理这张表
+          <AiMark /> 用 AI 整理这张表
         </button>
       )}
 

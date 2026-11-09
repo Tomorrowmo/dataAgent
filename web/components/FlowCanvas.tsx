@@ -9,9 +9,10 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  Database, Wrench, Play, Save, Loader2, Trash2, Sparkles, Layers, Table2,
+  Database, Wrench, Play, Save, Loader2, Trash2, Layers, Table2,
   CheckCircle2, AlertTriangle, GitBranch, ArrowRight, X, Search, BarChart3, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, type Algorithm, type Dataset, type FlowTemplate, type TemplateStep, type TemplateRunResult, type FlowGraph, type ParamSpec } from '@/lib/api';
 import { ALGO_ZH, paramToStr, coerceParam, dispName, dispDesc, dispExample, catZh, RETURNS_ZH, SOURCE_ZH, COL_MULTI, COL_SINGLE, paramKind, matchAlgo, groupByIntent, intentZh, algoIntent } from '@/lib/algoMeta';
 import { IntentIcon } from '@/components/AnalysisIcon';
@@ -464,9 +465,9 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
     if (out && typeof out.rows === 'number') {
       return {
         ...e, animated: true, label: `${out.rows.toLocaleString()} 行`,
-        labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 },
-        labelBgStyle: { fill: '#f5f3ff' }, labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 4,
-        style: { stroke: '#a78bfa', strokeWidth: 1.5 },
+        labelStyle: { fontSize: 10, fill: '#525861', fontWeight: 600 },
+        labelBgStyle: { fill: '#f3f4f6' }, labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 4,
+        style: { stroke: '#a0a6ae', strokeWidth: 1.5, strokeDasharray: '4 3' },
       };
     }
     return e;
@@ -731,7 +732,7 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
             className="font-medium bg-transparent border-b border-transparent hover:border-ink-200 focus:border-brand-400 focus:outline-none py-0.5 min-w-[120px] flex-1" />
           <span className="text-xs text-ink-400 shrink-0">{stepCount} 步</span>
           {nodes.length > 1 && <button onClick={autoLayout} title="按执行顺序左→右排好" className="text-xs px-2 py-1 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1 shrink-0"><Layers className="w-3.5 h-3.5" /> 整理布局</button>}
-          {stepCount > 0 && <button onClick={alignAllToInput} title="把各步骤的列参数对齐到当前输入(换数据后用)" className="text-xs px-2 py-1 rounded-lg ring-1 ring-amber-200 text-amber-700 hover:bg-amber-50 flex items-center gap-1 shrink-0"><Sparkles className="w-3.5 h-3.5" /> 对齐列参数</button>}
+          {stepCount > 0 && <button onClick={alignAllToInput} title="把各步骤的列参数对齐到当前输入(换数据后用)" className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1 shrink-0">对齐列参数</button>}
           {dirty && <button onClick={save} disabled={saving} className="text-xs px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1 shrink-0">{saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}保存</button>}
           <button onClick={del} title="删除模板" className="text-ink-400 hover:text-red-600 p-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -756,10 +757,10 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
             fitView
             fitViewOptions={{ maxZoom: 1, padding: 0.22 }}
             minZoom={0.2}
-            defaultEdgeOptions={{ type: 'default', markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' }, style: { stroke: '#cbd5e1', strokeWidth: 1.5 } }}
+            defaultEdgeOptions={{ type: 'default', markerEnd: { type: MarkerType.ArrowClosed, color: '#69707a' }, style: { stroke: '#a0a6ae', strokeWidth: 1.5 } }}
             proOptions={{ hideAttribution: true }}
           >
-            <Background gap={22} size={1} color="#e4e4e7" className="!bg-transparent" />
+            <Background gap={22} size={1} color="#dfe2e6" className="!bg-transparent" />
             <Controls showInteractive={false} className="!shadow-sm !ring-1 !ring-ink-200 !rounded-lg overflow-hidden" />
             {nodes.length > 6 && <MiniMap pannable zoomable className="!bg-white !ring-1 !ring-ink-200 !rounded-lg" />}
           </ReactFlow>
@@ -838,7 +839,7 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
             )}
           </div>
           {runtimeList.length > 0 && (
-            <span className="text-[10.5px] text-amber-700 bg-amber-50 ring-1 ring-amber-100 rounded-full px-2 py-0.5 shrink-0" title="执行时会让你填这些参数">🖊 {runtimeList.length} 个执行参数</span>
+            <span className="text-[10.5px] text-amber-700 bg-amber-50 ring-1 ring-amber-100 rounded-full px-2 py-0.5 shrink-0" title="执行时会让你填这些参数">{runtimeList.length} 个执行参数</span>
           )}
           <button onClick={run} disabled={busy || datasetIds.length === 0 || stepCount === 0}
             className="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors flex items-center gap-2 disabled:opacity-50 shrink-0">
@@ -1102,14 +1103,14 @@ function NodeInspector({ node, algo, cols, colsFromUpstream, datasetId, width, o
         {/* Natural-language param assist — identical to the library panel. */}
         <div className="rounded-lg bg-brand-50/60 ring-1 ring-brand-100 p-2.5">
           <div className="flex items-center gap-1.5 text-[11px] text-brand-700 font-medium mb-1.5">
-            <Sparkles className="w-3.5 h-3.5" /> 用一句话调这步,AI 帮你填参数
+            <AiMark /> 用一句话调这步,AI 帮你填参数
           </div>
           <div className="flex gap-1.5">
             <input value={intent} onChange={(e) => setIntent(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') suggest(); }}
               placeholder={algo ? dispExample(algo) : '如:窗口大一点'}
               className="flex-1 border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-xs min-w-0 focus:outline-none focus:border-brand-400" />
             <button onClick={suggest} disabled={busy} className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1 shrink-0">
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 推荐
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 推荐
             </button>
           </div>
           {note && <div className="text-[11px] text-ink-600 mt-2 leading-snug">{note}</div>}
@@ -1129,8 +1130,8 @@ function NodeInspector({ node, algo, cols, colsFromUpstream, datasetId, width, o
                 {missingRequired.length > 0 && <span> 缺必填:<span className="font-mono">{missingRequired.join(', ')}</span>。</span>}
               </div>
               <button onClick={alignToInput}
-                className="text-[11px] px-2 py-1 rounded-md bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> 一键对齐到当前输入列
+                className="text-[11px] px-2 py-1 rounded border border-amber-600 bg-white text-amber-700 hover:bg-amber-50 flex items-center gap-1">
+                一键对齐到当前输入列
               </button>
             </div>
           )}
@@ -1146,7 +1147,7 @@ function NodeInspector({ node, algo, cols, colsFromUpstream, datasetId, width, o
                 <button type="button" onClick={() => onToggleRuntime(k)}
                   title="勾选后,执行时会让用户填这个参数(模版可复用,不必每次进来改)"
                   className={`mt-1 text-[10.5px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ring-1 ${isRt ? 'bg-amber-100 text-amber-700 ring-amber-200' : 'text-ink-400 ring-ink-200 hover:text-amber-600 hover:ring-amber-200'}`}>
-                  {isRt ? '✓ 执行时填(此值作默认)' : '🖊 设为执行时填'}
+                  {isRt ? '执行时填（此值作默认）' : '设为执行时填'}
                 </button>
               </div>
             );
@@ -1319,13 +1320,13 @@ function RunResults({ res, datasetId, paramsByIndex, stepCols, runDs, onPreview 
               {s.status === 'error' && (
                 <button onClick={() => explainStepErr(s)} disabled={errBusy === s.i}
                   className="ml-auto text-[11px] px-1.5 py-0.5 rounded-md ring-1 ring-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1 disabled:opacity-50 shrink-0">
-                  {errBusy === s.i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} 用人话解释
+                  {errBusy === s.i ? <Loader2 className="w-3 h-3 animate-spin" /> : <AiMark />} 用人话解释
                 </button>
               )}
             </div>
             {s.error && <div className="mt-1 text-[11px] font-mono text-red-600 break-all">{s.error}</div>}
             {errExplain[s.i] && (
-              <div className="mt-1 text-[11px] text-ink-700 bg-red-50/60 ring-1 ring-red-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">💡 {errExplain[s.i]}</div>
+              <div className="mt-1 text-[11px] text-ink-700 bg-red-50/60 ring-1 ring-red-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">{errExplain[s.i]}</div>
             )}
           </div>
         ))}
@@ -1361,7 +1362,7 @@ function RunResults({ res, datasetId, paramsByIndex, stepCols, runDs, onPreview 
               {lastOk && (
                 <button onClick={explainResultFn} disabled={resBusy}
                   className="text-[11px] px-1.5 py-0.5 rounded-md ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1 disabled:opacity-50">
-                  {resBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} 解读结果
+                  {resBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <AiMark />} 解读结果
                 </button>
               )}
             </div>
@@ -1369,7 +1370,7 @@ function RunResults({ res, datasetId, paramsByIndex, stepCols, runDs, onPreview 
           {showChart && finalDsId != null && (
             <div className="mb-2 rounded-lg ring-1 ring-ink-200 p-2"><DatasetChart datasetId={finalDsId} name="最终输出" /></div>
           )}
-          {resultExplain && <div className="mb-1.5 text-[11px] text-ink-700 bg-brand-50/60 ring-1 ring-brand-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">💡 {resultExplain}</div>}
+          {resultExplain && <div className="mb-1.5 text-[11px] text-ink-700 bg-brand-50/60 ring-1 ring-brand-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">{resultExplain}</div>}
           <div className="rounded-lg ring-1 ring-ink-200 overflow-auto max-h-56">
             <table className="text-xs min-w-full">
               <thead className="bg-ink-50 text-ink-500 sticky top-0">

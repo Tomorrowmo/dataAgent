@@ -19,7 +19,7 @@ export default function ParamField({ name, spec, value, cols, aiHint, onChange }
       {spec.required && <span className="text-red-500"> *</span>}
       {friendly !== name && <span className="text-ink-400 font-mono ml-1.5">{name}</span>}
       {hint && <span className="text-ink-400 font-normal"> — {hint}</span>}
-      {aiHint && <span className="block text-brand-600 font-normal mt-0.5">💡 {aiHint}</span>}
+      {aiHint && <span className="block text-brand-600 font-normal mt-0.5">{aiHint}</span>}
     </label>
   );
 

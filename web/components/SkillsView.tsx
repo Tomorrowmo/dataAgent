@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Puzzle, Upload, Loader2, CheckCircle2, AlertTriangle, Sparkles, Trash2, Power, FileText,
+  Puzzle, Upload, Loader2, CheckCircle2, AlertTriangle, Trash2, Power, FileText,
   ChevronDown, Pencil, Check, X, Send, Undo2, Bot, Wrench, BookOpen, CircleDot,
 } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, importSkillStream, type Skill, type SkillCard, type SkillImportEvent } from '@/lib/api';
 
 // 技能 Skills: import a skill package and watch it being read (live steps), then
@@ -153,7 +154,7 @@ function SkillTile({ s, busy, onOpen, onToggle }: { s: Skill; busy: boolean; onO
   const on = s.status === 'active';
   return (
     <div onClick={onOpen} role="button"
-      className={`group text-left rounded-2xl ring-1 bg-white p-4 cursor-pointer transition hover:-translate-y-0.5 hover:shadow-sm flex flex-col gap-2 min-h-[150px] ${
+      className={`group text-left rounded-2xl ring-1 bg-white p-4 cursor-pointer transition hover:shadow-sm flex flex-col gap-2 min-h-[150px] ${
         s.status === 'draft' ? 'ring-amber-200' : 'ring-ink-200 hover:ring-brand-300'}`}>
       <div className="flex items-start gap-2">
         <Puzzle className={`w-4 h-4 mt-0.5 shrink-0 ${on ? 'text-brand-600' : 'text-ink-400'}`} />
@@ -535,7 +536,7 @@ function SkillAIPanel({ skill, onChanged }: { skill: Skill; onChanged: (s: Skill
   return (
     <div className="xl:w-[340px] shrink-0 rounded-2xl ring-1 ring-violet-100 bg-violet-50/30 flex flex-col xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-7rem)] min-h-[320px]">
       <div className="px-3 py-2 border-b border-violet-100 flex items-center gap-1.5 text-sm font-medium text-violet-800">
-        <Sparkles className="w-4 h-4" /> 让 AI 调整说明
+        <AiMark /> 让 AI 调整说明
       </div>
       <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto scroll-hide p-3 space-y-2.5">
         {msgs.length === 0 && (

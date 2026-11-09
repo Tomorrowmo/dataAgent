@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, ShieldCheck, Wrench, Sparkles, BookOpen, Activity, BatteryCharging, Cpu } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ShieldCheck, Wrench, Code2, BookOpen, Activity, BatteryCharging, Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import LanguageToggle from '@/components/LanguageToggle';
@@ -34,12 +34,12 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
-      <header className="sticky top-0 z-30 backdrop-blur bg-white/80 border-b border-ink-200">
+      <header className="sticky top-0 z-30 bg-white border-b border-ink-200">
         <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold">
             <div className="w-7 h-7 rounded-lg bg-brand-600 text-white grid place-items-center text-sm">N</div>
             <span>RLab Cortex</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-ink-100 text-ink-700 ml-2">{t('nav.beta')}</span>
+            <span className="text-[11px] px-1.5 py-px rounded-sm border border-ink-300 text-ink-600 ml-2">{t('nav.beta')}</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-ink-700">
             <a href="#why" className="hover:text-ink-900">{t('nav.why')}</a>
@@ -58,10 +58,7 @@ export default function LandingPage() {
       </header>
 
       <section className="relative overflow-hidden mx-auto max-w-6xl px-6 pt-16 pb-20 text-center">
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-28 -z-10 flex justify-center">
-          <div className="w-[680px] h-[420px] rounded-full bg-brand-100/50 blur-3xl" />
-        </div>
-        <div className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-brand-100">
+        <div className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-sm bg-white text-ink-700 border border-ink-300">
           <ShieldCheck className="w-3.5 h-3.5" />
           {t('brand.tagline')}
         </div>
@@ -93,7 +90,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-6 mt-6">
             <Card title={t('why.good1.t')} body={t('why.good1.b')} positive icon={<BookOpen className="w-5 h-5" />} />
             <Card title={t('why.good2.t')} body={t('why.good2.b')} positive icon={<Wrench className="w-5 h-5" />} />
-            <Card title={t('why.good3.t')} body={t('why.good3.b')} positive icon={<Sparkles className="w-5 h-5" />} />
+            <Card title={t('why.good3.t')} body={t('why.good3.b')} positive icon={<Code2 className="w-5 h-5 text-brand-600" />} />
           </div>
         </div>
       </section>
@@ -179,27 +176,25 @@ function HeroDemo() {
   const t = useT();
   return (
     <div className="mt-14 mx-auto max-w-lg text-left">
-      <div className="rounded-2xl bg-white ring-1 ring-ink-200 shadow-xl overflow-hidden">
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-ink-100 bg-ink-50">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-300" />
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
-          <span className="ml-2 text-[11px] text-ink-400 font-medium">RLab Cortex</span>
+      <div className="rounded-md bg-white border border-ink-200 shadow-md overflow-hidden">
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-ink-200 bg-ink-50">
+          <span className="w-5 h-5 rounded bg-brand-600 text-white grid place-items-center font-mono text-[10px] font-medium">R</span>
+          <span className="ml-1 text-[11px] text-ink-600 font-medium">RLab Cortex</span>
         </div>
         <div className="p-4 space-y-3">
           <div className="flex justify-end">
-            <div className="bg-brand-50 text-ink-800 text-sm rounded-2xl rounded-br-sm px-3 py-2 max-w-[82%]">{t('hero.demo.q')}</div>
+            <div className="bg-white border border-ink-200 text-ink-800 text-sm rounded-md px-3 py-2 max-w-[82%]">{t('hero.demo.q')}</div>
           </div>
           <div className="flex gap-2">
-            <div className="w-7 h-7 rounded-full bg-brand-600 text-white grid place-items-center text-xs font-semibold shrink-0">N</div>
-            <div className="flex-1 bg-white ring-1 ring-ink-200 rounded-2xl rounded-bl-sm px-3 py-2.5">
+            <div className="w-7 h-7 rounded bg-brand-600 text-white grid place-items-center font-mono text-xs font-medium shrink-0">R</div>
+            <div className="flex-1 bg-white border border-ink-200 border-l-[3px] border-l-brand-600 rounded-md px-3 py-2.5">
               <div className="inline-flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 ring-1 ring-emerald-100 rounded-md px-1.5 py-0.5 mb-2">
                 <CheckCircle2 className="w-3 h-3" /> {t('hero.demo.badge')}
               </div>
               <svg viewBox="0 0 260 64" className="w-full h-16">
-                <path d="M4,46 C50,8 90,58 130,32 C170,8 210,52 256,22" fill="none" stroke="#3e4ee0" strokeWidth="2.5" strokeLinecap="round" />
+                <path d="M4,46 C50,8 90,58 130,32 C170,8 210,52 256,22" fill="none" stroke="#2e5f8a" strokeWidth="2" strokeLinecap="round" />
                 {[[18, 40], [52, 20], [88, 50], [128, 34], [166, 18], [206, 46], [244, 24]].map(([cx, cy], i) => (
-                  <circle key={i} cx={cx} cy={cy} r="3" fill="#9aaaf6" />
+                  <circle key={i} cx={cx} cy={cy} r="2.5" fill="#d0702e" />
                 ))}
               </svg>
               <div className="text-xs text-ink-500 mt-1.5">{t('hero.demo.caption')}</div>
@@ -231,7 +226,7 @@ function VerticalCard({ title, icon, points, chip }: { title: string; icon: Reac
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 grid place-items-center">{icon}</div>
           <div className="font-medium">{title}</div>
         </div>
-        {chip && <span className="text-[10px] font-semibold tracking-wide uppercase text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">{chip}</span>}
+        {chip && <span className="text-[10px] font-semibold tracking-wide uppercase text-brand-700 border border-brand-200 px-1.5 py-px rounded-sm">{chip}</span>}
       </div>
       <ul className="space-y-1.5 text-sm text-ink-700">
         {points.map((p) => (
@@ -244,10 +239,10 @@ function VerticalCard({ title, icon, points, chip }: { title: string; icon: Reac
 
 function PriceCard({ tier, price, tagline, features, cta, href, highlight, popLabel }: { tier: string; price: string; tagline: string; features: string[]; cta: string; href: string; highlight?: boolean; popLabel?: string }) {
   return (
-    <div className={`rounded-2xl p-6 bg-white ${highlight ? 'ring-2 ring-brand-500 shadow-sm' : 'ring-1 ring-ink-200'}`}>
+    <div className={`rounded-md p-6 bg-white ${highlight ? 'border border-brand-600 ring-1 ring-brand-600' : 'border border-ink-200'}`}>
       <div className="flex items-baseline justify-between">
         <div className="font-semibold">{tier}</div>
-        {highlight && popLabel && <span className="text-[10px] font-semibold tracking-wide uppercase text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">{popLabel}</span>}
+        {highlight && popLabel && <span className="text-[10px] font-semibold tracking-wide uppercase text-brand-700 border border-brand-200 px-1.5 py-px rounded-sm">{popLabel}</span>}
       </div>
       <div className="mt-3 text-3xl font-semibold">{price}</div>
       <div className="text-xs text-ink-500 mb-4">{tagline}</div>

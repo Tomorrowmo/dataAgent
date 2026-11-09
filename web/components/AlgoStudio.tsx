@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Sparkles, Upload, Undo2, Wrench, Square, CheckCircle2, AlertTriangle, Bot, User, ShieldCheck, XCircle, Circle, Settings2 } from 'lucide-react';
+import { Send, Loader2, Upload, Undo2, Wrench, Square, CheckCircle2, AlertTriangle, Bot, User, ShieldCheck, XCircle, Circle, Settings2 } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, streamStudio, type Algorithm, type Dataset, type StudioEvent, type TestResult, type AdmissionItem } from '@/lib/api';
 import AlgoEditor from '@/components/AlgoEditor';
 
@@ -175,7 +176,7 @@ export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload';
       {/* ── chat ── */}
       <div className="xl:w-[400px] shrink-0 max-xl:h-[46%] flex flex-col border-r border-ink-200 bg-white min-h-0">
         <div className="px-3 py-2 border-b border-ink-200 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-violet-600 shrink-0" />
+          <AiMark />
           <div className="text-sm font-medium flex-1">{start === 'ai' ? '和 AI 一起写算法' : '上传代码，和 AI 一起改'}</div>
           <button onClick={() => fileRef.current?.click()} className="text-xs px-2 py-1 rounded-lg ring-1 ring-ink-200 text-ink-600 hover:bg-ink-50 flex items-center gap-1">
             <Upload className="w-3.5 h-3.5" /> 上传 .py

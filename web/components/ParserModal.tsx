@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Loader2, Sparkles, X, RefreshCw, ChevronRight } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Loader2, X, RefreshCw, ChevronRight } from 'lucide-react';
+import { AiMark } from '@/components/ui';
 import { api, streamParserGenerate, type Dataset, type ParserEvent, type UploadResp } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { humanizeError } from '@/lib/errors';
@@ -140,7 +141,7 @@ export default function ParserModal({
     <div className="fixed inset-0 z-40 bg-ink-900/50 backdrop-blur-sm grid place-items-center p-4">
       <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl ring-1 ring-ink-200">
         <div className="sticky top-0 bg-white border-b border-ink-200 px-5 py-3 flex items-center gap-3 z-10">
-          <Sparkles className="w-5 h-5 text-brand-600" />
+          <AiMark />
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">{t('adapter.unknownTitle')}</div>
             <div className="text-xs text-ink-500 truncate">{pending.filename} · {(pending.size_bytes / 1024).toFixed(1)} KB</div>
