@@ -178,7 +178,7 @@ async def rerun_message(
     plan, resolved = await plan_rerun(session, user.id, conv, (msg.meta or {}).get("events") or [])
     if plan.blocked:
         raise HTTPException(409, plan.blocked)
-    events = await execute_rerun(session, user.id, plan, resolved)
+    events = await execute_rerun(session, user.id, plan, resolved, conversation_id=conv.id)
     ok = sum(1 for e in events if e["kind"] == "tool_result" and (e["payload"].get("result") or {}).get("status") == "ok")
     # The time of the original turn is shown by the client (local timezone)
     # from meta.rerun_of_at — the server runs in UTC.
@@ -262,10 +262,13 @@ async def upload_image(
         raise HTTPException(400, "空文件")
     if len(data) > 20 * 1024 * 1024:
         raise HTTPException(400, "图片太大(上限 20MB)")
-    path = save_temp_upload(data, file.filename or f"chat_image{ext}")
-    # The ref is just the saved path; the agent reads it back by path. Basename is
-    # returned for display only.
-    return {"ref": str(path), "name": file.filename or f"image{ext}", "ext": ext}
+    # Owner-scoped (改进清单-3 · F2): the image lives in the user's tmp/ and the
+    # ref handed to the client is RELATIVE — /send only accepts refs inside the
+    # sender's own directory.
+    from ..services import storage
+    path = storage.new_file(storage.user_dir(user.id, "tmp"), stem="chat_image", suffix=ext)
+    path.write_bytes(data)
+    return {"ref": storage.to_rel(path), "name": file.filename or f"image{ext}", "ext": ext}
 
 
 @router.post("/conversations/{conv_id}/send")
@@ -297,7 +300,7 @@ async def send_message(
         ds = (await session.execute(
             select(Dataset).where(Dataset.id == did, Dataset.owner_id == user.id)
         )).scalar_one_or_none()
-        if ds is not None:
+        if ds is not None and (ds.state or "active") != "cleaned":   # cleaned data can't be analysed
             datasets.append(ds)
 
     # Persist the primary as the conversation's dataset (back-compat / reload).
@@ -312,13 +315,21 @@ async def send_message(
     from pathlib import Path as _Path
     image_ref: Optional[str] = None
     image_fresh = False  # True only when THIS message carried a new image
+    from ..services.storage import PathNotOwned, resolve_owned, to_rel
+
+    def _own_image(ref: str) -> Optional[_Path]:
+        try:
+            p = resolve_owned(ref, user.id)     # must sit inside the sender's directory
+        except PathNotOwned:
+            return None
+        return p if p.exists() and p.is_file() else None
+
     if body.image_ref:
-        p = _Path(body.image_ref)
-        if p.exists() and p.is_file():
-            image_ref = str(p)
-            image_fresh = True
-        else:
+        p = _own_image(body.image_ref)
+        if p is None:
             raise HTTPException(400, "图片引用无效或已过期,请重新上传图片。")
+        image_ref = str(p)
+        image_fresh = True
     else:
         prior = (await session.execute(
             select(Message).where(Message.conversation_id == conv.id, Message.role == "user")
@@ -326,15 +337,16 @@ async def send_message(
         )).scalars().all()
         for m in prior:
             ref = (m.meta or {}).get("image_ref")
-            if ref and _Path(ref).exists():
-                image_ref = ref
+            p = _own_image(ref) if ref else None
+            if p is not None:
+                image_ref = str(p)
                 break
 
     # Persist user message immediately. Record the image on meta so a reload shows
     # "(附了一张图)" and the ref survives (best-effort; temp files are transient).
     user_msg = Message(
         conversation_id=conv.id, role="user", content=body.message,
-        meta={"image_ref": image_ref} if image_ref else {},
+        meta={"image_ref": to_rel(image_ref)} if image_ref else {},   # stored relative, never a server path
     )
     session.add(user_msg)
     await session.commit()
@@ -357,6 +369,18 @@ async def send_message(
 
     from .skills import load_for_chat
     skills_selected, skills_catalog = await load_for_chat(session, user.id, body.skill_ids)
+
+    turn_ctx: Dict[str, Any] = {}     # filled by run_turn: this turn's run group (改进清单-3 · D1a)
+
+    def _with_group(meta: Dict[str, Any]) -> Dict[str, Any]:
+        g = turn_ctx.get("group")
+        if g is not None:
+            from ..services.runs import finish_group
+            sts = list(turn_ctx.get("statuses") or [])
+            finish_group(g, sts + (["cancelled"] if meta.get("cancelled") else []))
+            meta["run_group_id"] = g.id
+            meta["run_group_code"] = f"R-{g.seq_no:04d}"
+        return meta
 
     async def event_stream():
         events: List[Dict[str, Any]] = []
@@ -387,6 +411,7 @@ async def send_message(
                     history=history, user_message=body.message, max_steps=8,
                     pipeline_state=pipeline_state, image_ref=image_ref, image_fresh=image_fresh,
                     skills=skills_selected, skill_catalog=skills_catalog,
+                    turn_ctx=turn_ctx, conversation_id=conv.id,
                 ):
                     # No server paths in what the client sees or what gets stored.
                     event = scrub({"kind": step.kind, "payload": step.payload})
@@ -437,7 +462,7 @@ async def send_message(
                 assistant_msg = Message(
                     conversation_id=conv.id, role="assistant",
                     content=final_text or "(no output)",
-                    meta={"events": events, "cancelled": cancelled} if cancelled else {"events": events},
+                    meta=_with_group({"events": events, "cancelled": cancelled} if cancelled else {"events": events}),
                 )
                 session.add(assistant_msg)
                 # Persist the advanced pipeline head so the next turn continues
@@ -453,15 +478,8 @@ async def send_message(
                 await session.commit()
             except Exception:
                 logger.exception("failed to persist assistant message for conv=%s", conv.id)
-            # Opportunistic auto-GC: reclaim OLD un-kept intermediates from past
-            # sessions. The grace window + head-protection keep THIS turn's fresh
-            # stages and the live pipeline head safe. Best-effort — never let a
-            # cleanup failure surface to the user.
-            try:
-                from ..services.datasets import gc_derived_datasets
-                await gc_derived_datasets(session, owner_id=user.id)
-            except Exception:
-                logger.exception("auto-GC failed for owner=%s", user.id)
+            # 改进清单-3 · R0: no more 2-hour auto-clean after every turn — the
+            # retention rules (20 days, reminder, backstop) run as a daily job.
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
 

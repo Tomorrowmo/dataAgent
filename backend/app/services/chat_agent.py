@@ -463,6 +463,45 @@ def _format_df_schema(name: str, df: pd.DataFrame) -> str:
 # 这是一个大 if/elif 分发器,本身不流式 —— 一次执行完返回 dict 结果。
 # run_turn 的主循环每收到一个非 answer 动作,就调用它一次。
 # ═══════════════════════════════════════════════════════════════════════════
+async def _record_chat_run(session: AsyncSession, owner_id: int, lineage_state: Dict[Any, Any],
+                           result: Dict[str, Any], *, slug: str, label: str, params: Dict[str, Any],
+                           ds: Dataset, step_no: int, input_ref: Dict[str, Any], algo_row: Optional[Algorithm]) -> None:
+    """Write the Run record for one chat run_tool (改进清单-3 · D2). Never lets
+    a bookkeeping failure break the answer."""
+    from .runs import new_group, record_run
+    try:
+        ctx = lineage_state.setdefault("__ctx", {})
+        group = ctx.get("group")
+        if group is None:
+            group = await new_group(session, owner_id, "chat", conversation_id=ctx.get("conversation_id"))
+            ctx["group"] = group
+        step_runs = ctx.setdefault("step_runs", {})        # step_no → (run_id, result_dataset_id)
+        if input_ref.get("kind") == "step" and input_ref.get("step") in step_runs:
+            prev_run, prev_ds = step_runs[input_ref["step"]]
+            run_input = {"kind": "run", "run_id": prev_run}
+            in_ds = prev_ds
+        else:
+            run_input = {"kind": "dataset", "dataset_id": input_ref.get("dataset_id", ds.id)}
+            in_ds = input_ref.get("dataset_id", ds.id)
+        derived = (result.get("derived_dataset") or {}).get("id")
+        prov = result.get("provenance") or {}
+        run = await record_run(session, group, seq=len(step_runs) + 1, slug=slug, label=label, result=result,
+                               params=params, input_ref=run_input, dataset_id=in_ds, algorithm=algo_row,
+                               result_dataset_id=derived, output_role=prov.get("output_role"))
+        step_runs[step_no] = (run.id, derived)
+        ctx.setdefault("statuses", []).append(run.status)
+        await session.commit()
+        prov["run_id"] = run.id
+        prov["run_code"] = f"R-{group.seq_no:04d}.{run.seq}"
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).exception("failed to record chat run")
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _execute_action(
     *,
     session: AsyncSession,
@@ -599,9 +638,10 @@ async def _execute_action(
                 # 而不是一路退到磁盘原始数据、把本轮刚算出的派生列丢掉
                 frames.setdefault(ds.id, []).append((label, out_df))
                 parent_id, parent_name = lineage_state.get(ds.id, (ds.id, ds.name))
+                from .runs import root_name
                 d = await _persist_dataset(
                     session, owner_id=owner_id, df=out_df,
-                    name=f"{ds.name} · {label}", filename=f"{slug}.parquet",
+                    name=f"{await root_name(session, ds)} · {label}", filename=f"{slug}.parquet",
                     file_format="derived", description=f"由「{parent_name}」经『{label}』得到",
                     kind="derived", derived_from=parent_id,
                     lineage={"from": parent_id, "from_name": parent_name,
@@ -619,6 +659,9 @@ async def _execute_action(
                 result["derived_dataset"] = {"id": d.id, "name": d.name}
             except Exception:
                 pass
+        await _record_chat_run(session, owner_id, lineage_state, result, slug=slug, label=label,
+                               params=params, ds=ds, step_no=step_no, input_ref=input_ref,
+                               algo_row=None if spec else row)
         return result
 
     # ── 动作④:画图(line/scatter/bar)。支持多数据集叠加对比 ──
@@ -1305,6 +1348,8 @@ async def run_turn(
     image_fresh: bool = False,
     skills: Optional[List[Any]] = None,          # Skill rows the user enabled for this message
     skill_catalog: Optional[List[Any]] = None,   # the user's other active skills (recommend only)
+    turn_ctx: Optional[Dict[str, Any]] = None,   # caller-owned: run group / statuses of this turn (改进清单-3 · D1a)
+    conversation_id: Optional[int] = None,
 ) -> AsyncIterator[AgentStep]:
     """Execute one chat turn: keep looping until the agent produces an `answer`
     action or exhausts max_steps. Yields a sequence of AgentStep events.
@@ -1331,6 +1376,10 @@ async def run_turn(
     # Lineage chain head per dataset id — so each materialized stage points at
     # the previous one (原始 → 去噪 → 检测 → …).
     lineage_state: Dict[int, Any] = {}
+    # Run records: the turn's batch is allocated lazily on the first algorithm
+    # run and handed back to the caller through turn_ctx (it stamps the message).
+    lineage_state["__ctx"] = turn_ctx if turn_ctx is not None else {}
+    lineage_state["__ctx"].setdefault("conversation_id", conversation_id)
 
     # ── Cross-turn continuation ──────────────────────────────────────────────
     # Seed working/lineage from a prior turn's pipeline head so "再插值一下"

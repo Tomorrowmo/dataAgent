@@ -168,10 +168,11 @@ async def _persist_dataset(
 ) -> Dataset:
     """Write one DataFrame as parquet + a Dataset row (no commit — the caller
     commits once after all sheets, so a multi-sheet import is atomic)."""
-    settings = get_settings()
-    user_dir = settings.upload_path / f"user_{owner_id}"
-    user_dir.mkdir(parents=True, exist_ok=True)
-    out_path = user_dir / f"{_safe_name(name)}_{int(time.time() * 1000)}_{idx}.parquet"
+    # 改进清单-3 · F1: uploads → sources/, run outputs → runs/YYYY-MM/; the row
+    # stores the path RELATIVE to the upload root.
+    from . import storage
+    target_dir = storage.runs_dir(owner_id) if kind == "derived" else storage.user_dir(owner_id, "sources")
+    out_path = target_dir / f"{_safe_name(name)}_{int(time.time() * 1000)}_{idx}.parquet"
     df.to_parquet(out_path, index=False)
 
     schema = {
@@ -192,7 +193,7 @@ async def _persist_dataset(
         name=name,
         description=description,
         filename=filename,
-        storage_path=str(out_path),
+        storage_path=storage.to_rel(out_path),
         file_format=file_format,
         rows=int(len(df)),
         columns=int(df.shape[1]),
@@ -202,6 +203,11 @@ async def _persist_dataset(
         derived_from=derived_from,
         lineage=lineage or {},
     )
+    if kind == "derived":
+        # un-kept intermediates expire (改进清单-3 · R2)
+        from .retention import get_policy
+        from datetime import datetime, timedelta, timezone
+        ds.expires_at = datetime.now(timezone.utc) + timedelta(days=(await get_policy(session))["retention_days"])
     session.add(ds)
     await session.flush()
     return ds

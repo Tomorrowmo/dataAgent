@@ -182,7 +182,7 @@ async def run_template(
     ds = await _owned_ds(session, body.dataset_id, user)
     try:
         out = await run_flow(session, user.id, tpl.name, list(tpl.steps or []), ds,
-                             overrides=body.param_overrides, save_result=body.save_result)
+                             overrides=body.param_overrides, save_result=body.save_result, template_id=tpl.id)
     except FlowError as e:
         raise HTTPException(422, str(e))
     out.pop("events", None)
@@ -217,7 +217,8 @@ async def run_template_in_chat(
         await session.commit()
         await session.refresh(conv)
     try:
-        out = await run_flow(session, user.id, tpl.name, list(tpl.steps or []), ds)
+        out = await run_flow(session, user.id, tpl.name, list(tpl.steps or []), ds,
+                             template_id=tpl.id, entry="chat", conversation_id=conv.id)
     except FlowError as e:
         raise HTTPException(422, str(e))
     n_ok = sum(1 for s in out["steps"] if s.get("status") == "ok")

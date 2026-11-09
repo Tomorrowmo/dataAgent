@@ -101,13 +101,17 @@ async def plan_rerun(session: AsyncSession, owner_id: int, conv: Conversation,
 
 
 async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
-                        resolved: Dict[int, Dataset]) -> List[Dict[str, Any]]:
+                        resolved: Dict[int, Dataset], conversation_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Replay the plan; returns chat-style events (tool_call / tool_result)."""
     events: List[Dict[str, Any]] = []
     working: Dict[int, Any] = {}
     frames: Dict[int, List[Any]] = {}
     lineage: Dict[int, Tuple[int, str]] = {}
     refs: Dict[int, Tuple[Any, Dict[str, Any]]] = {}   # id(frame) → (frame, input ref) — same as the agent
+    from .runs import finish_group, new_group, record_run, root_name
+    group = await new_group(session, owner_id, "chat", conversation_id=conversation_id)
+    step_runs: Dict[int, Tuple[int, Optional[int]]] = {}
+    statuses: List[str] = []
     for i, st in enumerate(plan.steps):
         ds = resolved[i]
         args = {"slug": st.slug, "params": st.params}
@@ -118,6 +122,7 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
         hit = refs.get(id(df))
         input_ref = dict(hit[1]) if hit is not None and hit[0] is df else {"kind": "dataset", "dataset_id": ds.id}
         spec = registry.get_builtin(st.slug)
+        row = None
         if spec:
             result = registry.execute_builtin(st.slug, df, st.params)
             label = spec.name
@@ -143,7 +148,7 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
             parent_id, parent_name = lineage.get(ds.id, (ds.id, ds.name))
             d = await _persist_dataset(
                 session, owner_id=owner_id, df=out_df,
-                name=f"{ds.name} · {label}", filename=f"{st.slug}.parquet",
+                name=f"{await root_name(session, ds)} · {label}", filename=f"{st.slug}.parquet",
                 file_format="derived", description=f"由「{parent_name}」经『{label}』得到（重新运行）",
                 kind="derived", derived_from=parent_id,
                 lineage={"from": parent_id, "from_name": parent_name,
@@ -152,7 +157,22 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
             await session.commit()
             lineage[ds.id] = (d.id, d.name)
             result["derived_dataset"] = {"id": d.id, "name": d.name}
+        if input_ref.get("kind") == "step" and input_ref.get("step") in step_runs:
+            r_in, r_ds = {"kind": "run", "run_id": step_runs[input_ref["step"]][0]}, step_runs[input_ref["step"]][1]
+        else:
+            r_in, r_ds = {"kind": "dataset", "dataset_id": ds.id}, ds.id
+        derived = (result.get("derived_dataset") or {}).get("id")
+        run = await record_run(session, group, seq=len(step_runs) + 1, slug=st.slug, label=label, result=result,
+                               params=st.params, input_ref=r_in, dataset_id=r_ds, algorithm=row,
+                               result_dataset_id=derived, output_role=result["provenance"].get("output_role"))
+        step_runs[i] = (run.id, derived)
+        statuses.append(run.status)
+        result["provenance"]["run_id"] = run.id
+        result["provenance"]["run_code"] = f"R-{group.seq_no:04d}.{run.seq}"
+        await session.commit()
         events.append({"kind": "tool_result", "payload": {"action": "run_tool", "result": scrub(result)}})
         if result.get("status") != "ok":
             break   # later steps depend on this one — stop, the event shows the error
+    finish_group(group, statuses)
+    await session.commit()
     return events

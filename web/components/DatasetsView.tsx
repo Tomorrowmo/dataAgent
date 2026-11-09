@@ -12,13 +12,16 @@ import { buildPrompt, type RecipeId } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
 import DatasetChart from '@/components/DatasetChart';
 import DataTable from '@/components/DataTable';
+import { DatasetFilters, EMPTY_FILTER, ProvenanceCard, RetentionBanner, daysLeft, filterActive, fmtLocal, matchFilter, originLabel, type DsFilter } from '@/components/DatasetLifecycle';
 import dynamic from 'next/dynamic';
 // three / @react-three are browser-only (reference window/self) — client-only load.
 const MeshViewer3D = dynamic(() => import('@/components/MeshViewer3D'), { ssr: false });
 
 type NeedsParser = NonNullable<UploadResp['needs_parser']>;
 
-export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset, onDatasetsChanged }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void; onDatasetsChanged?: () => void }) {
+export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBackToChat, onActiveDataset, onDatasetsChanged, onOpenConversation, onOpenTemplate }: { onAsk?: (prompt: string, datasetId: number) => void; onGoSettings?: () => void; focusDataset?: { id: number; nonce: number } | null; onBackToChat?: () => void; onActiveDataset?: (id: number | null) => void; onDatasetsChanged?: () => void; onOpenConversation?: (id: number) => void; onOpenTemplate?: (id: number) => void }) {
+  const [filter, setFilter] = useState<DsFilter>(EMPTY_FILTER);
+  const [retentionKey, setRetentionKey] = useState(0);
   const t = useT();
   // True after arriving here via "查看完整表格" from a conversation → show a 返回 link.
   const [cameFromChat, setCameFromChat] = useState(false);
@@ -174,17 +177,16 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
     setGcing(true);
     try {
       const preview = await api.gcDatasets(true);
-      if (preview.count === 0) { setError('没有可清理的中间结果(近 2 小时内的、已保留的、以及正在使用的都会保留)。'); return; }
-      const mb = (preview.freed_bytes / 1_000_000).toFixed(1);
-      if (!confirm(`将清理 ${preview.count} 个未保留的中间结果数据集,释放约 ${mb} MB。\n(已「保留」的、源数据、正在用于流水线的不受影响。)\n继续?`)) return;
+      if (preview.count === 0) { setError('没有可清理的中间结果（已保留的、正在使用的、以及它们的上游都会保留）。'); return; }
+      if (!confirm(`立即清理 ${preview.count} 份未保留的中间结果的数据？\n运行记录和血缘会保留，之后可以重跑或复现。\n（已保留的、原始数据、正在用于分析的不受影响。）`)) return;
       await api.gcDatasets(false);
-      if (selected && preview.deleted.some((d) => d.id === selected.id)) setSelected(null);
       await refresh();
+      setRetentionKey((k) => k + 1);
     } catch (e) { setError((e as Error).message); }
     finally { setGcing(false); }
   }
 
-  const derivedCount = datasets.filter((d) => (d.kind === 'derived' || d.derived_from != null) && !d.kept).length;
+  const derivedCount = datasets.filter((d) => (d.kind === 'derived' || d.derived_from != null) && !d.kept && d.state !== 'cleaned').length;
 
   return (
     <div className="flex h-full">
@@ -233,10 +235,11 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
             </button>
           )}
         </div>
+        <DatasetFilters f={filter} onChange={setFilter} />
         <div className="flex-1 overflow-y-auto scroll-hide p-2">
           {datasets.length === 0 && <div className="text-sm text-ink-500 text-center mt-8 px-4">{t('ds.empty')}</div>}
           <DatasetTree datasets={datasets} selectedId={selected?.id ?? null}
-            onSelect={setSelected} onDelete={handleDelete} onKeep={handleKeep} />
+            onSelect={setSelected} onDelete={handleDelete} onKeep={handleKeep} filter={filter} />
         </div>
       </div>
 
@@ -258,8 +261,11 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
             <AlertTriangle className="w-4 h-4" /> {error}
           </div>
         )}
+        <RetentionBanner refreshKey={retentionKey} onChanged={() => refresh()} />
         {!selected && <div className="grid place-items-center h-full text-ink-500">{t('ds.select')}</div>}
-        {selected && <DatasetPreview ds={selected} t={t} datasets={datasets} onPromote={() => handlePromote(selected.id)} onKeep={(k) => handleKeep(selected.id, k)} onSubsetSaved={(d) => { refresh(); setSelected(d); }} onAsk={onAsk} />}
+        {selected && <DatasetPreview ds={selected} t={t} datasets={datasets} onPromote={() => handlePromote(selected.id)} onKeep={(k) => handleKeep(selected.id, k)} onSubsetSaved={(d) => { refresh(); setSelected(d); }} onAsk={onAsk}
+          onOpenConversation={onOpenConversation} onOpenTemplate={onOpenTemplate}
+          onNewDataset={async (id) => { await refresh(); const d = (await api.listDatasets()).find((x) => x.id === id); if (d) setSelected(d); }} />}
       </div>
     </div>
   );
@@ -268,10 +274,24 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
 /** Lineage tree: source datasets are roots; each derived dataset nests under
  *  the step that produced it (原始 → 去噪 → 检测 → …), collapsible. This is the
  *  methodology made visible — datasets are a DAG, not a flat list. */
-function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
+function DatasetTree({ datasets: all, selectedId, onSelect, onDelete, onKeep, filter }: {
   datasets: Dataset[]; selectedId: number | null; onSelect: (d: Dataset) => void; onDelete: (id: number) => void; onKeep: (id: number, kept: boolean) => void;
+  filter: DsFilter;
 }) {
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const [expandedState, setExpanded] = useState<Set<number>>(() => new Set());
+  // Filtering keeps the lineage tree: a match is shown with its ancestors.
+  const active = filterActive(filter);
+  const allById = new Map(all.map((d) => [d.id, d]));
+  const visible = new Set<number>();
+  if (active) {
+    for (const d of all) {
+      if (!matchFilter(d, filter, 3)) continue;
+      let cur: Dataset | undefined = d; let guard = 0;
+      while (cur && !visible.has(cur.id) && guard++ < 1000) { visible.add(cur.id); cur = cur.derived_from != null ? allById.get(cur.derived_from) : undefined; }
+    }
+  }
+  const datasets = active ? all.filter((d) => visible.has(d.id)) : all;
+  const expanded = active ? new Set(datasets.map((d) => d.id)) : expandedState;
   const byId = new Map(datasets.map((d) => [d.id, d]));
   const childrenOf = (id: number) => datasets.filter((d) => d.derived_from === id).sort((a, b) => a.id - b.id);
   const roots = datasets.filter((d) => d.derived_from == null || !byId.has(d.derived_from)).sort((a, b) => b.id - a.id);
@@ -293,12 +313,21 @@ function DatasetTree({ datasets, selectedId, onSelect, onDelete, onKeep }: {
               <ChevronRight className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
             </button>
           ) : <span className="w-4 shrink-0" />}
-          <button onClick={() => onSelect(d)} className="flex-1 min-w-0 text-left py-1.5 flex items-center gap-1.5">
-            {isDerived ? <span className="font-mono text-xs text-ink-500 shrink-0 w-3.5 text-center">↳</span> : <Database className="w-3.5 h-3.5 text-brand-600 shrink-0" strokeWidth={1.5} />}
-            <span className={`truncate text-[13px] ${isDerived ? 'font-mono text-xs' : ''}`}>{label}</span>
-            <span className="text-[11px] font-mono text-ink-500 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
-            {kids.length > 0 && <span className="text-[10px] text-ink-400 shrink-0">· {kids.length} 步</span>}
-            {isDerived && d.kept && <Pin className="w-3 h-3 text-ink-500 shrink-0" />}
+          <button onClick={() => onSelect(d)} className={`flex-1 min-w-0 text-left py-1 flex flex-col ${d.state === 'cleaned' ? 'opacity-60' : ''}`}
+            title={isDerived ? `${originLabel(d)} · ${fmtLocal(d.created_at)}${d.origin?.code ? ' · ' + d.origin.code : ''}` : d.name}>
+            <span className="flex items-center gap-1.5 min-w-0">
+              {isDerived ? <span className="font-mono text-xs text-ink-500 shrink-0 w-3.5 text-center">↳</span> : <Database className="w-3.5 h-3.5 text-brand-600 shrink-0" strokeWidth={1.5} />}
+              <span className={`truncate text-[13px] ${isDerived ? 'font-mono text-xs' : ''} ${d.state === 'cleaned' ? 'line-through decoration-ink-400' : ''}`}>{label}</span>
+              <span className="text-[11px] font-mono text-ink-500 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
+              {kids.length > 0 && <span className="text-[10px] text-ink-400 shrink-0">· {kids.length} 步</span>}
+              {isDerived && d.kept && <Pin className="w-3 h-3 text-ink-500 shrink-0" />}
+              {d.state === 'cleaned' && <span className="text-[10px] px-1 rounded-sm bg-ink-150 text-ink-600 shrink-0">已清理</span>}
+              {d.state !== 'cleaned' && !d.kept && (() => { const left = daysLeft(d.expires_at); return left != null && left <= 3
+                ? <span className="text-[10px] px-1 rounded-sm bg-warning-50 text-warning-700 border border-warning-200 shrink-0">{left <= 0 ? '已到期' : `剩 ${Math.ceil(left)} 天`}</span> : null; })()}
+            </span>
+            {isDerived && (
+              <span className="pl-5 text-[10px] text-ink-500 truncate">{originLabel(d)} · {fmtLocal(d.created_at)}{d.origin?.code ? ` · ${d.origin.code}` : ''}</span>
+            )}
           </button>
           {isDerived && (
             <button
@@ -335,7 +364,7 @@ const SUGG_META: Record<string, { zh: string; en: string }> = {
 };
 const RECIPE_SLUGS = new Set<string>(['smooth', 'drivers', 'fit', 'outliers', 'corr', 'pca']);
 
-function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onAsk }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void; onAsk?: (prompt: string, datasetId: number) => void }) {
+function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onAsk, onOpenConversation, onOpenTemplate, onNewDataset }: { ds: Dataset; t: (k: string) => string; datasets: Dataset[]; onPromote: () => void; onKeep: (kept: boolean) => void; onSubsetSaved?: (d: Dataset) => void; onAsk?: (prompt: string, datasetId: number) => void; onOpenConversation?: (id: number) => void; onOpenTemplate?: (id: number) => void; onNewDataset?: (id: number) => void }) {
   const cols = ds.schema.columns ?? [];
   const lang = useLangStore((s) => s.lang);
   const isDerived = ds.kind === 'derived' || ds.derived_from != null;
@@ -350,7 +379,7 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
   useEffect(() => {
     setProfile(null);
     let alive = true;
-    api.profileDataset(ds.id).then((p) => { if (alive) setProfile(p); }).catch(() => {});
+    if (ds.state !== 'cleaned') api.profileDataset(ds.id).then((p) => { if (alive) setProfile(p); }).catch(() => {});
     return () => { alive = false; };
   }, [ds.id]);
   async function explain() {
@@ -398,7 +427,7 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
           </div>
           <p className="mt-0.5 text-xs font-mono text-ink-600">{ds.filename} · {ds.file_format} · {ds.rows.toLocaleString()} {t('side.rows')} × {ds.columns} {t('side.cols')}</p>
         </div>
-        <div className="shrink-0 flex items-center gap-2">
+        <div className={`shrink-0 flex items-center gap-2 ${ds.state === 'cleaned' ? 'hidden' : ''}`}>
           <button onClick={explain} disabled={explaining}
             className="inline-flex items-center gap-1.5 text-[13px] h-8 px-3 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 disabled:opacity-50">
             {explaining ? <Loader2 className="w-4 h-4 animate-spin" /> : <AiMark />} 解释
@@ -415,6 +444,13 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
           </button>
         </div>
       </div>
+      <ProvenanceCard ds={ds} onOpenConversation={onOpenConversation} onOpenTemplate={onOpenTemplate} onNewDataset={onNewDataset} />
+      {ds.state === 'cleaned' ? (
+        <div className="rounded-md border border-ink-200 bg-ink-50 px-4 py-6 text-sm text-ink-600 text-center">
+          这份中间结果的数据已于 {fmtLocal(ds.cleaned_at ?? null) || '之前'} 清理，名称和血缘仍保留。
+          {ds.run_id ? '需要时可以在上方「重跑」或「复现」。' : '它产生于升级之前，没有运行记录，无法自动重跑；可以回到原对话或流程重新运行。'}
+        </div>
+      ) : <>
       {profile && (
         <div className="mb-5 rounded-md bg-white border border-ink-200 overflow-hidden flex items-stretch">
           <div className="flex-1 p-4">
@@ -537,6 +573,7 @@ function DatasetPreview({ ds, t, datasets, onPromote, onKeep, onSubsetSaved, onA
         <h3 className="font-medium mb-3">数据表 · 排序 / 筛选 / 选择另存</h3>
         <DataTable ds={ds} onSaved={onSubsetSaved} />
       </div>
+      </>}
     </div>
   );
 }

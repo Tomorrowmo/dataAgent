@@ -64,6 +64,18 @@ class Dataset(Base):
     # never swept. See services.datasets.gc_derived_datasets.
     kept: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # ── provenance & retention (改进清单-3 · 第 3 步) ──
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)   # the run that produced it
+    # Un-kept intermediates expire (default 20 days after creation). The user is
+    # reminded 3 days ahead; deletion requires that reminder to have been seen
+    # (notice_acked_at, per item) — or the 60-day backstop.
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    extended: Mapped[bool] = mapped_column(Boolean, default=False)       # user postponed → no 60-day backstop
+    notice_acked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    state: Mapped[str] = mapped_column(String(16), default="active")     # active | cleaned
+    cleaned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    clean_error: Mapped[str] = mapped_column(Text, default="")
+
 
 class Algorithm(Base):
     """A callable tool — built-in, user-uploaded, or LLM-generated."""
@@ -159,31 +171,62 @@ class Skill(Base):
     )
 
 
+class RunGroup(Base):
+    """A batch of runs started by ONE user action: one chat turn, one flow run,
+    one library execution. Shown as R-<seq_no>; its runs are R-<seq_no>.<seq>."""
+
+    __tablename__ = "run_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    seq_no: Mapped[int] = mapped_column(Integer)                        # per-user, 1, 2, 3 …
+    entry: Mapped[str] = mapped_column(String(16))                      # chat | library | flow
+    target: Mapped[str] = mapped_column(String(16), default="algorithm")  # algorithm | flow
+    conversation_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    template_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")  # running | ok | error | partial | cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Run(Base):
-    """A single execution of an algorithm against a dataset."""
+    """One algorithm execution (改进清单-3 · D1). Kept ≥ 180 days as the
+    provenance record even after its data is cleaned up."""
 
     __tablename__ = "runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    algorithm_id: Mapped[int] = mapped_column(ForeignKey("algorithms.id", ondelete="CASCADE"))
-    dataset_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
-    )
-
+    group_id: Mapped[int] = mapped_column(ForeignKey("run_groups.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int] = mapped_column(Integer, default=1)                # order inside the group
+    # what ran — algorithm_id survives a (soft) delete; slug+version keep it readable
+    algorithm_id: Mapped[Optional[int]] = mapped_column(ForeignKey("algorithms.id", ondelete="SET NULL"), nullable=True)
+    algorithm_slug: Mapped[str] = mapped_column(String(120), default="")
+    algorithm_source: Mapped[str] = mapped_column(String(16), default="builtin")
+    algorithm_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    app_version: Mapped[str] = mapped_column(String(32), default="")
+    label: Mapped[str] = mapped_column(String(255), default="")
     params: Mapped[dict] = mapped_column(JSON, default=dict)
-    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|ok|error
+    # what it ran on: {"kind": "dataset", "dataset_id": …} | {"kind": "run", "run_id": …}
+    input_ref: Mapped[dict] = mapped_column(JSON, default=dict)
+    dataset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
+    result_dataset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True)
+    artifact_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    output_role: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="ok")      # ok | error | cancelled
     error: Mapped[str] = mapped_column(Text, default="")
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
-
-    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
-    result_dataset_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
-    )
-    result_artifacts: Mapped[list] = mapped_column(JSON, default=list)
-    logs: Mapped[str] = mapped_column(Text, default="")
-
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)   # ≤ 20 preview rows
+    data_cleaned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class AppSetting(Base):
+    """Admin-tunable key/value settings (e.g. retention days)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
 
 
 class Artifact(Base):
@@ -206,6 +249,7 @@ class Artifact(Base):
     run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     # active | cleaned  (cleaned = file removed, row kept for provenance)
     state: Mapped[str] = mapped_column(String(16), default="active")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

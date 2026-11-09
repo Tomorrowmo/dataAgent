@@ -169,7 +169,17 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.exception("bootstrap_admin failed; starting without a seeded admin")
     threading.Thread(target=_warmup, args=(app,), daemon=True, name="warmup").start()
+    # 改进清单-3 · R1: retention sweep — once now (catch-up after downtime), then daily.
+    import asyncio as _asyncio
+    retention_task = None
+    try:
+        from .services.retention import daily_loop
+        retention_task = _asyncio.create_task(daily_loop())
+    except Exception:  # noqa: BLE001
+        logger.exception("could not start the retention job")
     yield
+    if retention_task is not None:
+        retention_task.cancel()
 
 
 app = FastAPI(title="RLab Cortex Data Agent API", version=APP_VERSION, lifespan=lifespan)
@@ -195,6 +205,12 @@ if settings.oidc_enabled:
         https_only=False,  # TLS is terminated at the reverse proxy; cookie still flows
     )
     logger.info("OIDC enabled — SessionMiddleware mounted (issuer=%s)", settings.oidc_issuer)
+
+@app.exception_handler(FileNotFoundError)
+async def _file_gone(request: Request, exc: FileNotFoundError):
+    """A dataset whose data was cleaned up (or whose file went missing)."""
+    return JSONResponse({"detail": "这份数据已被清理或文件已丢失，无法读取。", "gone": True}, status_code=410)
+
 
 # Paths that must work before warmup finishes (no heavy deps needed).
 _ALWAYS_OPEN = ("/api/health", "/api/ready", "/api/about", "/openapi.json", "/docs", "/redoc")

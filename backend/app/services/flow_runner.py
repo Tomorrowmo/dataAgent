@@ -124,7 +124,8 @@ async def newer_versions(session: AsyncSession, owner_id: int, steps: List[Dict[
 
 async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: List[Dict[str, Any]],
                    ds: Dataset, *, overrides: Optional[Dict[str, Dict[str, Any]]] = None,
-                   save_result: bool = True) -> Dict[str, Any]:
+                   save_result: bool = True, template_id: Optional[int] = None,
+                   entry: str = "flow", conversation_id: Optional[int] = None) -> Dict[str, Any]:
     """Execute a flow on `ds`. Stops at the first failing step (status
     'partial'). Returns step results, the derived chain, the final frame and
     chat-style events (tool_call / tool_result) for writing into a conversation."""
@@ -140,6 +141,12 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
     events: List[Dict[str, Any]] = []
     parent_id, parent_name = ds.id, ds.name
     status = "ok"
+    # 改进清单-3 · D2: one run group per flow execution, one run per step.
+    from .runs import finish_group, new_group, record_run, root_name
+    group = await new_group(session, owner_id, entry, "flow", template_id=template_id, conversation_id=conversation_id)
+    root = await root_name(session, ds)
+    run_of_step: Dict[int, int] = {}
+    statuses: List[str] = []
 
     for i, st in enumerate(steps):
         slug = st.get("slug")
@@ -164,6 +171,7 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
             in_ref = {"kind": "step", "step": inp}
 
         algo_info: Dict[str, Any] = {"slug": slug}
+        row = None
         if registry.get_builtin(str(slug)):
             res = registry.execute_builtin(str(slug), in_df, params)
             algo_info["source"] = "builtin"
@@ -192,7 +200,7 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
             if save_result:
                 d = await _persist_dataset(
                     session, owner_id=owner_id, df=out_df,
-                    name=f"{ds.name} · {label}", filename=f"{label}.parquet",
+                    name=f"{root} · {label}", filename=f"{label}.parquet",
                     file_format="derived", description=f"流程「{tpl_name}」第 {i + 1} 步:{label}"
                                 + ("（报告,不参与后续数据流）" if role == "report" else ""),
                     idx=i, kind="derived", derived_from=in_parent[0],
@@ -211,14 +219,27 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
                     parent_id, parent_name = out_ds[i]
         res["provenance"] = {"step": i, "input": in_ref, "dataset_id": ds.id, "algorithm": algo_info,
                              "label": label, "params": params, "output_role": role}
+        if in_ref.get("kind") == "step" and in_ref.get("step") in run_of_step:
+            r_in, r_ds = {"kind": "run", "run_id": run_of_step[in_ref["step"]]}, out_ds.get(in_ref["step"], (None,))[0]
+        else:
+            r_in = {"kind": "dataset", "dataset_id": in_parent[0]}
+            r_ds = in_parent[0]
+        run = await record_run(session, group, seq=len(run_of_step) + 1, slug=str(slug), label=str(label), result=res,
+                               params=params, input_ref=r_in, dataset_id=r_ds, algorithm=row,
+                               version=st.get("version"), result_dataset_id=out_ds.get(i, (None,))[0], output_role=role)
+        run_of_step[i] = run.id
+        statuses.append(run.status)
+        res["provenance"]["run_id"] = run.id
+        res["provenance"]["run_code"] = f"R-{group.seq_no:04d}.{run.seq}"
+        entry["run_code"] = res["provenance"]["run_code"]
         events.append({"kind": "tool_result", "payload": {"action": "run_tool", "result": scrub(res)}})
         step_results.append(entry)
         if not ok:
             status = "partial" if any(r.get("status") == "ok" for r in step_results) else "error"
             break   # 改进清单-3 · L2c: later steps depend on this one — stop here
 
-    if derived_chain:
-        await session.commit()
+    finish_group(group, statuses)
+    await session.commit()
     final_df = cur_df if any(s.get("input") is None for s in steps if _is_tool(s)) else (
         outputs[max(outputs)] if outputs else start_df)
     return {
@@ -228,6 +249,7 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
         "derived_chain": derived_chain,
         "new_dataset": derived_chain[-1] if derived_chain else None,
         "events": events,
+        "run_group_code": f"R-{group.seq_no:04d}",
     }
 
 

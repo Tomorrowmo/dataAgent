@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, type RetentionPolicy } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 
 type PresetId = 'deepseek' | 'qwen' | 'anthropic' | 'openai' | 'custom';
@@ -87,6 +87,7 @@ export default function SettingsView() {
   const [model, setModel] = useState('');
   const [key, setKey] = useState('');
 
+  const [isAdmin, setIsAdmin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -96,6 +97,7 @@ export default function SettingsView() {
   useEffect(() => {
     api.me().then((u) => {
       setHasKey(u.has_llm_key);
+      setIsAdmin(!!u.is_admin);
       setEmail(u.email);
       setName(u.name);
       const detected = presetFor(u.llm_base_url || '');
@@ -223,6 +225,40 @@ export default function SettingsView() {
           {busy ? t('set.llm.saving') : saved ? t('set.llm.saved') : t('set.llm.save')}
         </button>
         {error && <div className="mt-3 text-sm text-red-600 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div>}
+      </div>
+      {isAdmin && <RetentionSettings />}
+    </div>
+  );
+}
+
+/** Admins: how long un-kept intermediate results live (改进清单-3 · R4). */
+function RetentionSettings() {
+  const [p, setP] = useState<RetentionPolicy | null>(null);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { api.retentionPolicy().then(setP).catch(() => {}); }, []);
+  if (!p) return null;
+  const field = (k: keyof RetentionPolicy, label: string, hint: string) => (
+    <label className="block">
+      <span className="text-sm text-ink-800">{label}</span>
+      <span className="ml-2 text-xs text-ink-500">{hint}</span>
+      <div className="mt-1 flex items-center border border-ink-300 rounded h-8 w-40 overflow-hidden">
+        <input type="number" min={1} value={p[k]} onChange={(e) => setP({ ...p, [k]: Math.max(1, Number(e.target.value) || 1) })}
+          className="flex-1 min-w-0 h-full px-2 text-right font-mono text-sm border-0" />
+        <span className="px-2 h-full inline-flex items-center border-l border-ink-200 bg-ink-50 text-xs text-ink-600">天</span>
+      </div>
+    </label>
+  );
+  return (
+    <div className="bg-white rounded-md border border-ink-200 p-5 mt-5 space-y-3">
+      <h3 className="font-medium">中间结果保留（管理员）</h3>
+      <p className="text-xs text-ink-600 leading-relaxed">未保留的中间结果到期后删除数据，运行记录和血缘保留。到期前提醒用户；用户确认过提醒才删除，从未确认的最迟在兜底期限删除。已保留和正在使用的数据永不自动清理。</p>
+      {field('retention_days', '保留期', '每份中间结果从产生起')}
+      {field('notice_days', '提前提醒', '到期前多少天出现在「即将清理」')}
+      {field('max_days', '兜底期限', '从未确认提醒时，创建后多少天删除')}
+      <div className="flex items-center gap-3">
+        <button onClick={async () => { try { setP(await api.setRetentionPolicy(p)); setMsg('已保存'); } catch (e) { setMsg((e as Error).message); } }}
+          className="h-8 px-3 rounded border border-brand-600 bg-brand-600 text-white text-sm hover:bg-brand-700">保存</button>
+        {msg && <span className="text-xs text-ink-600">{msg}</span>}
       </div>
     </div>
   );

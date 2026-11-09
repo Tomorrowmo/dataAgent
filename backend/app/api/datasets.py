@@ -48,9 +48,16 @@ class DatasetResp(BaseModel):
     derived_from: Optional[int] = None
     lineage: dict = Field(default_factory=dict)
     kept: bool = False              # pinned derived → survives auto-GC
+    # provenance & retention (改进清单-3 · 第 3 步)
+    state: str = "active"           # active | cleaned
+    created_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    cleaned_at: Optional[str] = None
+    run_id: Optional[int] = None
+    origin: Dict[str, Any] = Field(default_factory=dict)   # {code, entry, conversation:{id,title}, template:{id,name}, algorithm}
 
     @classmethod
-    def from_orm_(cls, ds: Dataset) -> "DatasetResp":
+    def from_orm_(cls, ds: Dataset, origin: Optional[Dict[str, Any]] = None) -> "DatasetResp":
         return cls(
             id=ds.id, name=ds.name, description=ds.description, filename=ds.filename,
             file_format=ds.file_format, rows=ds.rows, columns=ds.columns,
@@ -59,7 +66,43 @@ class DatasetResp(BaseModel):
             derived_from=getattr(ds, "derived_from", None),
             lineage=getattr(ds, "lineage", {}) or {},
             kept=bool(getattr(ds, "kept", False)),
+            state=getattr(ds, "state", None) or "active",
+            created_at=ds.created_at.isoformat() if ds.created_at else None,
+            expires_at=ds.expires_at.isoformat() if getattr(ds, "expires_at", None) and not ds.kept else None,
+            cleaned_at=ds.cleaned_at.isoformat() if getattr(ds, "cleaned_at", None) else None,
+            run_id=getattr(ds, "run_id", None),
+            origin=origin or {},
         )
+
+
+async def _origins(session: AsyncSession, rows: List[Dataset]) -> Dict[int, Dict[str, Any]]:
+    """Batch: dataset id → where it came from (run code, entry, conversation /
+    flow name). One query per table, not per dataset."""
+    from ..db.models import Conversation, FlowTemplate, Run, RunGroup
+    run_ids = [d.run_id for d in rows if getattr(d, "run_id", None)]
+    if not run_ids:
+        return {}
+    runs = {r.id: r for r in (await session.execute(select(Run).where(Run.id.in_(run_ids)))).scalars().all()}
+    gids = {r.group_id for r in runs.values()}
+    groups = {g.id: g for g in (await session.execute(select(RunGroup).where(RunGroup.id.in_(gids)))).scalars().all()} if gids else {}
+    cids = {g.conversation_id for g in groups.values() if g.conversation_id}
+    tids = {g.template_id for g in groups.values() if g.template_id}
+    convs = {c.id: c.title for c in (await session.execute(select(Conversation).where(Conversation.id.in_(cids)))).scalars().all()} if cids else {}
+    tpls = {t.id: t.name for t in (await session.execute(select(FlowTemplate).where(FlowTemplate.id.in_(tids)))).scalars().all()} if tids else {}
+    out: Dict[int, Dict[str, Any]] = {}
+    for d in rows:
+        r = runs.get(getattr(d, "run_id", None) or -1)
+        g = groups.get(r.group_id) if r else None
+        if not r or not g:
+            continue
+        o: Dict[str, Any] = {"code": f"R-{g.seq_no:04d}.{r.seq}", "entry": g.entry, "run_id": r.id,
+                             "algorithm": {"slug": r.algorithm_slug, "label": r.label, "version": r.algorithm_version}}
+        if g.conversation_id:
+            o["conversation"] = {"id": g.conversation_id, "title": convs.get(g.conversation_id), "exists": g.conversation_id in convs}
+        if g.template_id:
+            o["template"] = {"id": g.template_id, "name": tpls.get(g.template_id), "exists": g.template_id in tpls}
+        out[d.id] = o
+    return out
 
 
 class UploadResp(BaseModel):
@@ -431,11 +474,9 @@ async def _ingest_parsed(
 ) -> Dataset:
     """Promote a parquet produced by a parser run into a Dataset record."""
     import time
-    settings = get_settings()
-    user_dir = settings.upload_path / f"user_{owner_id}"
-    user_dir.mkdir(parents=True, exist_ok=True)
+    from ..services import storage
     stem = Path(original_filename).stem.replace(" ", "_")
-    final = user_dir / f"{stem}_{int(time.time() * 1000)}.parquet"
+    final = storage.user_dir(owner_id, "sources") / f"{stem}_{int(time.time() * 1000)}.parquet"
     shutil.copy(parsed_parquet_path, final)
     # A sandbox scratch output has now been consumed — don't let it pile up.
     from ..services.artifacts import discard_scratch
@@ -460,7 +501,7 @@ async def _ingest_parsed(
         name=display_name or stem,
         description=description,
         filename=original_filename,
-        storage_path=str(final),
+        storage_path=storage.to_rel(final),
         file_format=Path(original_filename).suffix.lstrip(".").lower() or "custom",
         rows=int(len(df)),
         columns=int(df.shape[1]),
@@ -485,7 +526,8 @@ async def list_datasets(user: User = Depends(current_user), session: AsyncSessio
     rows = (await session.execute(
         select(Dataset).where(Dataset.owner_id == user.id).order_by(Dataset.id.desc())
     )).scalars().all()
-    return [DatasetResp.from_orm_(d) for d in rows]
+    origins = await _origins(session, list(rows))
+    return [DatasetResp.from_orm_(d, origins.get(d.id)) for d in rows]
 
 
 @router.post("/{dataset_id}/promote", response_model=DatasetResp)
@@ -524,6 +566,12 @@ async def keep_dataset(
     if ds is None:
         raise HTTPException(404, "dataset not found")
     ds.kept = bool(body.kept)
+    if not ds.kept and ds.kind == "derived":
+        # un-pinned → a fresh retention period and a fresh reminder
+        from datetime import datetime, timedelta, timezone
+        from ..services.retention import get_policy
+        ds.expires_at = datetime.now(timezone.utc) + timedelta(days=(await get_policy(session))["retention_days"])
+        ds.notice_acked_at = None
     await session.commit()
     await session.refresh(ds)
     return DatasetResp.from_orm_(ds)
@@ -536,11 +584,128 @@ async def gc_datasets(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Reclaim un-kept intermediate datasets. `dry_run=true` previews the count
-    without deleting (used to label the 清理 button)."""
-    return await gc_derived_datasets(
-        session, owner_id=user.id, grace_minutes=max(0, grace_minutes), dry_run=dry_run,
-    )
+    """The manual 「清理中间结果」 button: clean every un-kept, unprotected
+    intermediate NOW (rows stay, marked 已清理). dry_run=true only counts them."""
+    from ..services.retention import protected_ids, sweep_user
+    if dry_run:
+        rows = (await session.execute(select(Dataset).where(Dataset.owner_id == user.id))).scalars().all()
+        prot = await protected_ids(session, user.id, list(rows))
+        n = sum(1 for d in rows if d.kind == "derived" and not d.kept and d.state == "active" and d.id not in prot)
+        return {"count": n, "dry_run": True}
+    return await sweep_user(session, user.id, force_all=True)
+
+
+class RetentionActReq(BaseModel):
+    ids: List[int]
+    action: str   # keep | extend | clean | ack
+
+
+@router.get("/retention")
+async def retention_list(user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    """The 「即将清理」 reminder list + the policy in force."""
+    from ..services.retention import expiring, get_policy
+    return {"items": await expiring(session, user.id), "policy": await get_policy(session)}
+
+
+@router.post("/retention")
+async def retention_act(body: RetentionActReq, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    from ..services.retention import act
+    if body.action not in ("keep", "extend", "clean", "ack"):
+        raise HTTPException(400, "action must be keep / extend / clean / ack")
+    return await act(session, user.id, body.ids, body.action)
+
+
+class RetentionPolicyReq(BaseModel):
+    retention_days: Optional[int] = None
+    notice_days: Optional[int] = None
+    max_days: Optional[int] = None
+
+
+@router.get("/retention/policy")
+async def retention_policy(user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    from ..services.retention import get_policy
+    return await get_policy(session)
+
+
+@router.put("/retention/policy")
+async def retention_policy_set(body: RetentionPolicyReq, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    """Admins only (改进清单-3 · R4)."""
+    if not user.is_admin:
+        raise HTTPException(403, "only an administrator can change the retention policy")
+    vals = {k: v for k, v in body.model_dump().items() if v is not None}
+    if any(v < 1 for v in vals.values()):
+        raise HTTPException(400, "values must be ≥ 1 day")
+    from ..services.retention import set_policy
+    return await set_policy(session, vals)
+
+
+@router.post("/retention/sweep")
+async def retention_sweep(user: User = Depends(current_user)):
+    """Admins: run the scheduled retention sweep now (normally daily)."""
+    if not user.is_admin:
+        raise HTTPException(403, "administrators only")
+    from ..services.retention import sweep_all
+    return await sweep_all()
+
+
+async def _owned_dataset(session: AsyncSession, dataset_id: int, user: User) -> Dataset:
+    ds = (await session.execute(
+        select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
+    )).scalar_one_or_none()
+    if ds is None:
+        raise HTTPException(404, "dataset not found")
+    return ds
+
+
+@router.get("/{dataset_id}/provenance")
+async def dataset_provenance(dataset_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    """The 「产生于」 card: which run produced this dataset, where it was
+    started from, and whether it can be re-run / reproduced (V1)."""
+    from ..db.models import Run
+    from ..services.runs import availability, describe_origin
+    ds = await _owned_dataset(session, dataset_id, user)
+    if not ds.run_id:
+        return {"run": None}
+    run = await session.get(Run, ds.run_id)
+    if run is None or run.owner_id != user.id:
+        return {"run": None}
+    inp = await session.get(Dataset, run.dataset_id) if run.dataset_id else None
+    return {
+        "run": {
+            "id": run.id, "label": run.label, "slug": run.algorithm_slug, "source": run.algorithm_source,
+            "version": run.algorithm_version, "app_version": run.app_version, "params": run.params,
+            "status": run.status, "duration_ms": run.duration_ms, "output_role": run.output_role,
+            "input": {"id": inp.id, "name": inp.name, "state": inp.state} if inp else None,
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+        },
+        "origin": await describe_origin(session, run),
+        "actions": await availability(session, run),
+    }
+
+
+@router.post("/{dataset_id}/rerun")
+async def dataset_rerun(dataset_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    """重跑: the producing algorithm's CURRENT version on the same input."""
+    return await _again(session, dataset_id, user, reproduce=False)
+
+
+@router.post("/{dataset_id}/reproduce")
+async def dataset_reproduce(dataset_id: int, user: User = Depends(current_user), session: AsyncSession = Depends(get_db)):
+    """复现: the algorithm version, params and input used THEN."""
+    return await _again(session, dataset_id, user, reproduce=True)
+
+
+async def _again(session: AsyncSession, dataset_id: int, user: User, *, reproduce: bool):
+    from ..db.models import Run
+    from ..services.runs import RunActionError, execute_again
+    ds = await _owned_dataset(session, dataset_id, user)
+    run = await session.get(Run, ds.run_id) if ds.run_id else None
+    if run is None or run.owner_id != user.id:
+        raise HTTPException(409, "没有找到产生这份数据的运行记录。")
+    try:
+        return await execute_again(session, run, reproduce=reproduce)
+    except RunActionError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.get("/{dataset_id}/export")

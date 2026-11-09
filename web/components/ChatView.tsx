@@ -614,10 +614,11 @@ export default function ChatView({
   const activeDs = datasets.find((d) => d.id === primaryId) ?? null;
   // Top picker shows SOURCE datasets only (+ any currently-selected derived so
   // you can still deselect it). Intermediates live in the 数据集 lineage tree.
-  const pickerDatasets = datasets.filter((d) => d.kind !== 'derived' || activeDatasets.includes(d.id));
+  const pickerDatasets = datasets.filter((d) => d.state !== 'cleaned' && (d.kind !== 'derived' || activeDatasets.includes(d.id)));
   // Which datasets still exist — a result card whose derived dataset is gone
   // offers a re-run on the original data (改进清单-3 · S5).
-  const datasetIds = new Set(datasets.map((d) => d.id));
+  // Only datasets whose data still exists — a cleaned one makes its card "expired".
+  const datasetIds = new Set(datasets.filter((d) => d.state !== 'cleaned').map((d) => d.id));
   const dsById = new Map(datasets.map((d) => [d.id, d] as [number, Dataset]));
   const rerunTargets = new Set(messages.filter((m) => m.rerunOf != null).map((m) => `m_${m.rerunOf}`));
   const activeDsList = activeDatasets

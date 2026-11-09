@@ -39,6 +39,18 @@ async def init_db() -> None:
     from sqlalchemy import text
 
     async with engine.begin() as conn:
+        # 改进清单-3 · D1: the old `runs` table (algorithm_id NOT NULL, custom
+        # algorithms only) is rebuilt — its history isn't kept (see 前提).
+        if _settings.database_url.startswith("sqlite"):
+            def _runs_is_legacy(sync_conn) -> bool:
+                exists = sync_conn.execute(text(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='runs'")).fetchone()
+                if not exists:
+                    return False
+                cols = {r[1] for r in sync_conn.execute(text("PRAGMA table_info(runs)")).fetchall()}
+                return "group_id" not in cols
+            if await conn.run_sync(_runs_is_legacy):
+                await conn.execute(text("DROP TABLE runs"))
         await conn.run_sync(Base.metadata.create_all)
 
         # Tiny inline migration so existing sqlite databases pick up new
@@ -79,6 +91,29 @@ async def init_db() -> None:
             tpl_cols = await conn.run_sync(_existing_cols, "flow_templates")
             if "graph" not in tpl_cols:
                 await conn.execute(text("ALTER TABLE flow_templates ADD COLUMN graph JSON DEFAULT '{}'"))
+
+            # Provenance + retention on datasets (改进清单-3 · 第 3 步).
+            ds_cols = await conn.run_sync(_existing_cols, "datasets")
+            for col_name, ddl in (
+                ("run_id",          "ALTER TABLE datasets ADD COLUMN run_id INTEGER"),
+                ("expires_at",      "ALTER TABLE datasets ADD COLUMN expires_at DATETIME"),
+                ("extended",        "ALTER TABLE datasets ADD COLUMN extended BOOLEAN DEFAULT 0"),
+                ("notice_acked_at", "ALTER TABLE datasets ADD COLUMN notice_acked_at DATETIME"),
+                ("state",           "ALTER TABLE datasets ADD COLUMN state VARCHAR(16) DEFAULT 'active'"),
+                ("cleaned_at",      "ALTER TABLE datasets ADD COLUMN cleaned_at DATETIME"),
+                ("clean_error",     "ALTER TABLE datasets ADD COLUMN clean_error TEXT DEFAULT ''"),
+            ):
+                if col_name not in ds_cols:
+                    await conn.execute(text(ddl))
+            # Existing un-kept intermediates enter the normal 20-day lifecycle
+            # (counted from now, so nothing disappears right after the upgrade).
+            await conn.execute(text(
+                "UPDATE datasets SET expires_at = datetime('now', '+20 days') "
+                "WHERE kind = 'derived' AND (kept = 0 OR kept IS NULL) AND expires_at IS NULL "
+                "AND (state IS NULL OR state = 'active')"))
+            art_cols = await conn.run_sync(_existing_cols, "artifacts")
+            if "expires_at" not in art_cols:
+                await conn.execute(text("ALTER TABLE artifacts ADD COLUMN expires_at DATETIME"))
 
             # Algorithm soft delete (改进清单-3 · A1).
             algo_cols = await conn.run_sync(_existing_cols, "algorithms")

@@ -35,7 +35,7 @@ export default function AlgorithmsView({ focusAlgo, active = true, onUseInChat }
   return <LibraryView t={t} focusAlgo={focusAlgo ?? null} active={active} onUseInChat={onUseInChat} />;
 }
 
-export function TemplatesView({ onRunInChat }: { onRunInChat?: (conversationId: number) => void } = {}) {
+export function TemplatesView({ onRunInChat, focusTemplate }: { onRunInChat?: (conversationId: number) => void; focusTemplate?: { id: number; nonce: number } | null } = {}) {
   const [tpls, setTpls] = useState<FlowTemplate[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [algos, setAlgos] = useState<Algorithm[]>([]);
@@ -45,6 +45,7 @@ export function TemplatesView({ onRunInChat }: { onRunInChat?: (conversationId: 
   const [chatDs, setChatDs] = useState<number | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatErr, setChatErr] = useState('');
+  useEffect(() => { if (focusTemplate) setSelId(focusTemplate.id); }, [focusTemplate?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function refresh(selectId?: number) {
     api.listTemplates().then((ts) => {

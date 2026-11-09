@@ -728,13 +728,19 @@ async def run_to_dataset(
 
     out_df = pd.read_parquet(res["result_path"])
     artifact_svc.discard_scratch(res)
+    from ..services.runs import finish_group, new_group, record_run, root_name
+    group = await new_group(session, user.id, "library")
     d = await _persist_dataset(
         session, owner_id=user.id, df=out_df,
-        name=f"{ds.name} · {label}", filename=f"{body.slug}.parquet",
+        name=f"{await root_name(session, ds)} · {label}", filename=f"{body.slug}.parquet",
         file_format="derived", description=f"由「{ds.name}」经『{label}』得到",
         kind="derived", derived_from=ds.id,
         lineage={"from": ds.id, "from_name": ds.name, "op": {"slug": body.slug, "label": label, "params": body.params}},
     )
+    run = await record_run(session, group, seq=1, slug=body.slug, label=label, result=res, params=body.params,
+                           input_ref={"kind": "dataset", "dataset_id": ds.id}, dataset_id=ds.id,
+                           algorithm=None if spec else row, result_dataset_id=d.id)
+    finish_group(group, [run.status])
     await session.commit()
     await session.refresh(d)
     return {"id": d.id, "name": d.name, "rows": d.rows, "columns": d.columns}
@@ -772,25 +778,22 @@ async def run_algorithm(
         result = registry.execute_code(row.code, df, body.params)
         algo_id = row.id
 
+    # 改进清单-3 · D2: every library execution (built-in algorithms too) is a run.
+    # (allocate the batch number BEFORE writing anything in this session)
+    from ..services.runs import finish_group, new_group, record_run, run_code
+    group = await new_group(session, user.id, "library")
     # The output file becomes an owner-scoped Artifact (served only by id).
-    result = await artifact_svc.adopt(session, user.id, result)
-    run = Run(
-        owner_id=user.id,
-        algorithm_id=algo_id or 0,
-        dataset_id=ds_id,
-        params=body.params,
-        status=result.get("status", "error"),
-        error=result.get("error", ""),
-        duration_ms=int(result.get("duration_ms", 0)),
-        result_summary=result.get("summary") or {},
-        result_artifacts=[result["artifact_id"]] if result.get("artifact_id") else [],
-        logs=result.get("logs", ""),
-    )
-    if algo_id:
-        session.add(run)
-        await session.commit()
-        await session.refresh(run)
-        result["run_id"] = run.id
+    result = await artifact_svc.adopt(session, user.id, result, commit=False)
+    algo_row = None if registry.get_builtin(body.slug) else row
+    _spec = registry.get_builtin(body.slug)
+    run = await record_run(session, group, seq=1, slug=body.slug, label=(algo_row.name if algo_row else (_spec.name if _spec else body.slug)),
+                           result=result, params=body.params,
+                           input_ref={"kind": "dataset", "dataset_id": ds_id} if ds_id else {},
+                           dataset_id=ds_id, algorithm=algo_row)
+    finish_group(group, [run.status])
+    await session.commit()
+    result["run_id"] = run.id
+    result["run_code"] = run_code(group, run)
     return scrub(result)
 
 

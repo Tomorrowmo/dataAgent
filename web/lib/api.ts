@@ -146,9 +146,20 @@ export const api = {
   /** Plain-language AI explanation of a dataset / analysis result. */
   explainDataset: (id: number) => request<{ explanation: string }>('POST', `/datasets/${id}/explain`),
   /** Reclaim un-kept intermediate datasets. dry_run previews the count. */
+  /** 「清理中间结果」: dry_run counts; otherwise cleans every un-kept, unprotected intermediate now. */
   gcDatasets: (dry_run = false) =>
-    request<{ deleted: { id: number; name: string }[]; count: number; freed_bytes: number; dry_run: boolean }>(
+    request<{ count: number; cleaned?: { id: number; name: string }[]; freed_bytes?: number; failed?: number; dry_run?: boolean }>(
       'POST', `/datasets/gc?dry_run=${dry_run ? 'true' : 'false'}`),
+  /** 「即将清理」 reminder list + the retention policy in force. */
+  retentionList: () => request<{ items: RetentionItem[]; policy: RetentionPolicy }>('GET', '/datasets/retention'),
+  retentionAct: (ids: number[], action: 'keep' | 'extend' | 'clean' | 'ack') =>
+    request<{ ok: boolean; count: number }>('POST', '/datasets/retention', { ids, action }),
+  retentionPolicy: () => request<RetentionPolicy>('GET', '/datasets/retention/policy'),
+  setRetentionPolicy: (p: Partial<RetentionPolicy>) => request<RetentionPolicy>('PUT', '/datasets/retention/policy', p),
+  /** 「产生于」: the run behind a dataset and whether it can be re-run / reproduced. */
+  datasetProvenance: (id: number) => request<DatasetProvenance>('GET', `/datasets/${id}/provenance`),
+  datasetRerun: (id: number) => request<RunAgain>('POST', `/datasets/${id}/rerun`),
+  datasetReproduce: (id: number) => request<RunAgain>('POST', `/datasets/${id}/reproduce`),
   /** Run an algorithm and save its table output as a derived dataset (with lineage). */
   runToDataset: (slug: string, params: Record<string, unknown>, dataset_id: number) =>
     request<{ id: number; name: string; rows: number; columns: number }>(
@@ -438,6 +449,18 @@ export type Dataset = {
   derived_from?: number | null;
   lineage?: { from?: number; from_name?: string; op?: { slug?: string; label?: string; params?: Record<string, unknown> } };
   kept?: boolean;
+  /** active | cleaned (file removed by retention; the row stays for provenance) */
+  state?: 'active' | 'cleaned';
+  created_at?: string | null;
+  expires_at?: string | null;
+  cleaned_at?: string | null;
+  run_id?: number | null;
+  origin?: {
+    code?: string; entry?: 'chat' | 'library' | 'flow'; run_id?: number;
+    algorithm?: { slug: string; label: string; version?: number | null };
+    conversation?: { id: number; title?: string | null; exists?: boolean };
+    template?: { id: number; name?: string | null; exists?: boolean };
+  };
 };
 
 /** A suggested next action; `slug` maps to a recipe (→ chat) or in-view action. */
@@ -852,3 +875,17 @@ export async function importSkillStream(file: File, onEvent: (e: SkillImportEven
     }
   }
 }
+
+export type RetentionItem = { id: number; name: string; days_left: number; acked: boolean; size_bytes: number };
+export type RetentionPolicy = { retention_days: number; notice_days: number; max_days: number };
+export type DatasetProvenance = {
+  run: null | {
+    id: number; label: string; slug: string; source: string; version?: number | null; app_version?: string;
+    params: Record<string, unknown>; status: string; duration_ms: number; output_role?: string | null;
+    input: { id: number; name: string; state?: string } | null; created_at?: string | null;
+  };
+  origin?: { code: string; entry: string; created_at?: string | null;
+    conversation?: { id: number; title: string; exists: boolean }; template?: { id: number; name: string; exists: boolean } };
+  actions?: { rerun: boolean; rerun_reason: string | null; reproduce: boolean; reproduce_reason: string | null; warning: string | null };
+};
+export type RunAgain = { run_id: number; code: string; status: string; error?: string; dataset_id: number | null; warning?: string | null };

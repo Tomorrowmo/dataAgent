@@ -37,6 +37,7 @@ export default function WorkspacePage() {
   const [dsVer, setDsVer] = useState(0);
   // "在编辑器中打开" on an AI-built tool in chat → 算法库 with its code editor open.
   const [focusAlgo, setFocusAlgo] = useState<FocusAlgo | null>(null);
+  const [focusTpl, setFocusTpl] = useState<{ id: number; nonce: number } | null>(null);
   // 「在对话中使用」 from the library: prefill (not send) the chat box.
   const [pendingFill, setPendingFill] = useState<{ text: string; datasetId: number | null; nonce: number } | null>(null);
 
@@ -90,13 +91,15 @@ export default function WorkspacePage() {
             onBackToChat={() => setView('chat')}
             onActiveDataset={setActiveDataset}
             onDatasetsChanged={() => setDsVer((v) => v + 1)}
+            onOpenConversation={(id) => { setActiveConv(id); setView('chat'); }}
+            onOpenTemplate={(id) => { setFocusTpl({ id, nonce: Date.now() }); setView('templates'); }}
           />
         )}
         {opened.has('algorithms') && (
           <div className={`h-full ${view === 'algorithms' ? '' : 'hidden'}`}><AlgorithmsView focusAlgo={focusAlgo} active={view === 'algorithms'}
             onUseInChat={(text, datasetId) => { setPendingFill({ text, datasetId, nonce: Date.now() }); setView('chat'); }} /></div>
         )}
-        {view === 'templates' && <TemplatesView onRunInChat={(cid) => { setActiveConv(cid); setConvVer((v) => v + 1); setView('chat'); }} />}
+        {view === 'templates' && <TemplatesView focusTemplate={focusTpl} onRunInChat={(cid) => { setActiveConv(cid); setConvVer((v) => v + 1); setView('chat'); }} />}
         {opened.has('skills') && (
           <div className={`h-full ${view === 'skills' ? '' : 'hidden'}`}><SkillsView /></div>
         )}
