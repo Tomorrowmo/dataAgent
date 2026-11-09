@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Save, Sparkles, Download, Trash2, X, Copy, ShieldCheck } from 'lucide-react';
+import { Loader2, Play, Save, Download, Trash2, X, Copy, ShieldCheck } from 'lucide-react';
+import { AiMark, StatusDot } from '@/components/ui';
 import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type AlgoVersion, type ParamSpec, type RunResult, type RunDiagnosis } from '@/lib/api';
 import { cellStr } from '@/lib/algoMeta';
 import ParamField from '@/components/ParamField';
@@ -38,7 +39,7 @@ function lastLine(s: string): string {
 
 const DIAG_STYLE: Record<RunDiagnosis['category'], { tag: string; cls: string }> = {
   param: { tag: '参数问题', cls: 'bg-amber-50 ring-amber-200 text-amber-900' },
-  data: { tag: '数据问题', cls: 'bg-sky-50 ring-sky-200 text-sky-900' },
+  data: { tag: '数据问题', cls: 'bg-amber-50 ring-amber-200 text-amber-900' },
   code: { tag: '代码问题', cls: 'bg-red-50 ring-red-200 text-red-800' },
   rule: { tag: '不符合平台规范', cls: 'bg-red-50 ring-red-200 text-red-800' },
   timeout: { tag: '运行超时', cls: 'bg-amber-50 ring-amber-200 text-amber-900' },
@@ -49,15 +50,15 @@ const DIAG_STYLE: Record<RunDiagnosis['category'], { tag: string; cls: string }>
 function DiagnosisBox({ d, onGo, onLine }: { d: RunDiagnosis; onGo: (tab: 'data') => void; onLine: (line: number) => void }) {
   const st = DIAG_STYLE[d.category] ?? DIAG_STYLE.code;
   return (
-    <div className={`rounded-lg ring-1 p-2.5 text-xs space-y-1 ${st.cls}`}>
+    <div className={`rounded ring-1 p-2.5 text-xs space-y-1 ${st.cls}`}>
       <div className="font-medium text-sm">{d.title}</div>
       <div className="whitespace-pre-wrap break-all">{d.detail}</div>
       <div className="flex flex-wrap items-center gap-2 pt-0.5">
         <span className="opacity-80">下一步：{d.action}</span>
         {(d.category === 'param' || d.category === 'data') && (
-          <button onClick={() => onGo('data')} className="px-2 py-0.5 rounded-md bg-white ring-1 ring-current">去运行设置</button>
+          <button onClick={() => onGo('data')} className="px-2 py-0.5 rounded bg-white ring-1 ring-current">去运行设置</button>
         )}
-        {d.line > 0 && <button onClick={() => onLine(d.line)} className="px-2 py-0.5 rounded-md bg-white ring-1 ring-current">定位到第 {d.line} 行</button>}
+        {d.line > 0 && <button onClick={() => onLine(d.line)} className="px-2 py-0.5 rounded bg-white ring-1 ring-current">定位到第 {d.line} 行</button>}
       </div>
     </div>
   );
@@ -93,7 +94,7 @@ function coerceParam(sp: ParamSpec | undefined, raw: string): unknown {
 function CodeView({ code, mark }: { code: string; mark?: Set<number> }) {
   const lines = code.replace(/\r/g, '').split('\n');
   return (
-    <pre className="bg-ink-900 text-ink-50 rounded-lg p-2 text-[12px] leading-[18px] overflow-auto max-h-[50vh] font-mono">
+    <pre className="bg-ink-900 text-ink-50 rounded p-2 text-[12px] leading-[18px] overflow-auto max-h-[50vh] font-mono">
       {lines.map((l, i) => (
         <div key={i} className={mark?.has(i) ? 'bg-emerald-900/60' : ''}>
           <span className="inline-block w-8 pr-2 text-right text-ink-500 select-none">{i + 1}</span>{l || ' '}
@@ -104,7 +105,7 @@ function CodeView({ code, mark }: { code: string; mark?: Set<number> }) {
 }
 
 export default function AlgoEditor({
-  target: initial, onClose, onSaved, onDeleted, onDirtyChange,
+  target: initial, onClose, onSaved, onDeleted, onDirtyChange, onTargetChange,
   externalCode, onCodeChange, onRunResult, highlight, studio = false, datasetId: dsProp, onDatasetChange, openTab,
 }: {
   target: EditorTarget;
@@ -130,6 +131,9 @@ export default function AlgoEditor({
   onDatasetChange?: (id: number | null) => void;
   /** Host asks to show a tab (applied when `nonce` changes). */
   openTab?: { tab: 'out' | 'data'; nonce: number };
+  /** The target changes internally (内置 → 复制为副本 → 入库后可编辑); the host
+   *  uses this to hide its run panel while an unsaved copy is being edited. */
+  onTargetChange?: (t: EditorTarget) => void;
 }) {
   const [target, setTarget] = useState<EditorTarget>(initial);
   const [code, setCode] = useState(initial.mode === 'new' ? initial.code : '');
@@ -165,6 +169,7 @@ export default function AlgoEditor({
   const dirty = editable && code !== saved;
   const isCustom = target.mode === 'edit';
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => { onTargetChange?.(target); }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { onCodeChange?.(code); }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (openTab) setTab(openTab.tab); }, [openTab?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -395,8 +400,10 @@ export default function AlgoEditor({
     return new Set(fix.code.split('\n').map((l, i) => (cur.has(l.trim()) ? -1 : i)).filter((i) => i >= 0));
   }, [fix, code]);
 
-  const btn = 'text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50 shrink-0';
-  const ghost = `${btn} ring-1 ring-ink-200 text-ink-700 hover:bg-ink-50`;
+  const btn = 'text-xs h-7 px-2.5 rounded border flex items-center gap-1.5 disabled:opacity-50 shrink-0';
+  const ghost = `${btn} border-ink-300 bg-white text-ink-800 hover:bg-ink-50`;
+  const primary = `${btn} border-brand-600 bg-brand-600 text-white hover:bg-brand-700`;
+  const iconBtn = 'w-7 h-7 grid place-items-center rounded text-ink-600 hover:bg-ink-150 hover:text-ink-900 disabled:opacity-50 shrink-0';
   const tabs: [Tab, string][] = target.mode === 'builtin'
     ? [['prob', '说明']]
     : [['out', '输出'], ['prob', `问题${problems.length ? ' · ' + problems.length : ''}`], ['data', `运行设置${Object.entries(schema).some(([k, sp]) => sp?.required && !(paramVals[k] ?? '').trim()) ? ' · 待填' : ''}`], ...(studio ? [] : [['ai', 'AI 校正'] as [Tab, string]]), ...(isCustom ? [['hist', `历史${versions.length ? ' · ' + versions.length : ''}`] as [Tab, string]] : [])];
@@ -407,39 +414,50 @@ export default function AlgoEditor({
   return (
     <div className="h-full flex">
       <div className="bg-white w-full h-full flex flex-col overflow-hidden">
-        {/* header */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-ink-200">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <b className="text-sm truncate">{target.mode === 'builtin' ? '查看内置算法' : target.mode === 'new' ? '新建算法' : editable ? '编辑算法' : '查看算法'} · {head.name}</b>
-              {head.version != null && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-600">v{head.version}</span>}
-              {head.source === 'builtin'
-                ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-600">内置 · 只读</span>
-                : head.verified === false && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">草稿 · 未验证</span>}
+        {/* header — row 1: what is open; row 2: actions in a FIXED order
+            (运行组 | AI | 保存组). Unavailable actions are disabled, never moved. */}
+        <div className="border-b border-ink-200">
+          <div className="flex items-center gap-2 px-3 pt-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <b className="text-sm text-ink-900 truncate" title={head.name}>{head.name || '…'}</b>
+                <span className="text-[11px] text-ink-500 shrink-0">{target.mode === 'builtin' ? '查看内置算法' : target.mode === 'new' ? '新建 · 未入库' : editable ? '编辑' : '查看'}</span>
+                {head.version != null && <span className="text-[11px] font-mono px-1.5 rounded-sm bg-ink-150 text-ink-700 shrink-0">v{head.version}</span>}
+                {head.source === 'builtin'
+                  ? <span className="text-[11px] px-1.5 rounded-sm bg-brand-600 text-white shrink-0">内置 · 只读</span>
+                  : head.verified === false && <span className="text-[11px] px-1.5 rounded-sm border border-dashed border-ink-500 text-ink-700 shrink-0">草稿 · 未验证</span>}
+              </div>
+              <div className="text-[11px] text-ink-500 font-mono truncate">
+                {head.source === 'builtin' ? `${head.file}:${head.line} · 进程内运行（不走沙箱）` : `${head.slug || '（保存时取 META.slug）'} · 入口 run(df, **params) · 沙箱运行`}
+              </div>
             </div>
-            <div className="text-[11px] text-ink-400 font-mono truncate">
-              {head.source === 'builtin' ? `${head.file}:${head.line} · 进程内运行（不走沙箱）` : `${head.slug || '（保存时取 META.slug）'} · 入口 run(df, **params) · 沙箱运行`}
-            </div>
+            <button onClick={exportPy} className={iconBtn} title="导出 .py" aria-label="导出 .py"><Download className="w-4 h-4" /></button>
+            {isCustom && editable && <button onClick={remove} disabled={!!busy} className={`${iconBtn} hover:text-danger-700`} title="删除算法" aria-label="删除算法"><Trash2 className="w-4 h-4" /></button>}
+            {onClose && <button onClick={close} className={iconBtn} title="关闭编辑器，回到算法详情" aria-label="关闭编辑器"><X className="w-4 h-4" /></button>}
           </div>
-          {target.mode === 'builtin' ? (
-            <button onClick={forkBuiltin} className={`${btn} bg-brand-600 text-white hover:bg-brand-700`}><Copy className="w-3.5 h-3.5" /> 复制为我的算法</button>
-          ) : editable && (
-            <>
-              <button onClick={validate} disabled={!!busy} className={ghost}><ShieldCheck className="w-3.5 h-3.5" /> 校验</button>
-              <button onClick={run} disabled={!!busy} className={ghost} title="Ctrl+Enter">
-                {busy === 'run' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} 调试运行
-              </button>
-              {!studio && <button onClick={() => setTab('ai')} disabled={!!busy} className={ghost}><Sparkles className="w-3.5 h-3.5" /> AI 校正</button>}
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="这版改了什么（可空）"
-                className="text-xs border border-ink-200 rounded-lg px-2 py-1.5 w-40" />
-              <button onClick={save} disabled={!!busy || (isCustom && !dirty)} className={`${btn} bg-brand-600 text-white hover:bg-brand-700`} title="Ctrl+S">
-                {busy === 'save' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {isCustom ? '保存为新版本' : '沙箱通过后入库'}
-              </button>
-            </>
-          )}
-          <button onClick={exportPy} className={ghost}><Download className="w-3.5 h-3.5" /> 导出 .py</button>
-          {isCustom && editable && <button onClick={remove} disabled={!!busy} className={`${btn} ring-1 ring-red-200 text-red-600 hover:bg-red-50`}><Trash2 className="w-3.5 h-3.5" /> 删除</button>}
-          {onClose && <button onClick={close} className={ghost} title="关闭编辑器，回到算法详情"><X className="w-3.5 h-3.5" /> 关闭编辑器</button>}
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            {target.mode === 'builtin' ? (
+              <>
+                <button onClick={forkBuiltin} className={primary}><Copy className="w-3.5 h-3.5" /> 复制为我的算法</button>
+                <span className="text-[11px] text-ink-500">内置算法只读，复制后可修改、调试、保存版本</span>
+              </>
+            ) : (
+              <>
+                <button onClick={validate} disabled={!!busy || !editable} className={ghost}><ShieldCheck className="w-3.5 h-3.5" /> 校验</button>
+                <button onClick={run} disabled={!!busy} className={ghost} title="用「运行设置」里的数据和参数，在沙箱里运行当前代码（Ctrl+Enter）">
+                  {busy === 'run' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} 调试运行
+                </button>
+                {!studio && <button onClick={() => setTab('ai')} disabled={!!busy || !editable} className={ghost}><AiMark /> 校正</button>}
+                <div className="ml-auto flex items-center gap-2">
+                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="版本说明（可空）" disabled={!editable}
+                    className="text-xs border border-ink-300 rounded px-2 h-7 w-36 disabled:bg-ink-50" />
+                  <button onClick={save} disabled={!!busy || !editable || (isCustom && !dirty)} className={primary} title="服务端沙箱复跑通过才保存（Ctrl+S）">
+                    {busy === 'save' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {isCustom ? '保存为新版本' : '验证并入库'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* body */}
@@ -452,6 +470,9 @@ export default function AlgoEditor({
               {Array.from({ length: nLines }, (_, i) => (
                 <div key={i} className={errLines.has(i + 1) ? 'text-red-400 font-bold' : highlight?.has(i) ? 'text-emerald-300 bg-emerald-900/50' : ''}>{i + 1}</div>
               ))}
+              {/* spacer ≥ the textarea's horizontal-scrollbar height: keeps the
+                  gutter able to scroll as far as the code, so numbers never drift */}
+              <div aria-hidden="true" style={{ height: 32 }} />
             </div>
             <textarea
               ref={taRef}
@@ -470,27 +491,30 @@ export default function AlgoEditor({
           </div>
 
           <div className="h-[42%] shrink-0 border-t border-ink-200 flex flex-col min-h-0">
-            <div className="flex gap-1 px-2 pt-2 border-b border-ink-200 overflow-x-auto">
+            <div className="flex gap-3 px-3 pt-1 border-b border-ink-200 overflow-x-auto">
               {tabs.map(([k, label]) => (
                 <button key={k} onClick={() => setTab(k)}
-                  className={`text-xs px-2.5 py-1.5 rounded-t-lg whitespace-nowrap ${tab === k ? 'bg-brand-50 text-brand-700 font-medium' : 'text-ink-500 hover:text-ink-700'}`}>{label}</button>
+                  className={`text-xs px-2 py-1.5 -mb-px border-b-2 whitespace-nowrap ${tab === k ? 'border-brand-600 text-ink-900 font-medium' : 'border-transparent text-ink-500 hover:text-ink-800'}`}>{label}</button>
               ))}
             </div>
             <div className="flex-1 overflow-y-auto p-3 text-sm space-y-2">
               {target.mode === 'builtin' && (
                 <div className="text-xs text-ink-600 space-y-2">
                   <p>内置算法在后端进程内直接运行（不经过沙箱），所以这里只读。</p>
-                  <p>点右上角<b>「复制为我的算法」</b>：会把它的函数（改名为 <code>run</code>）连同用到的辅助函数、import 和 META 一起生成一份<b>自定义算法</b>，在沙箱里运行，可以随意修改、调试、保存版本。</p>
+                  <p>点上方<b>「复制为我的算法」</b>：会把它的函数（改名为 <code>run</code>）连同用到的辅助函数、import 和 META 一起生成一份<b>自定义算法</b>，在沙箱里运行，可以随意修改、调试、保存版本。</p>
                 </div>
               )}
 
               {tab === 'out' && target.mode !== 'builtin' && (!out ? (
-                <div className="text-xs text-ink-400">点「调试运行」（Ctrl+Enter）：静态校验 → 沙箱子进程用「测试数据」里选的数据集和参数跑一遍。print 的输出也会显示在这里。</div>
+                <div className="text-xs text-ink-400">点「调试运行」（Ctrl+Enter）：静态校验 → 沙箱子进程用「运行设置」里的数据集和参数运行当前代码。print 的输出也会显示在这里。</div>
               ) : (
                 <>
-                  <div className={`rounded-lg px-2.5 py-1.5 text-xs ${ex?.status === 'ok' && out.validation.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                    {ex?.status === 'ok' && out.validation.ok ? `沙箱通过 · ${ex.duration_ms} ms` : '未通过'}
-                    {' · 数据：'}{datasetId != null ? datasets.find((d) => d.id === datasetId)?.name : '无（df 为 None）'}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    {ex?.status === 'ok' && out.validation.ok
+                      ? <StatusDot tone="ok">沙箱通过</StatusDot>
+                      : <StatusDot tone="error">未通过</StatusDot>}
+                    {ex?.status === 'ok' && <span className="font-mono text-ink-600">{ex.duration_ms} ms</span>}
+                    <span className="text-ink-600">数据：{datasetId != null ? datasets.find((d) => d.id === datasetId)?.name : '无（df 为 None）'}</span>
                   </div>
                   {lastParams && <div className="text-[11px] text-ink-500 font-mono break-all">参数：{JSON.stringify(lastParams)}</div>}
                   {ex?.status !== 'ok' && out?.diagnosis && <DiagnosisBox d={out.diagnosis} onGo={(tabName) => setTab(tabName)} onLine={gotoLine} />}
@@ -499,7 +523,7 @@ export default function AlgoEditor({
                         <pre className="mt-1 bg-red-50/50 ring-1 ring-red-100 rounded p-2 whitespace-pre-wrap font-mono">{ex.error.slice(0, 4000)}</pre></details>
                     : <pre className="text-[11px] bg-red-50/50 ring-1 ring-red-100 rounded p-2 whitespace-pre-wrap font-mono">{ex.error.slice(0, 4000)}</pre>)}
                   {ex?.status === 'ok' && (sum.type === 'dataframe' && sum.head?.length ? (
-                    <div className="overflow-auto max-h-64 ring-1 ring-ink-200 rounded">
+                    <div className="overflow-auto max-h-64 border border-ink-200 rounded">
                       <table className="text-[11px] min-w-full">
                         <thead className="bg-ink-50 sticky top-0"><tr>{(sum.columns ?? Object.keys(sum.head[0])).map((c) => <th key={c} className="px-2 py-1 text-left font-medium whitespace-nowrap">{c}</th>)}</tr></thead>
                         <tbody>{sum.head.map((r, i) => <tr key={i} className="border-t border-ink-100">{(sum.columns ?? Object.keys(sum.head![0])).map((c) => <td key={c} className="px-2 py-0.5 font-mono whitespace-nowrap">{cellStr(r[c])}</td>)}</tr>)}</tbody>
@@ -514,7 +538,7 @@ export default function AlgoEditor({
                 <ul className="space-y-1">
                   {problems.map((p, i) => (
                     <li key={i} onClick={() => gotoLine(p.line)}
-                      className={`text-xs rounded px-2 py-1.5 ring-1 ${p.line ? 'cursor-pointer hover:bg-red-50' : ''} ${p.level === 'warn' ? 'ring-amber-200 text-amber-800' : 'ring-red-200 text-red-700'}`}>
+                      className={`text-xs rounded px-2 py-1.5 ring-1 ${p.line ? 'cursor-pointer hover:bg-ink-50' : ''} ${p.level === 'warn' ? 'ring-amber-200 text-amber-800' : 'ring-red-200 text-red-700'}`}>
                       <span className="font-semibold mr-1">{p.line ? `行 ${p.line}` : '错误'}</span>{p.msg}
                     </li>
                   ))}
@@ -528,9 +552,9 @@ export default function AlgoEditor({
                   <div className="space-y-3">
                     <div className="text-xs text-ink-500">「调试运行」和保存时的沙箱复跑，都用下面的数据和参数调用 <code>run(df, **params)</code>。</div>
                     <div>
-                      <label className="block text-xs text-ink-700 font-medium mb-1">数据集{studio ? <span className="text-ink-400 font-normal">（和左侧对话里的参考数据集是同一个）</span> : null}</label>
+                      <label className="block text-xs text-ink-700 font-medium mb-1">数据集<span className="text-ink-500 font-normal">{studio ? '（和左侧对话里的参考数据集是同一个）' : '（和算法详情里的数据集是同一个）'}</span></label>
                       <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)}
-                        className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
+                        className="w-full border border-ink-300 rounded px-2 h-8 bg-white text-sm">
                         <option value="">（无 —— run 收到的 df 为 None）</option>
                         {datasets.filter((d) => d.kind !== 'derived' || d.id === datasetId).map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rows} × {d.columns})</option>)}
                       </select>
@@ -554,9 +578,9 @@ export default function AlgoEditor({
                   <div className="text-xs text-ink-500">把当前代码、你的要求和最近一次报错交给 AI 改写（会在沙箱自测）。改写稿<b>不会直接覆盖</b>，先看再「应用到编辑器」。</div>
                   <textarea value={fixAsk} onChange={(e) => setFixAsk(e.target.value)} rows={3}
                     placeholder="例如：加一个 window 参数；缺失值先插值再计算；修正下面的报错"
-                    className="w-full text-sm border border-ink-200 rounded-lg p-2" />
-                  <button onClick={aiFix} disabled={!!busy} className={`${btn} bg-violet-600 text-white hover:bg-violet-700`}>
-                    {busy === 'fix' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 让 AI 改
+                    className="w-full text-sm border border-ink-300 rounded p-2" />
+                  <button onClick={aiFix} disabled={!!busy} className={ghost}>
+                    {busy === 'fix' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 让 AI 改
                   </button>
                   {fixErr && <div className="text-xs text-red-600">{fixErr}</div>}
                   {fix && (
@@ -565,7 +589,7 @@ export default function AlgoEditor({
                         沙箱自测 {fix.tests.filter((t) => t.status === 'ok').length}/{fix.tests.length} {fix.all_tests_passed ? '全部通过' : '未全通过'} · 绿色为改动行
                       </div>
                       <button onClick={() => { setCode(fix.code); setFix(null); setStatus('已应用 AI 修改稿（未保存）'); }}
-                        className={`${btn} bg-brand-600 text-white hover:bg-brand-700`}>应用到编辑器</button>
+                        className={primary}>应用到编辑器</button>
                       <CodeView code={fix.code} mark={fixMark} />
                     </>
                   )}
@@ -575,7 +599,7 @@ export default function AlgoEditor({
               {tab === 'hist' && (versions.length ? (
                 <ul className="space-y-1.5">
                   {versions.map((v) => (
-                    <li key={v.version + (v.created_at || '')} className={`rounded-lg ring-1 p-2 text-xs ${v.current ? 'ring-brand-300 bg-brand-50/50' : 'ring-ink-200'}`}>
+                    <li key={v.version + (v.created_at || '')} className={`rounded ring-1 p-2 text-xs ${v.current ? 'ring-brand-300 bg-brand-50' : 'ring-ink-200'}`}>
                       <div className="flex items-center gap-2">
                         <b>v{v.version}</b>{v.current && <span className="text-brand-600">当前</span>}
                         {!v.verified && <span className="text-amber-600">未验证</span>}

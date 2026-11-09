@@ -162,4 +162,4 @@ def diagnose_run(
         "ValueError": "值不合法", "KeyError": "字典 / 列名里没有这个键",
     }.get(kind, "代码运行出错")
     return {"category": "code", "title": f"代码问题：{explain}",
-            "detail": f"{last}{at}", "action": "让 AI 修这个错误，或直接改右侧代码", "line": line}
+            "detail": f"{last}{at}", "action": "让 AI 修这个错误，或直接修改代码", "line": line}

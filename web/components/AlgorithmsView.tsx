@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, CheckCircle2, AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
+import { AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
@@ -13,7 +13,9 @@ import AlgoStudio from '@/components/AlgoStudio';
 import AlgoEditor, { type EditorTarget } from '@/components/AlgoEditor';
 import RunApp from '@/components/RunApp';
 import DatasetChart from '@/components/DatasetChart';
-import { SOURCE_ZH, RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent, intentIcon } from '@/lib/algoMeta';
+import { RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent } from '@/lib/algoMeta';
+import { AiMark, SourceTag, StatusDot } from '@/components/ui';
+import { IntentIcon } from '@/components/AnalysisIcon';
 
 // The 算法库 view: a single left list (two pinned entries 上传/AI + the
 // intent-grouped algorithms) and a right area that shows the selected thing.
@@ -135,6 +137,14 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [rev, setRev] = useState(0);
   const editorDirty = useRef(false);
+  // The editor's CURRENT target (it changes internally: 内置 → 复制为副本 → 入库后可编辑).
+  // While it holds an unsaved copy ('new'), the run panel for the original is
+  // hidden — otherwise there are two "run" buttons running two different codes.
+  const [editorMode, setEditorMode] = useState<EditorTarget['mode'] | null>(null);
+  const draft = editor !== null && editorMode === 'new';
+  // ONE test dataset shared by the run panel and the editor's 运行设置, so the
+  // user never picks the data twice (and never runs on two different datasets).
+  const [testDs, setTestDs] = useState<number | null>(null);
   // Picking something else in the list closes the inline editor — ask first if
   // it holds unsaved edits.
   const pick = (s: Sel) => {
@@ -171,7 +181,7 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
     setSelected(hit);
     setEditor({ mode: 'edit', algoId: hit.id! });
   }, [focusAlgo, algos]);
-  const isSel = (a: Algorithm) => isAlgoSel(selected) && selected.slug === a.slug && selected.id === a.id;
+  const isSel = (a: Algorithm) => !draft && isAlgoSel(selected) && selected.slug === a.slug && selected.id === a.id;
 
   const searching = q.trim().length > 0;
   const hits = searching ? algos.filter((a) => matchAlgo(a, q)) : [];
@@ -182,17 +192,17 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
     <div className="flex h-full">
       {/* Left list: full-width on mobile (hidden once something is picked);
           fixed column on desktop. */}
-      <div className={`w-full md:w-[300px] shrink-0 border-r border-ink-200 flex flex-col bg-ink-50/40 ${showDetail ? 'max-md:hidden' : ''}`}>
+      <div className={`w-full md:w-[300px] shrink-0 border-r border-ink-200 flex flex-col bg-ink-50 ${showDetail ? 'max-md:hidden' : ''}`}>
         <div className="p-3 border-b border-ink-200 space-y-2">
           {/* two prominent capability cards, side by side — extend the library */}
           <div className="grid grid-cols-2 gap-2">
-            <EntryCard icon={<Upload className="w-4 h-4" />} label="上传自由算法" hint="贴代码即用" tone="emerald" sel={selected === 'upload'} onClick={() => pick('upload')} />
-            <EntryCard icon={<Sparkles className="w-4 h-4" />} label="用 AI 生成" hint="描述就生成" tone="violet" sel={selected === 'ai'} onClick={() => pick('ai')} />
+            <EntryCard icon={<Upload className="w-4 h-4 text-brand-600" strokeWidth={1.75} />} label="上传自由算法" hint="贴代码即用" ai={false} sel={selected === 'upload'} onClick={() => pick('upload')} />
+            <EntryCard icon={<AiMark />} label="生成算法" hint="描述需求，生成后需复核" ai sel={selected === 'ai'} onClick={() => pick('ai')} />
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="想做什么？例：去掉温度尖峰…"
-              className="w-full border border-ink-200 rounded-lg pl-8 pr-2 py-1.5 bg-white text-xs focus:outline-none focus:border-brand-400" />
+              className="w-full border border-ink-300 rounded pl-8 pr-2 h-8 bg-white text-xs focus:outline-none focus:border-brand-600" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto scroll-hide p-2">
@@ -207,10 +217,10 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
               return (
                 <div key={g.key} className="mb-1.5">
                   <button onClick={() => toggleGroup(g.key)}
-                    className="w-full flex items-center gap-1 px-1 py-1 text-[11px] font-medium text-ink-500 hover:text-ink-700">
+                    className="w-full flex items-center gap-1 px-1 py-1 text-xs font-semibold text-ink-600 hover:text-ink-900">
                     {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
                     <span>{g.label}</span>
-                    <span className="text-ink-300">({g.items.length})</span>
+                    <span className="ml-auto font-mono font-normal text-ink-500">{g.items.length}</span>
                   </button>
                   {open && (
                     <div className="space-y-1 mt-0.5">
@@ -233,7 +243,7 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
         {/* Detail / run column. With the editor open it narrows to the run panel's
             width and the 代码编辑器 fills the space beside it — edit on the right,
             run the saved version on the left. Below xl the editor takes the pane. */}
-        <div className={`overflow-y-auto scroll-hide ${editor ? 'w-[44rem] max-w-[50%] shrink-0 max-xl:hidden' : 'flex-1 min-w-0'}`}>
+        <div className={`overflow-y-auto scroll-hide ${draft ? 'hidden' : editor ? 'w-[44rem] max-w-[50%] shrink-0 max-xl:hidden' : 'flex-1 min-w-0'}`}>
           {showDetail && (
             <button onClick={() => pick(null)}
               className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
@@ -242,7 +252,8 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
           )}
           <div className={selected === 'upload' ? 'h-full' : 'hidden'}><AlgoStudio start="upload" onSaved={() => reload()} /></div>
           <div className={selected === 'ai' ? 'h-full' : 'hidden'}><AlgoStudio start="ai" onSaved={() => reload()} /></div>
-          {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor} />}
+          {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor}
+            datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'} />}
           {selected === null && !editor && (
             <div className="h-full grid place-items-center text-sm text-ink-400 px-6 text-center">
               ← 从左侧选一个算法（或上面的「上传自由算法 / 用 AI 生成」）;在这里填参数、选数据、直接运行
@@ -252,10 +263,12 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
         {editor && (
           <div className="flex-1 min-w-0 border-l border-ink-200">
             <AlgoEditor key={JSON.stringify(editor).slice(0, 200)} target={editor}
-              onClose={() => { setEditor(null); editorDirty.current = false; }}
+              onClose={() => { setEditor(null); setEditorMode(null); editorDirty.current = false; }}
               onDirtyChange={(d) => { editorDirty.current = d; }}
+              onTargetChange={(tg) => setEditorMode(tg.mode)}
+              datasetId={testDs} onDatasetChange={setTestDs}
               onSaved={(a) => reload(a.id)}
-              onDeleted={() => { setEditor(null); editorDirty.current = false; setSelected(null); reload(); }} />
+              onDeleted={() => { setEditor(null); setEditorMode(null); editorDirty.current = false; setSelected(null); reload(); }} />
           </div>
         )}
       </div>
@@ -263,24 +276,18 @@ function LibraryView({ t, focusAlgo, active }: { t: (k: string) => string; focus
   );
 }
 
-/** A prominent capability card above the algorithm list (上传自由算法 / 用 AI 生成)
- *  — these EXTEND the library, so they get emphasis (colored chip + gradient +
- *  hover-lift) to stand out from the plain algorithm rows. Selected like an
- *  algorithm; the right area then shows its form. */
-function EntryCard({ icon, label, hint, tone, sel, onClick }: {
-  icon: React.ReactNode; label: string; hint: string; tone: 'emerald' | 'violet'; sel: boolean; onClick: () => void;
+/** Capability entry above the algorithm list (上传自由算法 / 生成算法) — these
+ *  EXTEND the library. The AI one is marked by shape (dashed + AI mark), not colour. */
+function EntryCard({ icon, label, hint, ai, sel, onClick }: {
+  icon: React.ReactNode; label: string; hint: string; ai: boolean; sel: boolean; onClick: () => void;
 }) {
-  const a = tone === 'emerald'
-    ? { grad: 'from-emerald-50', chip: 'bg-emerald-100 text-emerald-700', ring: 'ring-emerald-200', selRing: 'ring-emerald-400' }
-    : { grad: 'from-violet-50', chip: 'bg-violet-100 text-violet-700', ring: 'ring-violet-200', selRing: 'ring-violet-400' };
   return (
     <button onClick={onClick}
-      className={`rounded-xl p-2.5 transition text-left flex flex-col gap-1.5 hover:-translate-y-0.5 hover:shadow-sm bg-gradient-to-br ${a.grad} to-white ${
-        sel ? `ring-2 ${a.selRing}` : `ring-1 ${a.ring} hover:ring-2`
+      className={`rounded p-2.5 transition-colors text-left flex flex-col gap-1 bg-white hover:bg-ink-50 border ${ai ? 'border-dashed' : ''} ${
+        sel ? 'border-brand-600 ring-1 ring-brand-600' : ai ? 'border-ink-500' : 'border-ink-300'
       }`}>
-      <span className={`w-8 h-8 rounded-lg grid place-items-center ${a.chip}`}>{icon}</span>
-      <span className="font-semibold text-[13px] leading-tight text-ink-800">{label}</span>
-      <span className="text-[10.5px] text-ink-400 leading-tight">{hint}</span>
+      <span className="flex items-center gap-1.5 font-medium text-[13px] leading-tight text-ink-900">{icon}{label}</span>
+      <span className="text-[11px] text-ink-500 leading-tight">{hint}</span>
     </button>
   );
 }
@@ -302,18 +309,16 @@ function AlgoRow({ a, sel, onClick }: { a: Algorithm; sel: boolean; onClick: () 
         onClick={onClick}
         onMouseEnter={show}
         onMouseLeave={() => setPos(null)}
-        className={`w-full text-left rounded-lg px-2.5 py-1.5 ring-1 transition flex items-center gap-2 ${sel ? 'bg-brand-50 ring-brand-300' : 'bg-white ring-ink-200 hover:ring-brand-300'}`}
+        className={`w-full text-left rounded px-2 py-1.5 transition-colors flex items-center gap-2 ${sel ? 'bg-white ring-1 ring-ink-200' : 'hover:bg-ink-150'}`}
       >
-        <span className="shrink-0 text-[15px] leading-none">{intentIcon(algoIntent(a))}</span>
-        <span className="font-medium text-sm truncate flex-1">{dispName(a)}</span>
-        <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-          a.source === 'builtin' ? 'bg-ink-100 text-ink-600' : a.source === 'ai' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
-        }`}>{SOURCE_ZH[a.source] ?? a.source}</span>
+        <span className="shrink-0 text-ink-500"><IntentIcon intent={algoIntent(a)} /></span>
+        <span className={`text-[13px] truncate flex-1 ${sel ? 'font-medium text-ink-900' : 'text-ink-800'}`}>{dispName(a)}</span>
+        <SourceTag className="shrink-0" kind={a.source === 'builtin' ? 'builtin' : a.source === 'ai' ? (a.verified ? 'ai-reviewed' : 'ai') : 'custom'} />
       </button>
       {pos && createPortal(
         <div
           style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 60 }}
-          className="w-64 rounded-xl bg-white ring-1 ring-ink-200 shadow-xl p-3 pointer-events-none"
+          className="w-64 rounded bg-white border border-ink-200 shadow-md p-3 pointer-events-none"
         >
           <div className="font-medium text-sm mb-1">{dispName(a)}</div>
           <div className="text-[12px] text-ink-600 leading-relaxed">{dispDesc(a)}</div>
@@ -328,10 +333,15 @@ function AlgoRow({ a, sel, onClick }: { a: Algorithm; sel: boolean; onClick: () 
 
 /** Manual tool runner (inline, no modal) — pick a dataset + fill params
  *  (auto-generated from the schema) + execute. Pure compute, NO AI involved. */
-function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void }) {
+function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatasetId, editorOpen }: {
+  algo: Algorithm; t: (k: string) => string; onOpenEditor: (target: EditorTarget) => void;
+  /** Shared with the code editor's 运行设置 (lifted to LibraryView). */
+  datasetId: number | null; onDatasetChange: (id: number | null) => void;
+  /** The editor is open on THIS algorithm's code — label this panel as running the saved version. */
+  editorOpen: boolean;
+}) {
   const schema = algo.params_schema || {};
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasetId, setDatasetId] = useState<number | null>(null);
   const [params, setParams] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const [k, sp] of Object.entries(schema)) {
@@ -360,7 +370,10 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
   const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
-    api.listDatasets().then((d) => { setDatasets(d); if (d[0]) setDatasetId(d[0].id); }).catch(() => {});
+    api.listDatasets().then((d) => {
+      setDatasets(d);
+      if (datasetId == null && d[0]) setDatasetId((d.find((x) => x.kind !== 'derived') ?? d[0]).id);
+    }).catch(() => {});
   }, []);
 
   // Fetch original-data rows on demand (more than the stored 10-row head).
@@ -454,42 +467,47 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
     <div className="max-w-2xl p-6 space-y-4">
       <div>
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">{dispName(algo)}</h2>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ink-100 text-ink-600">{SOURCE_ZH[algo.source] ?? algo.source}</span>
+          <h2 className="text-lg font-semibold text-ink-900">{dispName(algo)}</h2>
+          <SourceTag kind={algo.source === 'builtin' ? 'builtin' : algo.source === 'ai' ? (algo.verified ? 'ai-reviewed' : 'ai') : 'custom'} />
         </div>
-        <div className="text-xs text-ink-500 mt-0.5 font-mono">{algo.slug} · {catZh(algo.category)} · 返回 {RETURNS_ZH[algo.returns] ?? algo.returns}</div>
+        <div className="text-xs text-ink-600 mt-0.5 font-mono">{algo.slug} · {catZh(algo.category)} · 返回 {RETURNS_ZH[algo.returns] ?? algo.returns}</div>
         <p className="text-sm text-ink-700 mt-2">{dispDesc(algo)}</p>
         <div className="flex flex-wrap gap-2 mt-3">
           {algo.source === 'builtin' ? (
             <>
               <button onClick={() => onOpenEditor({ mode: 'builtin', slug: algo.slug })}
-                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 text-ink-700 hover:bg-ink-50 flex items-center gap-1.5">
+                className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5">
                 <Code2 className="w-3.5 h-3.5" /> 查看源码
               </button>
               <button onClick={async () => { try { const r = await api.forkBuiltin(algo.slug); onOpenEditor({ mode: 'new', code: r.code, source: 'user', title: `${dispName(algo)}（副本）` }); } catch (e) { setError((e as Error).message); } }}
-                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1.5">
+                className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5">
                 <Copy className="w-3.5 h-3.5" /> 复制为我的算法（可改）
               </button>
             </>
           ) : algo.id != null && (
             <button onClick={() => onOpenEditor({ mode: 'edit', algoId: algo.id! })}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 flex items-center gap-1.5">
+              className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5">
               <Code2 className="w-3.5 h-3.5" /> 代码 · 编辑 / 调试 / 历史版本
             </button>
           )}
           {algo.source !== 'builtin' && !algo.verified && (
-            <span className="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100">草稿 · 未验证（在编辑器里调试通过并保存即为已验证）</span>
+            <span className="text-[11px] px-2 py-1 rounded border border-dashed border-ink-500 text-ink-700">草稿 · 未验证（在编辑器里调试通过并保存即为已验证）</span>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl ring-1 ring-ink-200 p-4 space-y-3">
+      {editorOpen && (
+        <div className="text-xs text-ink-700 bg-ink-50 border border-ink-200 border-l-[3px] border-l-brand-600 rounded px-3 py-2 leading-relaxed">
+          这里运行的是<b>已保存的版本</b>。右侧编辑器里的「调试运行」跑的是<b>当前代码</b>（含未保存的修改），两边共用同一个数据集。
+        </div>
+      )}
+      <div className="bg-white rounded-md border border-ink-200 p-4 space-y-3">
         <div>
-          <label className="block text-xs text-ink-500 mb-1">数据集</label>
+          <label className="block text-xs font-medium text-ink-700 mb-1">数据集</label>
           <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
+            className="w-full border border-ink-300 rounded px-2 h-8 bg-white text-sm">
             <option value="">（无 / 不需要数据集）</option>
-            {datasets.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rows} × {d.columns})</option>)}
+            {datasets.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.rows.toLocaleString()} × {d.columns})</option>)}
           </select>
         </div>
 
@@ -499,9 +517,9 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
           const total = preview?.total ?? activeDs.rows;
           const shown = preview?.shown ?? rows.length;
           return (
-            <div className="rounded-lg ring-1 ring-ink-200 overflow-hidden">
+            <div className="rounded border border-ink-200 overflow-hidden">
               <button onClick={() => setShowInput((v) => !v)}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-ink-600 hover:bg-ink-50">
+                className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-ink-700 bg-ink-50 hover:bg-ink-150">
                 <span className="flex items-center gap-1.5"><Table2 className="w-3.5 h-3.5" /> 原始数据预览 · 显示前 {shown} 行（共 {total.toLocaleString()} 行 × {activeDs.columns} 列）</span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showInput ? '' : '-rotate-90'}`} />
               </button>
@@ -515,7 +533,7 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
                       <tbody>
                         {rows.map((row, i) => (
                           <tr key={i} className="border-t border-ink-100">
-                            {cols.map((c) => <td key={c} className="py-1 px-2 font-mono whitespace-nowrap text-ink-700">{cellStr((row as Record<string, unknown>)[c])}</td>)}
+                            {cols.map((c) => <td key={c} className="py-0.5 px-2 font-mono whitespace-nowrap text-ink-800">{cellStr((row as Record<string, unknown>)[c])}</td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -535,51 +553,51 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
 
         {/* Natural-language assist — fills the params below; you still review + run. */}
         {keys.length > 0 && (
-          <div className="rounded-lg bg-brand-50/60 ring-1 ring-brand-100 p-2.5">
-            <div className="flex items-center gap-1.5 text-xs text-brand-700 font-medium mb-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> 不会设参数?用一句话说,AI 帮你填(可留空)
+          <div className="rounded border border-dashed border-ink-400 p-2.5">
+            <div className="flex items-center gap-1.5 text-xs text-ink-700 font-medium mb-1.5">
+              <AiMark /> 不会设参数？用一句话说，AI 帮你填（可留空，填完请检查）
             </div>
             <div className="flex gap-2">
               <input value={intent} onChange={(e) => setIntent(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') suggest(); }}
                 placeholder={dispExample(algo)}
-                className="flex-1 border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm" />
+                className="flex-1 border border-ink-300 rounded px-2 h-8 bg-white text-sm" />
               <button onClick={suggest} disabled={suggesting}
-                className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1.5 shrink-0">
-                {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 推荐参数
+                className="px-3 h-8 rounded border border-ink-300 bg-white text-ink-800 text-[13px] hover:bg-ink-50 disabled:opacity-50 flex items-center gap-1.5 shrink-0">
+                {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} 推荐参数
               </button>
             </div>
-            {aiNote && <div className="text-xs text-ink-600 mt-2">💡 {aiNote}</div>}
+            {aiNote && <div className="text-xs text-ink-600 mt-2">{aiNote}</div>}
           </div>
         )}
 
         {keys.length > 0 && (
           <div className="space-y-3 pt-1">
-            <div className="text-xs font-medium text-ink-600">参数</div>
+            <div className="text-xs font-semibold text-ink-700">参数</div>
             {keys.map((k) => (
               <ParamField key={k} name={k} spec={schema[k] as ParamSpec} value={params[k] ?? ''} cols={cols} aiHint={explanations[k]} onChange={(v) => setParams((p) => ({ ...p, [k]: v }))} />
             ))}
           </div>
         )}
 
-        <button onClick={execute} disabled={busy} className="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 flex items-center gap-2 disabled:opacity-50">
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} 执行
+        <button onClick={execute} disabled={busy} className="px-4 h-9 rounded bg-brand-600 border border-brand-600 text-white text-sm font-medium hover:bg-brand-700 flex items-center gap-2 disabled:opacity-50">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} {editorOpen ? '执行已保存版本' : '执行'}
         </button>
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 ring-1 ring-red-100 p-3 space-y-2">
+        <div className="rounded-md bg-red-50 border border-red-200 p-3 space-y-2">
           <div className="text-sm text-red-700 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span className="whitespace-pre-wrap font-mono text-xs">{error}</span>
           </div>
           <button onClick={explainErr} disabled={explaining}
-            className="text-xs px-2.5 py-1 rounded-lg bg-white ring-1 ring-red-200 text-red-700 hover:bg-red-50 flex items-center gap-1.5 disabled:opacity-50">
-            {explaining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 用人话解释这个错误
+            className="text-xs h-7 px-2.5 rounded bg-white border border-ink-300 text-ink-800 hover:bg-ink-50 flex items-center gap-1.5 disabled:opacity-50">
+            {explaining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 用人话解释这个错误
           </button>
           {errorExplain && (
-            <div className="text-sm text-ink-700 bg-white rounded-lg ring-1 ring-ink-200 p-2.5 whitespace-pre-wrap">
-              💡 {errorExplain}
+            <div className="text-sm text-ink-700 bg-white rounded border border-dashed border-ink-500 p-2.5 whitespace-pre-wrap">
+              {errorExplain}
             </div>
           )}
         </div>
@@ -590,19 +608,19 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={explainResultFn} disabled={explainingRes}
-                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-brand-200 text-brand-700 hover:bg-brand-50 flex items-center gap-1.5 disabled:opacity-50">
-                {explainingRes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} 解读这个结果
+                className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5 disabled:opacity-50">
+                {explainingRes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 解读这个结果
               </button>
               {(result.result_rows ?? 0) > 0 && result.result_path && (
                 <button onClick={() => setShowChart((v) => !v)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg ring-1 flex items-center gap-1.5 ${showChart ? 'bg-brand-600 text-white ring-transparent' : 'ring-brand-200 text-brand-700 hover:bg-brand-50'}`}>
+                  className={`text-xs h-7 px-2.5 rounded border flex items-center gap-1.5 ${showChart ? 'bg-ink-900 border-ink-900 text-white' : 'border-ink-300 bg-white text-ink-800 hover:bg-ink-50'}`}>
                   <BarChart3 className="w-3.5 h-3.5" /> {showChart ? '收起图表' : '可视化'}
                 </button>
               )}
             </div>
             {resultExplain && (
-              <div className="text-sm text-ink-700 bg-brand-50/60 rounded-lg ring-1 ring-brand-100 p-2.5 whitespace-pre-wrap">
-                💡 {resultExplain}
+              <div className="text-sm text-ink-700 bg-white rounded border border-dashed border-ink-500 p-2.5 whitespace-pre-wrap">
+                {resultExplain}
               </div>
             )}
             {showChart && result.result_path && (result.result_rows ?? 0) > 0 && (
@@ -613,12 +631,12 @@ function RunPanel({ algo, t, onOpenEditor }: { algo: Algorithm; t: (k: string) =
           </div>
           {(result.result_rows ?? 0) > 0 && datasetId != null && (
             savedDs ? (
-              <div className="text-xs text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-lg px-3 py-2">
-                ✓ 已存为派生数据集「{savedDs.name}」—— 在「数据集 → 中间结果」里可继续分析 / 对比
+              <div className="text-xs text-success-700 bg-success-50 border border-success-200 rounded px-3 py-2">
+                已存为派生数据集「{savedDs.name}」—— 在「数据集 → 中间结果」里可继续分析 / 对比
               </div>
             ) : (
               <button onClick={saveAsDataset} disabled={savingDs}
-                className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-violet-200 text-violet-700 hover:bg-violet-50 flex items-center gap-1.5 disabled:opacity-50">
+                className="text-xs h-7 px-2.5 rounded border border-ink-300 bg-white text-ink-800 hover:bg-ink-50 flex items-center gap-1.5 disabled:opacity-50">
                 {savingDs ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} 把结果存为派生数据集
               </button>
             )
@@ -635,9 +653,9 @@ function RunOutput({ result, t }: { result: RunResult; t: (k: string) => string 
 
   return (
     <div className="space-y-2">
-      <div className="text-sm text-emerald-700 bg-emerald-50 ring-1 ring-emerald-100 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
-        <CheckCircle2 className="w-4 h-4" /> 执行成功 · {result.duration_ms} ms
-        {typeof result.result_rows === 'number' && result.result_rows > 0 && <span>· {result.result_rows} 行</span>}
+      <div className="text-sm bg-white border border-ink-200 rounded px-3 py-2 flex items-center gap-3 flex-wrap">
+        <StatusDot tone="ok">执行成功</StatusDot>
+        <span className="font-mono text-xs text-ink-600">{result.duration_ms} ms{typeof result.result_rows === 'number' && result.result_rows > 0 ? ` · ${result.result_rows.toLocaleString()} 行` : ''}</span>
         {result.result_path && (
           <span className="ml-auto flex items-center gap-2 text-xs">
             下载:<a href={exp('csv')} className="text-brand-600 underline">CSV</a>
@@ -647,15 +665,15 @@ function RunOutput({ result, t }: { result: RunResult; t: (k: string) => string 
       </div>
 
       {s.type === 'dataframe' && s.head && s.head.length > 0 ? (
-        <div className="rounded-lg ring-1 ring-ink-200 overflow-auto max-h-80">
+        <div className="rounded border border-ink-200 overflow-auto max-h-80">
           <table className="text-xs min-w-full">
-            <thead className="bg-ink-50 text-ink-500 sticky top-0">
-              <tr>{(s.columns ?? Object.keys(s.head[0])).map((c) => <th key={c} className="text-left py-2 px-3 font-medium whitespace-nowrap">{c}</th>)}</tr>
+            <thead className="bg-ink-50 text-ink-600 sticky top-0">
+              <tr>{(s.columns ?? Object.keys(s.head[0])).map((c) => <th key={c} className="text-left py-1.5 px-3 font-medium whitespace-nowrap">{c}</th>)}</tr>
             </thead>
             <tbody>
               {s.head.map((row, i) => (
                 <tr key={i} className="border-t border-ink-100">
-                  {(s.columns ?? Object.keys(s.head![0])).map((c) => <td key={c} className="py-1.5 px-3 font-mono whitespace-nowrap">{cellStr(row[c])}</td>)}
+                  {(s.columns ?? Object.keys(s.head![0])).map((c) => <td key={c} className="py-0.5 px-3 font-mono whitespace-nowrap">{cellStr(row[c])}</td>)}
                 </tr>
               ))}
             </tbody>

@@ -122,22 +122,22 @@ export function cellStr(v: unknown): string {
 // ever lost (still searchable). Shared by the library panel AND the flow-canvas
 // algorithm palette so both read identically.
 export const INTENT_ZH: Record<string, string> = {
-  clean: '🧹 准备 · 清洗',
-  smooth: '〰️ 平滑 · 去噪',
-  feature: '🎯 找特征 · 找异常',
-  map: '🔀 映射 · 重采样',
-  fit: '📈 拟合 · 建模',
-  reduce: '🧭 降维 · 看结构',
-  structure: '🔧 结构操作',
-  custom: '🛠️ 自建 · AI 生成',
-  other: '🆕 其他 · 待归类',
+  clean: '准备 · 清洗',
+  smooth: '平滑 · 去噪',
+  feature: '找特征 · 找异常',
+  map: '映射 · 重采样',
+  fit: '拟合 · 建模',
+  reduce: '降维 · 看结构',
+  structure: '结构操作',
+  custom: '自建 · AI 生成',
+  other: '其他 · 待归类',
 };
 export const INTENT_ORDER = ['clean', 'smooth', 'feature', 'map', 'fit', 'reduce', 'structure', 'custom', 'other'];
 
-// Per-intent icon (the leading colored glyph on each algorithm row).
+// Per-intent icon key — rendered as a line icon by <IntentIcon> (components/AnalysisIcon).
 export const INTENT_ICON: Record<string, string> = {
-  clean: '🧹', smooth: '〰️', feature: '🎯', map: '🔀', fit: '📈',
-  reduce: '🧭', structure: '🔧', custom: '🛠️', other: '🆕',
+  clean: 'clean', smooth: 'smooth', feature: 'outliers', map: 'map', fit: 'fit',
+  reduce: 'pca', structure: 'structure', custom: 'custom-algo', other: 'other',
 };
 export const intentIcon = (k: string) => INTENT_ICON[k] ?? INTENT_ICON.other;
 

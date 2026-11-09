@@ -13,7 +13,8 @@ import {
   CheckCircle2, AlertTriangle, GitBranch, ArrowRight, X, Search, BarChart3, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate, type TemplateStep, type TemplateRunResult, type FlowGraph, type ParamSpec } from '@/lib/api';
-import { ALGO_ZH, paramToStr, coerceParam, dispName, dispDesc, dispExample, catZh, RETURNS_ZH, SOURCE_ZH, COL_MULTI, COL_SINGLE, paramKind, matchAlgo, groupByIntent, intentIcon, intentZh, algoIntent } from '@/lib/algoMeta';
+import { ALGO_ZH, paramToStr, coerceParam, dispName, dispDesc, dispExample, catZh, RETURNS_ZH, SOURCE_ZH, COL_MULTI, COL_SINGLE, paramKind, matchAlgo, groupByIntent, intentZh, algoIntent } from '@/lib/algoMeta';
+import { IntentIcon } from '@/components/AnalysisIcon';
 import ParamField from '@/components/ParamField';
 import DatasetChart from '@/components/DatasetChart';
 
@@ -1241,9 +1242,9 @@ function PaletteChip({ a, onPick }: { a: Algorithm; onPick: (slug: string) => vo
         onClick={() => onPick(a.slug)}
         onMouseEnter={show}
         onMouseLeave={() => setPos(null)}
-        className="cursor-grab active:cursor-grabbing rounded-lg ring-1 ring-ink-200 bg-white px-2 py-1.5 hover:ring-brand-300 hover:bg-brand-50/60 transition flex items-center gap-2"
+        className="cursor-grab active:cursor-grabbing rounded border border-ink-200 bg-white px-2 py-1.5 hover:border-brand-400 hover:bg-ink-50 transition-colors flex items-center gap-2"
       >
-        <span className="shrink-0 text-[14px] leading-none">{intentIcon(algoIntent(a))}</span>
+        <span className="shrink-0 text-ink-500"><IntentIcon intent={algoIntent(a)} /></span>
         <span className="text-xs font-medium text-ink-800 truncate flex-1">{dispName(a)}</span>
       </div>
       {pos && createPortal(
