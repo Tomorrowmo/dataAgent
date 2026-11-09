@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, Database, FunctionSquare, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Info, Puzzle } from 'lucide-react';
+import { MessagesSquare, Database, FunctionSquare, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Info, Puzzle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,14 +10,9 @@ import { useT } from '@/lib/i18n';
 
 type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'skills' | 'feedback' | 'settings' | 'about';
 
-// Per-conversation avatar colour, hashed from the id so each conversation keeps
-// a stable, distinct tint (Notion/Linear style) — makes the list scannable.
-const AVATAR_COLORS = [
-  'bg-blue-100 text-blue-700', 'bg-violet-100 text-violet-700', 'bg-emerald-100 text-emerald-700',
-  'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-cyan-100 text-cyan-700',
-  'bg-indigo-100 text-indigo-700', 'bg-fuchsia-100 text-fuchsia-700',
-];
-const avatarColor = (id: number) => AVATAR_COLORS[((id % AVATAR_COLORS.length) + AVATAR_COLORS.length) % AVATAR_COLORS.length];
+// Conversation avatars are neutral: colour is reserved for state (design rule),
+// so the first character alone makes the list scannable. Active = brand tint.
+const avatarColor = (active: boolean) => (active ? 'bg-brand-100 text-brand-700' : 'bg-ink-150 text-ink-600');
 const avatarChar = (title: string) => (title?.trim()?.[0] ?? '·').toUpperCase();
 
 export default function Sidebar({
@@ -86,7 +81,7 @@ export default function Sidebar({
   const [convPanelOpen, setConvPanelOpen] = useState(false);
 
   const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
-    { id: 'chat', label: t('side.chat'), icon: <Bot className="w-5 h-5" /> },
+    { id: 'chat', label: t('side.chat'), icon: <MessagesSquare className="w-5 h-5" /> },
     { id: 'datasets', label: t('side.datasets'), icon: <Database className="w-5 h-5" /> },
     { id: 'algorithms', label: t('side.algorithms'), icon: <FunctionSquare className="w-5 h-5" /> },
     { id: 'templates', label: '流程模板', icon: <Workflow className="w-5 h-5" /> },
@@ -100,13 +95,13 @@ export default function Sidebar({
   return (
     <div className="flex h-full shrink-0">
       {/* Tier 1 — icon rail (primary navigation) */}
-      <aside className="w-14 shrink-0 border-r border-ink-200 bg-white flex flex-col items-center py-3 gap-1">
-        <Link href="/" title="RLab Cortex" className="w-9 h-9 rounded-lg bg-brand-600 text-white grid place-items-center text-sm font-semibold mb-1">R</Link>
+      <aside className="w-14 shrink-0 border-r border-ink-200 bg-ink-100 flex flex-col items-center py-3 gap-1">
+        <Link href="/" title="RLab Cortex" className="w-8 h-8 rounded bg-brand-600 text-white grid place-items-center font-mono text-[13px] font-medium mb-1">R</Link>
         {/* New conversation — prominent, always reachable from the rail */}
         <button
           onClick={onNewConv}
           title="新建对话"
-          className="w-10 h-10 grid place-items-center rounded-xl text-brand-500 hover:bg-brand-50 mb-1"
+          className="w-9 h-9 grid place-items-center rounded text-brand-600 hover:bg-white hover:ring-1 hover:ring-ink-200 mb-1"
         >
           <Plus className="w-5 h-5" />
         </button>
@@ -121,8 +116,11 @@ export default function Sidebar({
               onChangeView(n.id);
             }}
             title={n.label}
-            className={`w-10 h-10 grid place-items-center rounded-xl transition ${
-              activeView === n.id ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700'
+            aria-current={activeView === n.id ? 'page' : undefined}
+            className={`relative w-9 h-9 grid place-items-center rounded transition-colors ${
+              activeView === n.id
+                ? 'bg-white text-brand-600 ring-1 ring-ink-200 before:absolute before:-left-[11px] before:top-2.5 before:w-[3px] before:h-4 before:rounded-sm before:bg-brand-600'
+                : 'text-ink-500 hover:bg-ink-150 hover:text-ink-800'
             }`}
           >
             {n.icon}
@@ -130,14 +128,14 @@ export default function Sidebar({
         ))}
         <div className="mt-auto flex flex-col items-center gap-1">
           <LanguageToggle compact />
-          <button onClick={logout} title={t('side.signout')} className="w-10 h-10 grid place-items-center rounded-xl text-ink-400 hover:bg-ink-100 hover:text-red-600">
+          <button onClick={logout} title={t('side.signout')} className="w-9 h-9 grid place-items-center rounded text-ink-500 hover:bg-ink-150 hover:text-danger-700">
             <LogOut className="w-5 h-5" />
           </button>
           {version && (
             <button
               onClick={() => onChangeView('about')}
               title={`版本 v${version} · 点击查看更新日志`}
-              className="text-[9px] leading-none font-mono text-ink-300 hover:text-brand-600 pb-0.5"
+              className="text-[10px] leading-none font-mono text-ink-400 hover:text-brand-600 pb-0.5"
             >
               v{version}
             </button>
@@ -147,9 +145,9 @@ export default function Sidebar({
 
       {/* Tier 2 — contextual panel: conversation list (only on the chat view) */}
       {activeView === 'chat' && convPanelOpen && (
-        <aside className="w-60 shrink-0 border-r border-ink-200 bg-ink-50/40 flex flex-col max-md:fixed max-md:left-14 max-md:top-0 max-md:bottom-0 max-md:z-40 max-md:shadow-2xl">
+        <aside className="w-60 shrink-0 border-r border-ink-200 bg-ink-100 flex flex-col max-md:fixed max-md:left-14 max-md:top-0 max-md:bottom-0 max-md:z-40 max-md:shadow-2xl">
           <div className="px-3 pt-3 pb-1.5">
-            <span className="text-[11px] font-medium text-ink-500 uppercase tracking-wide">{t('side.conversations')}</span>
+            <span className="text-[11px] font-semibold text-ink-500 tracking-wide">{t('side.conversations')}</span>
           </div>
           <div className="flex-1 overflow-y-auto scroll-hide px-2 pb-2 space-y-0.5">
             {convs.length === 0 && <div className="px-2 py-3 text-xs text-ink-400">{t('side.noSessions')}</div>}
@@ -158,9 +156,9 @@ export default function Sidebar({
               return (
                 <div
                   key={c.id}
-                  className={`group flex items-center gap-2 rounded-lg px-1.5 py-1.5 ${active ? 'bg-brand-50 ring-1 ring-brand-200' : 'hover:bg-white'}`}
+                  className={`group flex items-center gap-2 rounded px-1.5 py-1 ${active ? 'bg-white ring-1 ring-ink-200' : 'hover:bg-ink-150'}`}
                 >
-                  <span className={`shrink-0 w-7 h-7 rounded-lg grid place-items-center text-xs font-semibold ${avatarColor(c.id)}`}>
+                  <span className={`shrink-0 w-6 h-6 rounded grid place-items-center text-[11px] font-semibold ${avatarColor(active)}`}>
                     {avatarChar(c.title)}
                   </span>
                   {editingId === c.id ? (
@@ -175,7 +173,7 @@ export default function Sidebar({
                   ) : (
                     <button
                       onClick={() => { onSelectConv(c.id); if (typeof window !== 'undefined' && window.innerWidth < 768) setConvPanelOpen(false); }}
-                      className={`flex-1 min-w-0 text-left text-sm truncate ${active ? 'text-brand-700 font-medium' : 'text-ink-700'}`}
+                      className={`flex-1 min-w-0 text-left text-[13px] truncate ${active ? 'text-ink-900 font-medium' : 'text-ink-700'}`}
                     >
                       {c.title}
                     </button>

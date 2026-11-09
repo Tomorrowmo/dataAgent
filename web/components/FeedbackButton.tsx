@@ -110,13 +110,12 @@ export default function FeedbackButton({ view, conversationId, datasetId }: Prop
       <button
         onClick={() => setOpen(true)}
         title={zh ? '标记 / 反馈' : 'Mark / feedback'}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2.5
-                   text-sm font-medium text-white shadow-lg shadow-sky-600/30 transition
-                   hover:-translate-y-0.5 hover:bg-sky-700 hover:shadow-xl focus:outline-none
-                   focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded border border-ink-300 bg-white px-2.5 h-8
+                   text-xs font-medium text-ink-700 shadow-md transition-colors
+                   hover:bg-ink-50 hover:text-ink-900"
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 21V5a2 2 0 0 1 2-2h10l4 4v8a2 2 0 0 1-2 2H9l-5 4z" />
         </svg>
         {zh ? '反馈' : 'Feedback'}

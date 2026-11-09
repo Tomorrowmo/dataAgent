@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Wrench, Bot, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
+import { Send, Wrench, MessagesSquare, User, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
 import Markdown from '@/components/Markdown';
+import { AiMark } from '@/components/ui';
+import AnalysisIcon from '@/components/AnalysisIcon';
 import { api, streamChat, type ChatMessage, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { RECIPES, STARTERS, buildPrompt, type RecipeId, type Starter } from '@/lib/recipes';
@@ -437,7 +439,7 @@ export default function ChatView({
 
     const primary = datasets.find((d) => d.id === dsIds[0]);
     const dsLabel = primary ? primary.name + (dsIds.length > 1 ? ` +${dsIds.length - 1}` : '') : undefined;
-    const userMsg: DisplayMsg = { id: `u_${Date.now()}`, role: 'user', content: userText, datasetLabel: imgName ? `🖼 ${imgName}` : dsLabel };
+    const userMsg: DisplayMsg = { id: `u_${Date.now()}`, role: 'user', content: userText, datasetLabel: imgName ? `图片 · ${imgName}` : dsLabel };
     const pendingMsg: DisplayMsg = {
       id: `a_${Date.now()}`, role: 'assistant', content: '', events: [], pending: true,
     };
@@ -560,7 +562,7 @@ export default function ChatView({
       )}
       <div className="flex-1 min-w-0 flex flex-col h-full">
       <div className="border-b border-ink-200 px-3 md:px-5 py-3 bg-white flex items-center gap-3">
-        <Bot className="w-5 h-5 text-brand-600 shrink-0" />
+        <MessagesSquare className="w-5 h-5 text-brand-600 shrink-0" strokeWidth={1.5} />
         <div className="font-medium max-md:hidden">{t('chat.title')}</div>
         <div className="ml-auto flex items-center gap-2 text-sm min-w-0">
           <span className="text-ink-500 max-md:hidden">{t('chat.dataset')}</span>
@@ -968,17 +970,17 @@ function ChatProfileCard({ ds, lang }: { ds: Dataset; lang: 'en' | 'zh' }) {
   }, [ds.id]);
   if (!p) return null;
   return (
-    <div className="mb-4 rounded-2xl bg-white ring-1 ring-brand-200 shadow-sm overflow-hidden flex items-stretch">
-      <div className="w-1.5 shrink-0 bg-gradient-to-b from-brand-500 to-violet-500" />
-      <div className="flex-1 p-4">
-        <div className="flex items-center gap-1.5 text-brand-700 font-semibold text-sm mb-1.5">
-          <Sparkles className="w-4 h-4" /> {lang === 'zh' ? '认识这份数据' : 'Know this data'}
-        </div>
-        <p className="text-[15px] text-ink-900 font-medium leading-relaxed">{p.headline}</p>
+    <div className="mb-4 rounded-md bg-white border border-ink-200 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-ink-150 bg-ink-50 text-[13px] font-semibold text-ink-800">
+        {lang === 'zh' ? '数据概况' : 'Data profile'}
+        <span className="text-xs font-normal text-ink-500">{lang === 'zh' ? '自动生成' : 'auto-generated'}</span>
+      </div>
+      <div className="px-4 py-3">
+        <p className="text-sm text-ink-900 leading-relaxed">{p.headline}</p>
         {p.facts.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-2">
             {p.facts.map((f, i) => (
-              <span key={i} className="inline-flex items-center text-xs text-ink-600 bg-ink-50 ring-1 ring-ink-200/70 rounded-full px-2.5 py-1">{f}</span>
+              <span key={i} className="inline-flex items-center text-xs text-ink-700 bg-ink-50 border border-ink-200 rounded-sm px-2 py-0.5">{f}</span>
             ))}
           </div>
         )}
@@ -1013,19 +1015,19 @@ function Welcome({
   const pendingTitle = pendingRecipe ? t(RECIPES.find((r) => r.id === pendingRecipe)?.titleKey ?? '') : '';
   return (
     <div className="max-w-3xl mx-auto pt-4">
-      <h2 className="text-2xl font-semibold mb-1">👋 {t('welcome.hi')}</h2>
+      <h2 className="text-xl font-semibold mb-1 text-ink-900">{t('welcome.hi')}</h2>
 
       <p className="text-sm text-ink-500 mb-4">{lang === 'zh' ? '把你要分析的数据放进来 —— CSV / Excel、表格截图或照片，甚至没见过的格式，AI 都能帮你自动读懂。' : 'Bring in the data you want to analyze — CSV / Excel, screenshots or photos of tables, even formats we’ve never seen. AI reads them all.'}</p>
 
       {/* Drop zone — always here; the primary "get your data in" action */}
       <button
         onClick={onClickUpload}
-        className={`w-full rounded-2xl border-2 border-dashed transition flex flex-col items-center gap-2 py-10 ${
-          dragOver ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white hover:border-brand-400 hover:bg-brand-50/40'
+        className={`w-full rounded-md border border-dashed transition-colors flex flex-col items-center gap-1.5 py-8 ${
+          dragOver ? 'border-brand-600 bg-brand-50' : 'border-ink-300 bg-white hover:border-brand-400 hover:bg-ink-50'
         }`}
       >
-        {uploading ? <Loader2 className="w-8 h-8 text-brand-600 animate-spin" /> : <Upload className="text-brand-600 w-8 h-8" />}
-        <div className="font-medium text-base">{uploading ? t('welcome.uploading') : (lang === 'zh' ? '把你要分析的数据拖进来' : 'Drop in the data you want to analyze')}</div>
+        {uploading ? <Loader2 className="w-6 h-6 text-brand-600 animate-spin" /> : <Upload className="text-brand-600 w-6 h-6" strokeWidth={1.5} />}
+        <div className="font-medium text-sm text-ink-900">{uploading ? t('welcome.uploading') : (lang === 'zh' ? '把你要分析的数据拖进来' : 'Drop in the data you want to analyze')}</div>
         <div className="text-xs text-ink-500">{lang === 'zh' ? 'CSV / Excel · 表格截图 / 照片 · 没见过的格式也自动写解析器' : 'CSV / Excel · table screenshots / photos · unknown formats get an auto-written parser'}</div>
       </button>
 
@@ -1038,8 +1040,8 @@ function Welcome({
               const x = lang === 'zh' ? s.zh : s.en;
               return (
                 <button key={s.datasetName} onClick={() => onStarter(s)}
-                  className="text-left rounded-xl p-3.5 ring-1 ring-ink-200 bg-white hover:ring-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition">
-                  <div className="text-xl mb-1">{s.emoji}</div>
+                  className="text-left rounded-md p-3.5 border border-ink-200 bg-white hover:border-brand-400 hover:bg-ink-50 transition-colors">
+                  <div className="text-brand-600 mb-1.5"><AnalysisIcon id={s.datasetName} className="w-[18px] h-[18px]" /></div>
                   <div className="font-medium text-sm">{x.t}</div>
                   <div className="text-xs text-ink-500 mt-1 leading-snug line-clamp-2">{x.q}</div>
                 </button>
@@ -1061,7 +1063,7 @@ function Welcome({
           ) : (
             /* Nothing selected: say so, and let the user pick right here. When a
                recipe card was just clicked, this is the "which data?" step. */
-            <div className={`rounded-xl p-3.5 mb-4 ${pendingRecipe ? 'ring-2 ring-brand-400 bg-brand-50/60' : 'ring-1 ring-ink-200 bg-white'}`}>
+            <div className={`rounded-md p-3.5 mb-4 ${pendingRecipe ? 'border border-brand-600 bg-brand-50' : 'border border-ink-200 bg-white'}`}>
               <div className="flex items-start gap-2">
                 <div className="text-sm text-ink-700 flex-1">
                   {pendingRecipe
@@ -1076,13 +1078,13 @@ function Welcome({
               <div className="flex flex-wrap gap-2 mt-2.5">
                 {recent.map((d) => (
                   <button key={d.id} onClick={() => onPickDataset(d.id)}
-                    className="text-xs px-2.5 py-1.5 rounded-lg ring-1 ring-ink-200 bg-white hover:ring-brand-400 hover:bg-brand-50 text-left">
+                    className="text-xs px-2.5 py-1.5 rounded border border-ink-300 bg-white hover:border-brand-400 hover:bg-brand-50 text-left">
                     <span className="font-medium text-ink-800">{d.name}</span>
-                    <span className="text-ink-400 ml-1.5">{d.rows} × {d.columns}</span>
+                    <span className="text-ink-500 ml-1.5 font-mono">{d.rows.toLocaleString()} × {d.columns}</span>
                   </button>
                 ))}
                 <button onClick={onClickUpload}
-                  className="text-xs px-2.5 py-1.5 rounded-lg border border-dashed border-brand-300 text-brand-700 hover:bg-brand-50">
+                  className="text-xs px-2.5 py-1.5 rounded border border-dashed border-ink-400 text-ink-700 hover:bg-ink-50">
                   {zh ? '＋ 上传新数据' : '+ Upload new data'}
                 </button>
               </div>
@@ -1093,10 +1095,10 @@ function Welcome({
               <button
                 key={r.id}
                 onClick={() => onRecipeClick(r.id)}
-                className={`text-left rounded-xl p-4 bg-white hover:bg-brand-50/40 hover:-translate-y-0.5 transition ${
-                  pendingRecipe === r.id ? 'ring-2 ring-brand-400' : 'ring-1 ring-ink-200 hover:ring-brand-300'}`}
+                className={`text-left rounded-md p-3.5 bg-white hover:bg-ink-50 transition-colors ${
+                  pendingRecipe === r.id ? 'border border-brand-600' : 'border border-ink-200 hover:border-brand-400'}`}
               >
-                <div className="text-2xl mb-1.5">{r.emoji}</div>
+                <div className="text-brand-600 mb-1.5"><AnalysisIcon id={r.id} className="w-[18px] h-[18px]" /></div>
                 <div className="font-medium text-sm">{t(r.titleKey)}</div>
                 <div className="text-xs text-ink-500 mt-1 leading-snug">{t(r.bodyKey)}</div>
               </button>
@@ -1167,10 +1169,10 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   if (msg.role === 'user') {
     return (
       <div className="flex gap-3 max-w-3xl mx-auto">
-        <div className="w-8 h-8 rounded-full bg-ink-200 grid place-items-center"><User className="w-4 h-4" /></div>
-        <div className="flex-1 bg-white rounded-2xl ring-1 ring-ink-200 p-4 prose-tight text-sm">
+        <div className="w-7 h-7 shrink-0 rounded bg-ink-150 text-ink-600 grid place-items-center"><User className="w-4 h-4" strokeWidth={1.5} /></div>
+        <div className="flex-1 min-w-0 bg-white rounded-md border border-ink-200 px-4 py-3 prose-tight text-sm">
           {msg.datasetLabel && (
-            <div className="inline-flex items-center gap-1 text-[10.5px] text-brand-700 bg-brand-50 ring-1 ring-brand-100 rounded-md px-1.5 py-0.5 mb-2">
+            <div className="inline-flex items-center gap-1 text-[11px] font-mono text-brand-700 bg-brand-50 border border-brand-100 rounded-sm px-1.5 py-px mb-2">
               <Database className="w-3 h-3" /> {msg.datasetLabel}
             </div>
           )}
@@ -1210,11 +1212,13 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   const suggestedSkills = ((finalEvent?.payload as { suggest_skills?: { id: number; name: string; summary: string }[] } | undefined)?.suggest_skills) ?? [];
   const errored = Boolean(finalEvent?.payload?.error);
   const cancelled = Boolean(finalEvent?.payload?.cancelled);
+  // Answer bubble: white sheet whose left rule carries the turn's STATE
+  // (brand = normal, red = error, amber = cancelled).
   const bubbleClass = errored
-    ? 'bg-red-50/50 ring-red-200'
+    ? 'border-l-danger-600'
     : cancelled
-      ? 'bg-amber-50/50 ring-amber-200'
-      : 'bg-brand-50/50 ring-brand-100';
+      ? 'border-l-warning-500'
+      : 'border-l-brand-600';
   // Split into OUTPUTS the user reads (charts, generated-tool cards, errors) —
   // always shown — and PROCESS chips (thinking / tool calls / progress), which
   // are collapsed by default since the full step detail lives in the 工作台.
@@ -1222,8 +1226,8 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   const procEvents = visibleEvents.filter((e) => !isOutputEvent(e));
   return (
     <div className="flex gap-3 max-w-3xl mx-auto">
-      <div className="w-8 h-8 rounded-full bg-brand-600 text-white grid place-items-center"><Bot className="w-4 h-4" /></div>
-      <div className={`flex-1 rounded-2xl ring-1 p-4 prose-tight text-sm ${bubbleClass}`}>
+      <div className="w-7 h-7 shrink-0 rounded bg-brand-600 text-white grid place-items-center font-mono text-xs font-medium">R</div>
+      <div className={`flex-1 min-w-0 rounded-md bg-white border border-ink-200 border-l-[3px] px-4 py-3 prose-tight text-sm ${bubbleClass}`}>
         {usedSkills.length > 0 && (
           <div className="inline-flex items-center gap-1 text-[11px] text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-md px-1.5 py-0.5 mb-2">
             <Puzzle className="w-3 h-3" /> 使用了 skill：{usedSkills.map((x) => `「${x.name}」`).join('')}
@@ -1237,17 +1241,17 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
           : <EventChip key={`o${i}`} ev={e} active={Boolean(msg.pending)} t={t} />)}
         {liveBuild.length > 0 && msg.pending && <ToolBuildCard events={liveBuild} />}
         {drafts.size > 0 && !msg.pending && (
-          <div className="text-xs text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-2.5 py-1.5 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <div className="text-xs text-ink-700 bg-white border border-dashed border-ink-500 rounded px-2.5 py-1.5 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <AiMark />
             <span>本回答中的部分结果来自 AI 新建、<b>尚未经你审核</b>的算法{[...drafts.values()].map((n) => `「${n}」`).join('')}。审核并保存后，这个提示会消失。</span>
             {onOpenAlgorithm && [...drafts.keys()].slice(0, 1).map((slug) => (
-              <button key={slug} onClick={() => onOpenAlgorithm(slug)} className="underline hover:text-amber-900">去审核代码</button>
+              <button key={slug} onClick={() => onOpenAlgorithm(slug)} className="underline text-brand-700 hover:text-brand-800">去审核代码</button>
             ))}
           </div>
         )}
         {msg.pending && liveThought && (
-          <div className="text-xs text-ink-500 italic mb-2 leading-relaxed">
-            💭 {liveThought}<span className="animate-pulse">▍</span>
+          <div className="text-xs text-ink-500 mb-2 leading-relaxed border-l-2 border-ink-200 pl-2">
+            {liveThought}<span className="animate-pulse">▍</span>
           </div>
         )}
         {msg.pending && <ThinkingIndicator startedAt={turnStartedAt} events={events} t={t} />}
@@ -1259,12 +1263,12 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
             {suggestedSkills.map((sk) => {
               const on = activeSkills?.includes(sk.id);
               return (
-                <div key={sk.id} className="flex flex-wrap items-center gap-2 text-xs bg-violet-50/70 ring-1 ring-violet-100 rounded-lg px-2.5 py-1.5">
+                <div key={sk.id} className="flex flex-wrap items-center gap-2 text-xs bg-ink-50 border border-ink-200 rounded px-2.5 py-1.5">
                   <Puzzle className="w-3.5 h-3.5 text-violet-600 shrink-0" />
                   <span className="text-ink-700 flex-1 min-w-0">你的 skill「<b>{sk.name}</b>」可能更适合这个问题{sk.summary ? `：${sk.summary}` : ''}</span>
                   {on
                     ? <span className="text-violet-700 inline-flex items-center gap-1"><Check className="w-3.5 h-3.5" /> 已启用，下一条消息生效</span>
-                    : <button onClick={() => onEnableSkill(sk.id)} className="px-2 py-0.5 rounded-md bg-violet-600 text-white hover:bg-violet-700">启用</button>}
+                    : <button onClick={() => onEnableSkill(sk.id)} className="px-2 py-0.5 rounded border border-brand-600 bg-brand-600 text-white hover:bg-brand-700">启用</button>}
                 </div>
               );
             })}
@@ -1278,8 +1282,8 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
                 <button
                   key={i}
                   onClick={() => onSuggest(s)}
-                  className="text-xs px-2.5 py-1 rounded-full ring-1 ring-brand-200 text-brand-700
-                             bg-white/70 hover:bg-brand-50 hover:ring-brand-300 transition-colors"
+                  className="text-xs px-2.5 py-1 rounded border border-dashed border-ink-300 text-ink-700
+                             bg-white hover:bg-ink-50 hover:border-brand-400 hover:text-brand-700 transition-colors"
                 >
                   {s}
                 </button>
@@ -1346,7 +1350,7 @@ function ToolBuildCard({ events }: { events: Event[] }) {
   });
   return (
     <div className="text-xs bg-white ring-1 ring-brand-200 rounded-lg px-3 py-2.5 mb-2">
-      <div className="text-ink-700 mb-1.5">🔧 正在为你新建算法「<b>{name}</b>」</div>
+      <div className="text-ink-700 mb-1.5 flex items-center gap-1.5"><AiMark /> 正在为你新建算法「<b>{name}</b>」</div>
       <ol className="space-y-0.5">
         {lines.map((l, i) => {
           const last = i === lines.length - 1;
@@ -1417,7 +1421,7 @@ function GeneratedToolCard({ result, reviewed, onKept, onOpenAlgorithm }: {
   if (failed) {
     return (
       <div className="text-xs bg-amber-50/60 ring-1 ring-amber-200 rounded-lg px-3 py-2.5 mb-2">
-        <div className="text-amber-800">🔧 AI 尝试新建算法「<b>{name}</b>」，沙箱自测没有通过（尝试 {result.attempts ?? 1} 次），<b>没有被使用</b>。</div>
+        <div className="text-amber-800">AI 尝试新建算法「<b>{name}</b>」，沙箱自测没有通过（尝试 {result.attempts ?? 1} 次），<b>没有被使用</b>。</div>
         {result.final_error && <div className="text-amber-700 mt-1 break-all">原因：{result.final_error.trim().split('\n').pop()?.slice(0, 200)}</div>}
         {details}
       </div>
@@ -1427,7 +1431,7 @@ function GeneratedToolCard({ result, reviewed, onKept, onOpenAlgorithm }: {
   const head = (
     <>
       <div className="text-ink-700">
-        🔧 AI 新建了算法「<b>{state === 'kept' ? savedName : name}</b>」
+        AI 新建了算法「<b>{state === 'kept' ? savedName : name}</b>」
         {state === 'kept'
           ? <span className="ml-1.5 text-emerald-700">✓ 已审核保存到工具库</span>
           : <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">草稿 · 未经你审核</span>}
@@ -1512,8 +1516,8 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
   }
   if (ev.kind === 'thought') {
     return (
-      <div className="text-xs text-ink-500 mb-2 italic">
-        💭 {String(ev.payload.text ?? '')}
+      <div className="text-xs text-ink-500 mb-2 border-l-2 border-ink-200 pl-2">
+        {String(ev.payload.text ?? '')}
       </div>
     );
   }
@@ -1548,7 +1552,7 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
       );
     }
     if (result.tools) {
-      return <div className="text-xs text-ink-500 mb-2">📚 {t('chat.found')} {(result.tools as unknown[]).length} {t('chat.tools')}</div>;
+      return <div className="text-xs text-ink-500 mb-2">{t('chat.found')} {(result.tools as unknown[]).length} {t('chat.tools')}</div>;
     }
     if (result.error) {
       return <div className="text-xs text-red-600 mb-2 bg-red-50 rounded-lg px-2 py-1.5">⚠ {String(result.error).slice(0, 200)}</div>;
@@ -1559,7 +1563,7 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
       if (result.registered_slug) {
         return <GeneratedToolCard result={result as GenResult} reviewed={false} />;
       }
-      return <div className="text-xs text-ink-500 mb-2">✨ {t('chat.generated')} &quot;{toolName}&quot;{t('chat.awaiting')}</div>;
+      return <div className="text-xs text-ink-500 mb-2 inline-flex items-center gap-1.5"><AiMark /> {t('chat.generated')} &quot;{toolName}&quot;{t('chat.awaiting')}</div>;
     }
     if (result.status === 'ok') {
       const summary = result.summary as { rows?: number; type?: string; value?: unknown } | undefined;

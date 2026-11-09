@@ -204,7 +204,7 @@ export default function WorkbenchPanel({
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-hide px-3 py-3 space-y-1.5">
         {trace.events.length === 0 && !trace.busy && (
-          <div className="text-[12px] text-ink-400 italic py-6 text-center">
+          <div className="text-[12px] text-ink-500 py-6 text-center">
             空闲中 · 发送一条消息后这里会实时显示 agent 的每一步
           </div>
         )}
@@ -418,7 +418,7 @@ function TimelineRow({
     success: 'text-ink-600',
     error:   'text-red-600',
     warn:    'text-amber-700',
-    thought: 'text-ink-600 italic',
+    thought: 'text-ink-600',
     tool:    'text-ink-700',
   }[tone];
   return (
