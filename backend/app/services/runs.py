@@ -121,6 +121,9 @@ async def describe_origin(session: AsyncSession, run: Run) -> Dict[str, Any]:
     if g and g.conversation_id:
         c = await session.get(Conversation, g.conversation_id)
         out["conversation"] = {"id": g.conversation_id, "title": c.title if c else "（已删除的对话）", "exists": c is not None}
+    elif g and g.entry == "chat":
+        # The conversation was deleted (its id is cleared on delete).
+        out["conversation"] = {"id": None, "title": "（已删除的对话）", "exists": False}
     if g and g.template_id:
         t = await session.get(FlowTemplate, g.template_id)
         out["template"] = {"id": g.template_id, "name": t.name if t else "（已删除的流程）", "exists": t is not None}

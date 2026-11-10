@@ -115,6 +115,12 @@ async def delete_conv(
     if conv is None:
         raise HTTPException(404, "conversation not found")
     await session.execute(delete(Message).where(Message.conversation_id == conv_id))
+    # Detach the runs from the deleted conversation: SQLite may hand the same id
+    # to a later conversation, which would otherwise inherit these results.
+    # Their origin then reads 「（已删除的对话）」.
+    from ..db.models import RunGroup
+    await session.execute(update(RunGroup).where(RunGroup.conversation_id == conv_id, RunGroup.owner_id == user.id)
+                          .values(conversation_id=None))
     await session.execute(delete(Conversation).where(Conversation.id == conv_id))
     await session.commit()
     return {"ok": True}

@@ -99,6 +99,8 @@ async def _origins(session: AsyncSession, rows: List[Dataset]) -> Dict[int, Dict
                              "algorithm": {"slug": r.algorithm_slug, "label": r.label, "version": r.algorithm_version}}
         if g.conversation_id:
             o["conversation"] = {"id": g.conversation_id, "title": convs.get(g.conversation_id), "exists": g.conversation_id in convs}
+        elif g.entry == "chat":
+            o["conversation"] = {"id": None, "title": "（已删除的对话）", "exists": False}
         if g.template_id:
             o["template"] = {"id": g.template_id, "name": tpls.get(g.template_id), "exists": g.template_id in tpls}
         out[d.id] = o

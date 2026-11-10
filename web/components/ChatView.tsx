@@ -1380,7 +1380,7 @@ function Welcome({
         chartNode={<DatasetChart datasetId={mineDs.id} name={mineDs.name} height={240} bare />}
         chain={[o?.algorithm ? `${o.algorithm.slug}${o.algorithm.version != null ? ` v${o.algorithm.version}` : ''}` : '', `${mineDs.rows.toLocaleString()} × ${mineDs.columns}`].filter(Boolean)}
         action={<span className="flex gap-3">
-          {o?.conversation?.exists && <button type="button" onClick={() => onOpenConversation(o.conversation!.id)} className="text-brand-700 hover:underline">{zh ? '回到对话' : 'Open chat'}</button>}
+          {o?.conversation?.exists && <button type="button" onClick={() => onOpenConversation(o.conversation!.id!)} className="text-brand-700 hover:underline">{zh ? '回到对话' : 'Open chat'}</button>}
           {onViewDataset && <button type="button" onClick={() => onViewDataset(mineDs.id)} className="text-brand-700 hover:underline">{zh ? '查看运行记录' : 'Run record'}</button>}
         </span>} />
     );

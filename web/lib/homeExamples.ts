@@ -123,7 +123,7 @@ export const SAMPLES: Record<string, () => string> = {
 export const DEFAULT_EXAMPLES: ExamplesConfig = {
   tabs: [
     { id: 'wind', name: '风洞试验', questions: [
-      { id: 'w1', builtin_key: 'wind_lift', samples: ['示例·风洞攻角扫描'], text: '升力线斜率、失速攻角、最大升阻比分别是多少？', needs: '一组攻角扫描数据（攻角、CL、CD）' },
+      { id: 'w1', builtin_key: 'wind_lift', samples: ['示例·风洞攻角扫描'], text: '取 α ≤ 10° 为线性段，求升力线斜率、失速攻角和最大升阻比', needs: '一组攻角扫描数据（攻角、CL、CD）' },
       { id: 'w2', builtin_key: 'wind_repeat', samples: ['示例·风洞攻角扫描', '示例·风洞重复吹风'], text: '两次吹风的结果一致吗？偏差集中在哪个攻角段？', needs: '同一工况的两组攻角扫描数据' },
       { id: 'w3', builtin_key: 'wind_smooth', samples: ['示例·天平信号'], text: '对天平信号做平滑，再按 q∞=612 Pa、S=0.12 m² 计算升力系数', needs: '天平力的时间序列' },
       { id: 'w4', builtin_key: 'wind_re', samples: ['示例·风洞雷诺数对比'], text: '把不同雷诺数下的升力曲线叠在一起比较', needs: '多个雷诺数下的升力系数' },
@@ -265,7 +265,7 @@ export const BUILTIN_RESULTS: Record<string, BuiltinResult> = {
     chart: () => { const A = axes([0, 50], [2.1, 2.35], [0, 10, 20, 30, 40, 50], [2.1, 2.2, 2.3], '循环', '容量 (Ah)');
       const [xs, ys] = curve((c) => 2.31 - 0.0024 * c + 0.004 * Math.sin(c * 1.3), 0, 50, 50);
       return svg(A.g + dots(A, xs, ys, C1) + poly(A, [0, 50], [2.31, 2.19], C2, { dash: '6 4' }), leg([[C1, '实测'], [C2, '线性趋势', 'd']])); },
-    kpis: [{ label: '容量衰减', value: '5.2', unit: '%', note: '2.310 → 2.190 Ah' }, { label: '内阻变化', value: '+14', unit: '%', note: '18.4 → 21.0 mΩ' }],
+    kpis: [{ label: '容量衰减', value: '5.1', unit: '%', note: '2.311 → 2.193 Ah' }, { label: '内阻变化', value: '+13.8', unit: '%', note: '18.57 → 21.13 mΩ' }],
     chain: ['linear_regression 容量~循环', 'linear_regression 内阻~循环'],
   },
   bat_temp: {

@@ -193,7 +193,7 @@ export function ProvenanceCard({ ds, onOpenConversation, onOpenTemplate, onNewDa
         {o?.code && <span className="font-mono text-xs text-ink-600">{o.code}</span>}
         <span className="text-xs text-ink-500">{entry} · {fmtLocal(r.created_at)}</span>
         {o?.conversation && (o.conversation.exists && onOpenConversation
-          ? <button type="button" onClick={() => onOpenConversation(o.conversation!.id)} className="ml-auto text-xs text-brand-700 hover:underline inline-flex items-center gap-1">回到对话「{o.conversation.title}」<ArrowRight className="w-3 h-3" /></button>
+          ? <button type="button" onClick={() => onOpenConversation(o.conversation!.id!)} className="ml-auto text-xs text-brand-700 hover:underline inline-flex items-center gap-1">回到对话「{o.conversation.title}」<ArrowRight className="w-3 h-3" /></button>
           : <span className="ml-auto text-xs text-ink-500">对话「{o.conversation.title}」</span>)}
         {o?.template && !o.conversation && (o.template.exists && onOpenTemplate
           ? <button type="button" onClick={() => onOpenTemplate(o.template!.id)} className="ml-auto text-xs text-brand-700 hover:underline inline-flex items-center gap-1">打开流程「{o.template.name}」<ArrowRight className="w-3 h-3" /></button>

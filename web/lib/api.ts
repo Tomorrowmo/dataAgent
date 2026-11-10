@@ -465,7 +465,7 @@ export type Dataset = {
   origin?: {
     code?: string; entry?: 'chat' | 'library' | 'flow'; run_id?: number;
     algorithm?: { slug: string; label: string; version?: number | null };
-    conversation?: { id: number; title?: string | null; exists?: boolean };
+    conversation?: { id: number | null; title?: string | null; exists?: boolean };
     template?: { id: number; name?: string | null; exists?: boolean };
   };
 };
@@ -892,7 +892,7 @@ export type DatasetProvenance = {
     input: { id: number; name: string; state?: string } | null; created_at?: string | null;
   };
   origin?: { code: string; entry: string; created_at?: string | null;
-    conversation?: { id: number; title: string; exists: boolean }; template?: { id: number; name: string; exists: boolean } };
+    conversation?: { id: number | null; title: string; exists: boolean }; template?: { id: number; name: string; exists: boolean } };
   actions?: { rerun: boolean; rerun_reason: string | null; reproduce: boolean; reproduce_reason: string | null; warning: string | null };
 };
 export type RunAgain = { run_id: number; code: string; status: string; error?: string; dataset_id: number | null; warning?: string | null };
