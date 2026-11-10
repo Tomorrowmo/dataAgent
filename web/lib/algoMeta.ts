@@ -25,6 +25,18 @@ export const ALGO_ZH: Record<string, { name: string; desc: string; example?: str
   sensitivity: { name: '敏感性分析', desc: '按对输出的影响强弱给输入变量排序(相关 / Morris / 方差)。', example: '看哪个输入对温度影响最大' },
   interpolate: { name: '一维插值', desc: '按 x 重采样 y:线性 / 三次 / 二次 / 最近邻。', example: '按时间把电压重采样平滑' },
   correlation: { name: '相关性矩阵', desc: '数值列两两 Pearson / Spearman / Kendall 相关。', example: '看看哪些变量相关性强' },
+  fft_frequency_analysis: { name: 'FFT 频谱分析', desc: '把时域信号变换成单边幅值谱，找主频和周期成分。', example: '这个信号的主频是多少' },
+  find_peaks: { name: '峰值检测', desc: '找出信号中的峰（局部极大值），给出位置、高度和个数。', example: '数一下有几个峰' },
+  mark_peaks: { name: '极值标注', desc: '保留原信号，新增一列只在峰值处有值，用于在曲线上标出极值点。', example: '在曲线上标出极值' },
+  kmeans_cluster: { name: 'K-means 聚类', desc: '没有标签时，按数值列把相似的行自动分成 K 组。', example: '把数据分成几类' },
+  linear_regression: { name: '线性回归', desc: '最小二乘拟合输出与一个或多个输入的线性关系，给出系数、R² 和 RMSE。', example: '拟合 CL 与攻角的直线' },
+  polynomial_regression: { name: '多项式回归', desc: '用 N 次多项式拟合一条曲线趋势，给出系数和 R²。', example: '用二次曲线拟合阻力' },
+  curve_fit: { name: '非线性曲线拟合', desc: '按已知形式（指数、对数、幂律、S 形）拟合，给出各参数。', example: '按指数衰减拟合' },
+  transpose: { name: '转置', desc: '行列互换（宽表↔长表），可指定一列作为新表头。', example: '把表格转置' },
+  derived_column: { name: '表达式计算', desc: '用公式从已有列算出新列，例如单位换算、系数计算、比值。', example: '算 L/D = CL / CD' },
+  drop_columns: { name: '删除列', desc: '去掉不需要的列。', example: '删掉备注列' },
+  bin_column: { name: '分箱', desc: '把连续量切成有序的档位（等宽或等频），便于之后分组汇总。', example: '把温度分成 5 档' },
+  group_aggregate: { name: '分组汇总', desc: '按一列或多列分组，对每组求均值、中位数、求和、最值、标准差或计数。', example: '按批次求平均' },
 };
 
 // Friendly Chinese label + hint per parameter name.
@@ -178,4 +190,10 @@ export function groupByIntent(algos: Algorithm[]): { key: string; label: string;
   const buckets: Record<string, Algorithm[]> = {};
   for (const a of algos) (buckets[algoIntent(a)] ||= []).push(a);
   return INTENT_ORDER.filter((k) => buckets[k]?.length).map((k) => ({ key: k, label: intentZh(k), items: buckets[k] }));
+}
+
+/** Chinese name + one-line description for any slug (built-in table, else the given fallbacks). */
+export function algoLabel(slug: string | undefined, fallbackName?: string, fallbackDesc?: string): { name: string; desc: string } {
+  const z = slug ? ALGO_ZH[slug] : undefined;
+  return { name: z?.name ?? fallbackName ?? slug ?? '', desc: z?.desc ?? fallbackDesc ?? '' };
 }

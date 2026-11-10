@@ -237,6 +237,9 @@ export default function DatasetsView({ onAsk, onGoSettings, focusDataset, onBack
           )}
         </div>
         <DatasetFilters f={filter} onChange={setFilter} />
+        <p className="px-3 pb-2 text-xs leading-relaxed text-ink-500">
+          第一层是<b className="font-medium text-ink-700">源数据</b>（你导入的文件，长期保存）；展开可看到由它产生的<b className="font-medium text-ink-700">中间结果</b>（每一步分析的输出，带运行编号，默认保留 20 天，可手动保留）。
+        </p>
         <div className="flex-1 overflow-y-auto scroll-hide p-2">
           {datasets.length === 0 && <div className="text-sm text-ink-500 text-center mt-8 px-4">{t('ds.empty')}</div>}
           <DatasetTree datasets={datasets} selectedId={selected?.id ?? null}

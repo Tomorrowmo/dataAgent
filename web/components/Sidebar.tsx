@@ -1,11 +1,12 @@
 'use client';
 
-import { MessageSquare, Database, Braces, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Puzzle, Search, Menu, X } from 'lucide-react';
+import { Database, Braces, Workflow, Settings, LogOut, Plus, Trash2, Pencil, Check, Inbox, Puzzle, Search, Menu, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, type Conversation, setToken, OIDC_LOGOUT_URL } from '@/lib/api';
 import LanguageToggle from '@/components/LanguageToggle';
+import ResizeHandle, { useResizableWidth } from '@/components/ResizeHandle';
 import { useT } from '@/lib/i18n';
 
 type View = 'chat' | 'datasets' | 'algorithms' | 'templates' | 'skills' | 'feedback' | 'settings' | 'about';
@@ -49,6 +50,7 @@ export default function Sidebar({
   const [counts, setCounts] = useState<{ datasets: number | null; flows: number | null }>({ datasets: null, flows: null });
   const [filter, setFilter] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sw = useResizableWidth('numetrix.sidebar.width', 220, 180, 320);
 
   useEffect(() => {
     api.listConversations().then(setConvs).catch(() => {});
@@ -98,6 +100,7 @@ export default function Sidebar({
     else router.push('/login');
   }
 
+  const onHome = activeView === 'chat' && activeConv == null;
   const go = (v: View) => { onChangeView(v); setMobileOpen(false); };
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -106,7 +109,6 @@ export default function Sidebar({
 
   const ico = 'w-4 h-4 shrink-0';
   const MAIN: { id: View; label: string; icon: React.ReactNode; count?: number | null }[] = [
-    { id: 'chat', label: zh ? '分析' : 'Analysis', icon: <MessageSquare className={ico} strokeWidth={1.6} /> },
     { id: 'datasets', label: zh ? '数据' : 'Data', icon: <Database className={ico} strokeWidth={1.6} />, count: counts.datasets },
     { id: 'templates', label: zh ? '流程' : 'Flows', icon: <Workflow className={ico} strokeWidth={1.6} />, count: counts.flows },
   ];
@@ -132,14 +134,16 @@ export default function Sidebar({
   return (
     <>
       {/* phone: a slim bar with the menu button; the full sidebar opens as a drawer */}
-      <div className="md:hidden w-11 shrink-0 bg-ink-100 border-r border-ink-150 flex flex-col items-center py-3 gap-2">
+      <div className="md:hidden w-11 shrink-0 bg-ink-100 border-r border-ink-200 flex flex-col items-center py-3 gap-2">
         <button type="button" onClick={() => setMobileOpen(true)} title={zh ? '菜单' : 'Menu'} className="w-8 h-8 grid place-items-center rounded-md text-ink-600 hover:bg-ink-900/5"><Menu className="w-[18px] h-[18px]" /></button>
         <button type="button" onClick={onNewConv} title={zh ? '新建分析' : 'New analysis'} className="w-8 h-8 grid place-items-center rounded-md text-brand-600 hover:bg-ink-900/5"><Plus className="w-[18px] h-[18px]" /></button>
       </div>
       {mobileOpen && <div className="md:hidden fixed inset-0 z-40 bg-ink-900/30" onClick={() => setMobileOpen(false)} />}
 
-      <aside className={`w-[220px] shrink-0 bg-ink-100 border-r border-ink-150 flex flex-col px-2.5 pt-3.5 pb-2.5 min-h-0 h-full
+      <aside style={{ width: sw.width }} className={`relative shrink-0 bg-ink-100 border-r border-ink-200 flex flex-col px-2.5 pt-3.5 pb-2.5 min-h-0 h-full max-md:!w-[220px]
         max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl max-md:transition-transform ${mobileOpen ? '' : 'max-md:-translate-x-full'}`}>
+        <ResizeHandle side="right" widthAt={(x) => x} onResize={(w) => sw.set(w)}
+          onDone={() => sw.set(sw.current.current, true)} onReset={sw.reset} />
         <div className="flex items-center gap-2.5 px-2 pb-3.5">
           <Link href="/" title="RLab Cortex" className="w-6 h-6 rounded-[5px] bg-brand-600 text-white grid place-items-center font-mono text-[12px] font-semibold shrink-0">R</Link>
           <div className="min-w-0 leading-tight">
@@ -153,8 +157,9 @@ export default function Sidebar({
         </div>
 
         <button type="button" onClick={() => { onNewConv(); setMobileOpen(false); }}
-          className="mx-0.5 mb-3.5 h-[34px] px-2.5 rounded-md bg-white flex items-center gap-2 text-[13px] text-ink-900 ring-1 ring-ink-200 hover:ring-ink-300 shadow-[0_1px_2px_rgba(22,25,29,0.05)]">
-          <Plus className="w-[15px] h-[15px]" strokeWidth={1.75} />{zh ? '新建分析' : 'New analysis'}
+          aria-current={onHome ? 'page' : undefined}
+          className={`mx-0.5 mb-3.5 h-[34px] px-2.5 rounded-md bg-white flex items-center gap-2 text-[13px] text-ink-900 shadow-[0_1px_2px_rgba(22,25,29,0.05)] ${onHome ? 'ring-1 ring-brand-600/40 font-medium' : 'ring-1 ring-ink-200 hover:ring-ink-300'}`}>
+          <Plus className={`w-[15px] h-[15px] ${onHome ? 'text-brand-600' : ''}`} strokeWidth={1.75} />{zh ? '新建分析' : 'New analysis'}
           <kbd className="ml-auto font-mono text-[11px] text-ink-400">Ctrl K</kbd>
         </button>
 

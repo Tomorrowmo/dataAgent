@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Database, Table2, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
 import { AiMark } from '@/components/ui';
 import { api, type Dataset } from '@/lib/api';
+import { useAlgoNames } from '@/lib/useAlgoNames';
 
 /** Heuristic: does this dataset look structurally messy (worth an AI cleanup)? */
 function looksMessy(ds: Dataset): boolean {
@@ -24,7 +25,13 @@ function looksMessy(ds: Dataset): boolean {
  * Designed to take an array so multi-dataset (compare/overlay) just adds tabs;
  * today ChatView passes the single active dataset.
  */
-export default function DataPanel({ datasets, onClean, onViewFull }: { datasets: Dataset[]; onClean?: (ds: Dataset) => void; onViewFull?: (id: number) => void }) {
+export default function DataPanel({ datasets: sources, results = [], onClean, onViewFull }: {
+  datasets: Dataset[]; results?: Dataset[]; onClean?: (ds: Dataset) => void; onViewFull?: (id: number) => void;
+}) {
+  // 本次分析的数据 (改进清单-5 · 6): the source data first, then the intermediate
+  // results this analysis produced, in order. Pick one to preview it below.
+  const datasets = [...sources, ...results.filter((r) => !sources.some((s) => s.id === r.id))];
+  const label = useAlgoNames();
   const [active, setActive] = useState(0);
   // Fetch more than the stored 10-row head so this reads as a real preview.
   const activeDs = datasets[Math.min(active, Math.max(0, datasets.length - 1))];
@@ -58,19 +65,24 @@ export default function DataPanel({ datasets, onClean, onViewFull }: { datasets:
 
   return (
     <div className="space-y-3">
-      {/* Dataset tabs (for the multi-dataset case) */}
-      {datasets.length > 1 && (
-        <div className="flex flex-wrap gap-1">
-          {datasets.map((d, i) => (
-            <button
-              key={d.id}
-              onClick={() => setActive(i)}
-              className={`text-[11px] px-2 py-1 rounded-md ring-1 transition ${
-                i === active ? 'bg-brand-600 text-white ring-transparent' : 'bg-white text-ink-600 ring-ink-200 hover:bg-ink-50'
-              }`}
-            >
-              {d.name}
-            </button>
+      {(datasets.length > 1 || results.length > 0) && (
+        <div className="rounded-md bg-white ring-1 ring-ink-200 divide-y divide-ink-150 text-[12px]">
+          {[['源数据', sources], ['中间结果（本次分析产生）', datasets.slice(sources.length)]].map(([title, list]) => (list as Dataset[]).length > 0 && (
+            <div key={title as string} className="py-1">
+              <div className="px-2.5 pt-1 pb-0.5 text-[11px] text-ink-500">{title as string}</div>
+              {(list as Dataset[]).map((d) => {
+                const i = datasets.indexOf(d);
+                const o = d.origin;
+                return (
+                  <button key={d.id} type="button" onClick={() => setActive(i)}
+                    className={`w-full text-left px-2.5 py-1 flex items-center gap-2 ${i === active ? 'bg-brand-50 text-ink-900' : 'hover:bg-ink-50 text-ink-700'}`}>
+                    {o?.code && <span className="font-mono text-[11px] text-ink-400 shrink-0">{o.code}</span>}
+                    <span className="truncate">{o?.algorithm ? label(o.algorithm.slug).name : d.name}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-400">{d.rows.toLocaleString()}×{d.columns}</span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
       )}

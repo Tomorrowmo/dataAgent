@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Send, Wrench, MessagesSquare, User, Play, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check } from 'lucide-react';
+import { Send, Wrench, MessagesSquare, User, Play, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check, Info } from 'lucide-react';
 import Markdown from '@/components/Markdown';
 import { AiMark, SourceTag } from '@/components/ui';
 import DatasetChart from '@/components/DatasetChart';
@@ -11,6 +11,7 @@ import type { FocusAlgo } from '@/components/AlgorithmsView';
 import { runStepsOf, flowFromSteps, type RunStep } from '@/lib/flowSteps';
 import { api, streamChat, type ChatMessage, type TemplateStep, type FlowTemplate, type Conversation, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
+import { useAlgoNames, useAlgoLookup } from '@/lib/useAlgoNames';
 import { STARTERS, type Starter } from '@/lib/recipes';
 import ParserModal from '@/components/ParserModal';
 import CleanModal from '@/components/CleanModal';
@@ -77,8 +78,8 @@ export default function ChatView({
   const [examples, setExamples] = useState<ExamplesConfig>(DEFAULT_EXAMPLES);
   useEffect(() => { api.getHomeExamples().then((r) => setExamples(normalizeExamples(r))).catch(() => {}); }, []);
   const [homeSel, setHomeSel] = useState<{ tab: string; q: string }>({ tab: '', q: '' });
-  const [pendingQ, setPendingQ] = useState<ExampleQuestion | null>(null);
-  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [pickerSignal, setPickerSignal] = useState(0);   // bump → open the data picker
   // Selection is never guessed: the first dataset load restores the user's last
   // EXPLICIT choice (per browser), otherwise nothing is selected.
   const restoredSelRef = useRef(false);
@@ -156,6 +157,8 @@ export default function ChatView({
   const [turnStartedAt, setTurnStartedAt] = useState<number | undefined>(undefined);
   // Cross-turn pipeline head per dataset (so the user can SEE that "再插值" will
   // continue on the prior result, and reset to the original if they want).
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
   const [pipeline, setPipeline] = useState<Record<string, { head_id: number; head_name: string; steps: number }>>({});
   const wb = useWorkbenchOpen();
   const workbenchOpen = wb.open;
@@ -245,7 +248,11 @@ export default function ChatView({
   // Keep the pipeline-continuation chip in sync with the active conversation.
   function refreshPipeline(convId: number | null) {
     if (!convId) { setPipeline({}); return; }
-    api.getPipeline(convId).then((r) => setPipeline(r.pipeline_state || {})).catch(() => {});
+    api.getPipeline(convId).then((r) => {
+      const st = r.pipeline_state || {};
+      setPipeline(st);
+      if (Object.values(st).some((v) => v?.head_id && !datasets.some((d) => d.id === v.head_id))) refreshDatasets();
+    }).catch(() => {});
   }
   async function resetPipeline() {
     if (!conversationId) { setPipeline({}); return; }
@@ -278,6 +285,19 @@ export default function ChatView({
     // created locally, or previously loaded). Switching to a *different*
     // conversation still differs from the ref, so it reloads normally.
     if (conversationId === loadedConvRef.current) return;
+    // Opening an existing analysis: show ITS source data in the data bar — the
+    // conversation's primary dataset plus the sources its processing chain
+    // started from (改进清单-5 · 6).
+    const convForSources = conversationId;
+    Promise.all([api.getPipeline(convForSources).catch(() => null), api.listConversations().catch(() => [] as Conversation[])])
+      .then(([pl, convs]) => {
+        if (convForSources !== conversationIdRef.current) return;
+        const ids: number[] = [];
+        const primary = convs.find((c) => c.id === convForSources)?.dataset_id;
+        if (primary) ids.push(primary);
+        for (const k of Object.keys(pl?.pipeline_state ?? {})) { const n = Number(k); if (n && !ids.includes(n)) ids.push(n); }
+        if (ids.length) setActiveDatasets(ids);
+      });
     // Results in this conversation may have been produced elsewhere (a flow run
     // from the 流程 page, a re-run) — refresh the dataset list first so cards
     // don't wrongly show their data as cleaned up.
@@ -367,15 +387,14 @@ export default function ChatView({
     );
   }
 
-  // An example question: with data selected it goes into the input box (not sent);
-  // without, the home page offers to load its sample data or pick the user's own.
-  function onPickQuestion(q: ExampleQuestion) {
-    if (activeDatasets.length > 0) { setPendingQ(null); setInput(q.text); inputAreaRef.current?.focus(); }
-    else setPendingQ(q);
-  }
-
-  async function loadSamples(q: ExampleQuestion) {
-    setLoadingSamples(true); setError('');
+  // An example question, asked three ways (改进清单-5 · 2):
+  //   sample  → load its sample data and send it now
+  //   current → send it on the data already selected
+  //   mine    → put it in the input box and open the data picker
+  async function askQuestion(q: ExampleQuestion, mode: 'sample' | 'current' | 'mine') {
+    if (mode === 'current') { send(q.text); return; }
+    if (mode === 'mine') { setInput(q.text); setPickerSignal((n) => n + 1); inputAreaRef.current?.focus(); return; }
+    setAsking(true); setError('');
     try {
       const ids: number[] = [];
       for (const name of q.samples ?? []) {
@@ -385,12 +404,10 @@ export default function ChatView({
         if (ds) ids.push(ds.id);
       }
       if (ids.length === 0) throw new Error(lang === 'zh' ? '示例数据创建失败' : 'Could not create the sample data');
-      setPendingQ(null);
       setActiveDatasets(ids);
-      setInput(q.text);
-      inputAreaRef.current?.focus();
+      send(q.text, ids);
     } catch (e) { setError((e as Error).message); }
-    finally { setLoadingSamples(false); }
+    finally { setAsking(false); }
   }
 
   // Remember the user's explicit selection so the next visit restores it.
@@ -398,14 +415,6 @@ export default function ChatView({
     if (restoredSelRef.current) writeLastSelection(activeDatasets);
   }, [activeDatasets]);
 
-  // A question waiting for data is filled in as soon as a dataset gets selected —
-  // from the data chips, the @-mention, or a fresh upload alike.
-  useEffect(() => {
-    if (!pendingQ || activeDatasets.length === 0) return;
-    setInput(pendingQ.text);
-    setPendingQ(null);
-    inputAreaRef.current?.focus();
-  }, [pendingQ, activeDatasets]);
 
   // One-click starter: ensure its bundled sample dataset exists (create it from
   // the embedded CSV the first time), then ask its question — so even an empty
@@ -679,8 +688,6 @@ export default function ChatView({
         <MessagesSquare className="w-5 h-5 text-brand-600 shrink-0" strokeWidth={1.5} />
         <div className="font-medium max-md:hidden">{t('chat.title')}</div>
         <div className="ml-auto flex items-center gap-2 text-sm min-w-0">
-          <span className="text-ink-500 max-md:hidden">{t('chat.dataset')}</span>
-          <DatasetPicker datasets={pickerDatasets} activeIds={activeDatasets} primaryId={primaryId} onToggle={toggleDataset} />
           {!workbenchOpen && (
             <button
               onClick={() => setWorkbenchOpen(true)}
@@ -722,13 +729,11 @@ export default function ChatView({
             lang={lang}
             examples={examples}
             sel={homeSel}
-            onSelect={(x) => { setHomeSel(x); setPendingQ(null); }}
+            onSelect={setHomeSel}
             datasets={datasets}
-            onPickQuestion={onPickQuestion}
-            pendingQ={pendingQ}
-            onLoadSamples={loadSamples}
-            loadingSamples={loadingSamples}
-            onCancelPending={() => setPendingQ(null)}
+            activeNames={activeDatasets.map((id) => dsById.get(id)?.name).filter((n): n is string => !!n)}
+            onAsk={askQuestion}
+            asking={asking}
             onClickUpload={() => fileInputRef.current?.click()}
             uploading={uploading}
             onDemo={runDemo}
@@ -824,7 +829,6 @@ export default function ChatView({
       >
         {/* Sits right above the input: it says what the NEXT message will run on,
             which is exactly where the user is looking when they type. */}
-        <PipelineBar pipeline={pipeline} datasets={datasets} onReset={resetPipeline} />
         {stagedAttachment && (
           <StagedChip
             att={stagedAttachment}
@@ -866,21 +870,9 @@ export default function ChatView({
             </div>
           );
         })()}
-        {isFreshSession && (
-          <div className="flex flex-wrap items-center gap-1.5 mb-2 pl-0.5 text-xs text-ink-500">
-            <span>{lang === 'zh' ? '当前数据' : 'Data'}</span>
-            {activeDatasets.map((id) => dsById.get(id)).filter((d): d is Dataset => !!d).map((d) => (
-              <span key={d.id} className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-brand-100 max-w-[280px]">
-                <span className="truncate">{d.name}</span>
-                <span className="text-[11px] text-ink-500 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
-                <button type="button" onClick={() => toggleDataset(d.id)} title={lang === 'zh' ? '移除' : 'Remove'} className="p-0.5 rounded-full text-ink-400 hover:text-ink-800"><X className="w-3 h-3" /></button>
-              </span>
-            ))}
-            <DatasetPicker datasets={pickerDatasets} activeIds={activeDatasets} primaryId={primaryId} onToggle={toggleDataset} variant="chip" />
-            <div className="ml-auto [&>div]:mb-0"><SkillBar skills={skills} active={activeSkills} onToggle={toggleSkill} /></div>
-          </div>
-        )}
-        {!isFreshSession && <SkillBar skills={skills} active={activeSkills} onToggle={toggleSkill} />}
+        <DataBar lang={lang} datasets={pickerDatasets} activeIds={activeDatasets} dsById={dsById} primaryId={primaryId}
+          onToggle={toggleDataset} pipeline={pipeline} onResetPipeline={resetPipeline} openSignal={pickerSignal}
+          right={<SkillBar skills={skills} active={activeSkills} onToggle={toggleSkill} />} />
         <div className={`flex gap-2 items-end rounded-[10px] bg-white pl-3.5 pr-2 py-2 transition-shadow ${dragOver
           ? 'shadow-[0_0_0_2px_#2b4c6f,0_0_0_6px_#eef3f8]'
           : 'shadow-[0_0_0_1px_#dfe2e6,0_4px_16px_-6px_rgba(22,25,29,0.12)] focus-within:shadow-[0_0_0_1px_#2b4c6f,0_0_0_4px_#eef3f8]'}`}>
@@ -961,6 +953,9 @@ export default function ChatView({
           onClose={() => setWorkbenchOpen(false)}
           datasetName={activeDs?.name}
           datasets={activeDsList}
+          results={conversationId == null ? [] : datasets
+            .filter((d) => d.kind === 'derived' && d.state !== 'cleaned' && d.origin?.conversation?.id === conversationId)
+            .sort((x, y) => x.id - y.id)}
           onClean={(ds) => setCleaningDataset(ds)}
           onViewDataset={onViewDataset}
         />
@@ -1036,44 +1031,96 @@ function StagedChip({ att, onRemove, onViewDataset }: {
 /** Cross-turn pipeline banner: shows that the NEXT message will continue on a
  *  prior turn's processed result (not the original data), with a one-click
  *  reset back to source. Hidden when no pipeline is active. */
-function PipelineBar({ pipeline, datasets, onReset }: {
-  pipeline: Record<string, { head_id: number; head_name: string; steps: number }>;
+/** 数据栏 (改进清单-5 · 6) — one fixed place, right above the input, on the home
+ *  page and in every conversation: the source data of this analysis, and — when
+ *  the last step's result is being carried forward — what the next message runs on. */
+function DataBar({ lang, datasets, activeIds, dsById, primaryId, onToggle, pipeline, onResetPipeline, openSignal, right }: {
+  lang: 'en' | 'zh';
   datasets: Dataset[];
-  onReset: () => void;
+  activeIds: number[];
+  dsById: Map<number, Dataset>;
+  primaryId: number | null;
+  onToggle: (id: number) => void;
+  pipeline: Record<string, { head_id: number; head_name: string; steps: number }>;
+  onResetPipeline: () => void;
+  openSignal: number;
+  right?: React.ReactNode;
 }) {
-  const entries = Object.entries(pipeline).filter(([, v]) => v && v.head_id);
-  if (entries.length === 0) return null;
+  const zh = lang === 'zh';
+  const [help, setHelp] = useState(false);
+  const lookup = useAlgoLookup();
+  const active = activeIds.map((id) => dsById.get(id)).filter((d): d is Dataset => !!d);
+  const heads = Object.entries(pipeline).filter(([, v]) => v && v.head_id);
+  const label = 'w-[4.5em] shrink-0 text-ink-500';
   return (
-    <div className="mb-2 px-3 py-2 rounded-lg bg-violet-50 ring-1 ring-violet-200 text-[12.5px] text-violet-900 flex items-center gap-2 flex-wrap">
-      <GitBranch className="w-4 h-4 shrink-0 text-violet-600" />
-      <span className="min-w-0">
-        <span className="font-medium">下一条消息将接着上一步的结果继续：</span>
-        {entries.map(([dsId, v], i) => {
-          const src = datasets.find((d) => String(d.id) === dsId)?.name ?? `#${dsId}`;
-          // head_name is "<source> · <step>" — show the step, the source separately.
-          const step = v.head_name.startsWith(src + ' · ') ? v.head_name.slice(src.length + 3) : v.head_name;
-          return (
-            <span key={dsId}>
-              {i > 0 && '；'}
-              「<b>{step}</b>」<span className="text-violet-600">（基于 {src}，第 {v.steps} 步）</span>
+    <div className="mb-2 pl-0.5 text-xs space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`${label} inline-flex items-center gap-1 relative`}>
+          {zh ? '源数据' : 'Data'}
+          <button type="button" onClick={() => setHelp((h) => !h)} title={zh ? '数据是怎么组织的' : 'How data is organised'}
+            className="text-ink-400 hover:text-brand-700"><Info className="w-3.5 h-3.5" strokeWidth={1.75} /></button>
+          {help && (
+            <span className="absolute bottom-full left-0 mb-2 w-[330px] z-40 rounded-md bg-white p-3 text-[12px] leading-relaxed text-ink-700 shadow-lg ring-1 ring-ink-200" onClick={() => setHelp(false)}>
+              <b className="block mb-1 text-ink-900">{zh ? '数据是怎么组织的' : 'How data is organised'}</b>
+              {zh ? (<>
+                <span className="block"><b className="font-medium text-ink-900">分析</b>：一次对话，从一组源数据开始，经过若干步处理得到结论。</span>
+                <span className="block"><b className="font-medium text-ink-900">源数据</b>：你导入的文件，长期保存，多个分析可以共用。</span>
+                <span className="block"><b className="font-medium text-ink-900">中间结果</b>：每一步算法的输出，带运行编号，属于产生它的分析；默认保留 20 天，可手动保留。</span>
+                <span className="block"><b className="font-medium text-ink-900">当前处理</b>：下一条消息要处理的数据，可以是源数据，也可以是上一步的中间结果。</span>
+              </>) : (<>
+                <span className="block"><b className="font-medium text-ink-900">Analysis</b>: one conversation — source data, a few processing steps, a conclusion.</span>
+                <span className="block"><b className="font-medium text-ink-900">Source data</b>: files you imported; kept, shared by analyses.</span>
+                <span className="block"><b className="font-medium text-ink-900">Intermediate result</b>: one step's output with a run code; kept 20 days unless you keep it.</span>
+                <span className="block"><b className="font-medium text-ink-900">Working on</b>: what the next message runs on — the source data or the last result.</span>
+              </>)}
             </span>
-          );
-        })}
-      </span>
-      <button onClick={onReset} title="清掉这条处理链，下一条消息改为在原始数据上分析"
-        className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white ring-1 ring-violet-300 hover:bg-violet-100 text-violet-700 shrink-0">
-        <RotateCcw className="w-3 h-3" /> 改用原始数据
-      </button>
+          )}
+        </span>
+        {active.map((d) => (
+          <span key={d.id} className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full bg-brand-50 text-brand-700 ring-1 ring-brand-100 max-w-[280px]">
+            <span className="truncate">{d.name}</span>
+            <span className="text-[11px] text-ink-500 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
+            <button type="button" onClick={() => onToggle(d.id)} title={zh ? '移除' : 'Remove'} className="p-0.5 rounded-full text-ink-400 hover:text-ink-800"><X className="w-3 h-3" /></button>
+          </span>
+        ))}
+        <DatasetPicker datasets={datasets} activeIds={activeIds} primaryId={primaryId} onToggle={onToggle} variant="chip" openSignal={openSignal} />
+        {right && <div className="ml-auto [&>div]:mb-0">{right}</div>}
+      </div>
+      {heads.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={label}>{zh ? '当前处理' : 'Working on'}</span>
+          {heads.map(([dsId, v]) => {
+            const src = dsById.get(Number(dsId))?.name ?? `#${dsId}`;
+            const head = dsById.get(v.head_id);
+            const raw = v.head_name.startsWith(src + ' · ') ? v.head_name.slice(src.length + 3) : v.head_name;
+            const step = head?.origin?.algorithm?.slug ? lookup(head.origin.algorithm.slug).name : lookup(raw).name;
+            const code = head?.origin?.code;
+            return (
+              <span key={dsId} className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-white ring-1 ring-ink-200 text-ink-800 max-w-full" title={zh ? `基于 ${src}，第 ${v.steps} 步` : `from ${src}, step ${v.steps}`}>
+                <GitBranch className="w-3 h-3 text-ink-500 shrink-0" />
+                <span className="shrink-0">{zh ? '上一步结果' : 'last result'}</span>
+                <span className="truncate">「{step}」</span>
+                {code && <span className="font-mono text-[11px] text-ink-400 shrink-0">{code}</span>}
+              </span>
+            );
+          })}
+          <button type="button" onClick={onResetPipeline} title={zh ? '下一条消息改为在源数据上分析' : 'Run the next message on the source data'}
+            className="inline-flex items-center gap-1 h-6 px-2 rounded-full text-brand-700 hover:bg-brand-50">
+            <RotateCcw className="w-3 h-3" />{zh ? '改用源数据' : 'Use source data'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 /** Compact dataset picker — a dropdown with search + multi-select, so it stays
  *  tidy no matter how many datasets there are (chips don't scale). */
-function DatasetPicker({ datasets, activeIds, primaryId, onToggle, variant = 'button' }: {
-  datasets: Dataset[]; activeIds: number[]; primaryId: number | null; onToggle: (id: number) => void; variant?: 'button' | 'chip';
+function DatasetPicker({ datasets, activeIds, primaryId, onToggle, variant = 'button', openSignal = 0 }: {
+  datasets: Dataset[]; activeIds: number[]; primaryId: number | null; onToggle: (id: number) => void; variant?: 'button' | 'chip'; openSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1240,7 +1287,7 @@ function WindDemoCard({ demo, onViewDataset }: { demo: DemoResult; onViewDataset
 type HomeSel = { tab: string; q: string };
 
 function Welcome({
-  lang, examples, sel, onSelect, datasets, onPickQuestion, pendingQ, onLoadSamples, loadingSamples, onCancelPending,
+  lang, examples, sel, onSelect, datasets, activeNames, onAsk, asking,
   onClickUpload, uploading, onDemo, demoBusy, demo, demoErr, onOpenConversation, onViewDataset,
 }: {
   lang: 'en' | 'zh';
@@ -1248,11 +1295,9 @@ function Welcome({
   sel: HomeSel;
   onSelect: (s: HomeSel) => void;
   datasets: Dataset[];
-  onPickQuestion: (q: ExampleQuestion) => void;
-  pendingQ: ExampleQuestion | null;
-  onLoadSamples: (q: ExampleQuestion) => void;
-  loadingSamples: boolean;
-  onCancelPending: () => void;
+  activeNames: string[];
+  onAsk: (q: ExampleQuestion, mode: 'sample' | 'current' | 'mine') => void;
+  asking: boolean;
   onClickUpload: () => void;
   uploading: boolean;
   onDemo: () => void;
@@ -1275,18 +1320,48 @@ function Welcome({
   const q = questions.find((x) => x.id === sel.q) ?? questions[0];
   const mineDs = tabId === 'mine' ? (mine.find((d) => String(d.id) === sel.q) ?? mine[0]) : undefined;
 
-  const row = (key: string, on: boolean, text: React.ReactNode, onClick: () => void, sub?: React.ReactNode) => (
-    <button key={key} type="button" onClick={onClick}
-      className={`relative w-full flex items-center gap-3 px-3 py-3 rounded-md text-left transition-colors ${on
-        ? 'bg-white shadow-[0_1px_2px_rgba(22,25,29,0.06),0_0_0_1px_#eceef1] before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-0.5 before:rounded-sm before:bg-brand-600'
-        : 'hover:bg-ink-900/[0.04]'}`}>
-      <span className="flex-1 min-w-0">
-        <span className={`block text-sm leading-snug ${on ? 'font-medium text-ink-900' : 'text-ink-800'}`}>{text}</span>
-        {sub && <span className="block mt-0.5 text-xs text-ink-500 truncate">{sub}</span>}
-      </span>
-      <ChevronRight className={`w-4 h-4 shrink-0 transition ${on ? 'text-brand-600 translate-x-0.5' : 'text-ink-300'}`} />
-    </button>
+  const row = (key: string, on: boolean, text: React.ReactNode, onClick: () => void, sub?: React.ReactNode, body?: React.ReactNode) => (
+    <div key={key} className={`relative rounded-md transition-colors ${on
+      ? 'bg-white shadow-[0_1px_2px_rgba(22,25,29,0.06),0_0_0_1px_#eceef1] before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-0.5 before:rounded-sm before:bg-brand-600'
+      : 'hover:bg-ink-900/[0.04]'}`}>
+      <button type="button" onClick={onClick} aria-expanded={on} className="w-full flex items-center gap-3 px-3 py-3 text-left">
+        <span className="flex-1 min-w-0">
+          <span className={`block text-sm leading-snug ${on ? 'font-medium text-ink-900' : 'text-ink-800'}`}>{text}</span>
+          {sub && <span className="block mt-0.5 text-xs text-ink-500 truncate">{sub}</span>}
+        </span>
+        <ChevronRight className={`w-4 h-4 shrink-0 transition ${on ? 'text-brand-600 rotate-90' : 'text-ink-300'}`} />
+      </button>
+      {on && body}
+    </div>
   );
+  // Under the selected question: what data it needs, and how to ask it.
+  const askBody = (x: ExampleQuestion) => {
+    const hasSamples = (x.samples?.length ?? 0) > 0;
+    const btn = 'h-7 px-2.5 rounded text-[12.5px] inline-flex items-center gap-1.5 disabled:opacity-60';
+    return (
+      <div className="px-3 pb-3 -mt-1">
+        {x.needs && <div className="text-xs text-ink-500">{zh ? '需要：' : 'Needs: '}{x.needs}</div>}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {hasSamples && (
+            <button type="button" disabled={asking} onClick={() => onAsk(x, 'sample')} className={`${btn} bg-brand-600 text-white hover:bg-brand-700`}>
+              {asking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" strokeWidth={1.75} />}{zh ? '用示例数据提问' : 'Ask with sample data'}
+            </button>
+          )}
+          {activeNames.length > 0 ? (
+            <button type="button" disabled={asking} onClick={() => onAsk(x, 'current')} title={activeNames.join('、')}
+              className={`${btn} ring-1 ring-ink-300 bg-white text-ink-800 hover:bg-ink-50 max-w-full`}>
+              <span className="shrink-0">{zh ? '用当前数据提问' : 'Ask on current data'}</span>
+              <span className="text-ink-500 truncate">{activeNames[0]}{activeNames.length > 1 ? ` +${activeNames.length - 1}` : ''}</span>
+            </button>
+          ) : (
+            <button type="button" disabled={asking} onClick={() => onAsk(x, 'mine')} className={`${btn} ring-1 ring-ink-300 bg-white text-ink-800 hover:bg-ink-50`}>
+              {zh ? '用我的数据' : 'Use my data'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   let card: React.ReactNode = null;
   if (mineDs) {
@@ -1330,15 +1405,18 @@ function Welcome({
             {zh ? '打开风洞示例数据' : 'Open the wind-tunnel sample'}
           </button>
           <button type="button" onClick={onClickUpload}
-            title={zh ? '表格文件（CSV / Excel / Parquet / JSON）、Tecplot 导出、CGNS / VTK 等仿真结果、表格截图；其他格式可生成读取程序' : 'Tables (CSV / Excel / Parquet / JSON), Tecplot, CGNS / VTK, table screenshots; other formats get a generated reader'}
             className="h-[38px] px-4 rounded-md bg-white text-ink-900 text-sm ring-1 ring-ink-300 hover:bg-ink-50 inline-flex items-center gap-2">
             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
             {zh ? '导入数据' : 'Import data'}
           </button>
         </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-500">
+          {zh ? '可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。其他格式会先生成读取程序，确认后保存，之后同类文件直接使用。'
+            : 'Tables, Tecplot exports, CGNS / VTK simulation results and table screenshots import directly. Other formats get a generated reader, saved after you confirm and reused for files of the same kind.'}
+        </p>
         {demoErr && <div className="mt-2 text-xs text-danger-700">{demoErr}</div>}
 
-        <div className="mt-9">
+        <div className="mt-8">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 mb-2">
             <span className="text-[13px] font-semibold text-ink-900">{zh ? '示例问题' : 'Example questions'}</span>
             <div className="inline-flex flex-wrap gap-0.5 p-0.5 rounded-[7px] bg-ink-900/5">
@@ -1352,21 +1430,8 @@ function Welcome({
             {tabId === 'mine'
               ? mine.map((d) => row(String(d.id), d.id === mineDs?.id, d.name, () => onSelect({ tab: 'mine', q: String(d.id) }),
                   <>{d.origin?.code} · {shortDate(d.created_at)}</>))
-              : questions.map((x) => row(x.id, x.id === q?.id, x.text, () => { onSelect({ tab: tabId, q: x.id }); onPickQuestion(x); }))}
+              : questions.map((x) => row(x.id, x.id === q?.id, x.text, () => onSelect({ tab: tabId, q: x.id }), undefined, askBody(x)))}
           </div>
-          {pendingQ && tabId !== 'mine' && (
-            <div className="mt-2 ml-3 text-[12.5px] text-ink-600 leading-relaxed">
-              {zh ? '这个问题需要' : 'This needs '}{pendingQ.needs || (zh ? '一份数据' : 'data')}{zh ? '。' : '. '}
-              {(pendingQ.samples?.length ?? 0) > 0 && (
-                <button type="button" onClick={() => onLoadSamples(pendingQ)} disabled={loadingSamples}
-                  className="text-brand-700 hover:underline disabled:opacity-60 inline-flex items-center gap-1">
-                  {loadingSamples && <Loader2 className="w-3 h-3 animate-spin" />}{zh ? '载入示例数据' : 'Load sample data'}
-                </button>
-              )}
-              <span className="text-ink-400">{(pendingQ.samples?.length ?? 0) > 0 ? (zh ? '，或在下方「当前数据」里选择自己的数据' : ', or pick your own below') : (zh ? '在下方「当前数据」里选择' : 'Pick it below')}</span>
-              <button type="button" onClick={onCancelPending} className="ml-2 text-ink-400 hover:text-ink-700">{zh ? '取消' : 'Cancel'}</button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1396,6 +1461,8 @@ function AnswerSteps({ steps, excluded, dsById, onOpenInLibrary }: {
   const [err, setErr] = useState('');
   const flow = flowFromSteps(steps);
   const okCount = steps.filter((s) => s.ok).length;
+  const algoLabelOf = useAlgoNames();
+  const algoName = (slug: string, fallback?: string) => { const l = algoLabelOf(slug); return { name: l.name === slug && fallback ? fallback : l.name, desc: l.desc }; };
   const [name, setName] = useState('');
 
   function openStep(s: RunStep) {
@@ -1435,8 +1502,10 @@ function AnswerSteps({ steps, excluded, dsById, onOpenInLibrary }: {
           <li key={i} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="font-mono text-ink-500 w-4 text-right">{i + 1}</span>
             {onOpenInLibrary
-              ? <button type="button" onClick={() => openStep(s)} className="text-brand-700 hover:underline" title="在算法库打开，带上这一步的参数和输入">{s.prov.label ?? s.prov.algorithm.slug}</button>
-              : <span className="text-ink-800">{s.prov.label ?? s.prov.algorithm.slug}</span>}
+              ? <button type="button" onClick={() => openStep(s)} className="text-brand-700 hover:underline" title={`${algoName(s.prov.algorithm.slug).desc}
+在算法库打开，带上这一步的参数和输入`}>{algoName(s.prov.algorithm.slug, s.prov.label).name}</button>
+              : <span className="text-ink-800" title={algoName(s.prov.algorithm.slug).desc}>{algoName(s.prov.algorithm.slug, s.prov.label).name}</span>}
+            <span className="ml-1.5 font-mono text-[11px] text-ink-400">{s.prov.algorithm.slug}</span>
             {s.prov.algorithm.version != null && <span className="font-mono text-ink-500">v{s.prov.algorithm.version}</span>}
             <span className="text-ink-500">输入：{inputLabel(s, steps, dsById)}</span>
             {s.prov.output_role === 'report' && <span className="text-ink-500">· 报告</span>}

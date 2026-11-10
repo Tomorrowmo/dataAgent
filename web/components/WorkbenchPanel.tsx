@@ -1,4 +1,5 @@
 'use client';
+import ResizeHandle, { useResizableWidth } from '@/components/ResizeHandle';
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -94,6 +95,7 @@ export default function WorkbenchPanel({
   onClose,
   datasetName,
   datasets = [],
+  results = [],
   onClean,
   onViewDataset,
 }: {
@@ -101,6 +103,7 @@ export default function WorkbenchPanel({
   onClose: () => void;
   datasetName?: string;
   datasets?: Dataset[];
+  results?: Dataset[];
   onClean?: (ds: Dataset) => void;
   onViewDataset?: (id: number) => void;
 }) {
@@ -109,35 +112,9 @@ export default function WorkbenchPanel({
   // of the tool-call chain; "data" = preview of the loaded dataset(s).
   const [view, setView] = useState<'timeline' | 'flow' | 'data'>('timeline');
   // Drag-to-resize width, persisted across sessions. The panel is flush to the
-  // right edge, so width = (viewport width − cursor X) while dragging the left
-  // handle — no need to track drag-start offsets.
-  const [width, setWidth] = useState(340);
-  const widthRef = useRef(340);
-  const draggingRef = useRef(false);
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem('numetrix.workbench.width');
-      if (s) { const w = Math.min(720, Math.max(280, parseInt(s, 10) || 340)); setWidth(w); widthRef.current = w; }
-    } catch { /* SSR */ }
-  }, []);
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!draggingRef.current) return;
-      const w = Math.min(720, Math.max(280, window.innerWidth - e.clientX));
-      widthRef.current = w;
-      setWidth(w);
-    }
-    function onUp() {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      try { localStorage.setItem('numetrix.workbench.width', String(Math.round(widthRef.current))); } catch { /* SSR */ }
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, []);
+  // right edge, so width = viewport width − cursor X.
+  const rw = useResizableWidth('numetrix.workbench.width', 340, 280, 720);
+  const width = rw.width;
   // Auto-scroll to bottom on new events while busy (timeline only)
   useEffect(() => {
     if (view === 'timeline' && trace.busy && scrollRef.current) {
@@ -159,16 +136,8 @@ export default function WorkbenchPanel({
 
   return (
     <aside style={{ width }} className="relative shrink-0 border-l border-ink-200 bg-ink-50/50 flex flex-col h-full max-md:!fixed max-md:!inset-0 max-md:!z-50 max-md:!w-full max-md:!border-l-0">
-      {/* Drag handle on the left edge — desktop only (mobile is full-screen) */}
-      <div
-        onMouseDown={() => {
-          draggingRef.current = true;
-          document.body.style.cursor = 'col-resize';
-          document.body.style.userSelect = 'none';
-        }}
-        className="absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-brand-400/50 active:bg-brand-500/60 z-20 max-md:hidden"
-        title="拖拽调整宽度"
-      />
+      <ResizeHandle side="left" widthAt={(x) => window.innerWidth - x} onResize={(w) => rw.set(w)}
+        onDone={() => rw.set(rw.current.current, true)} onReset={rw.reset} />
       <div className="px-3 py-2.5 border-b border-ink-200 bg-white flex items-center gap-2">
         <Cpu className="w-4 h-4 text-brand-600" />
         <div className="text-sm font-medium">工作台</div>
@@ -189,7 +158,7 @@ export default function WorkbenchPanel({
 
       {/* View toggle: timeline ↔ flow graph */}
       <div className="px-3 pt-2 bg-white flex items-center gap-1">
-        {([['timeline', '时间线', ListTree], ['flow', '流程图', Workflow], ['data', '数据', Table2]] as const).map(([v, label, Icon]) => (
+        {([['timeline', '时间线', ListTree], ['flow', '流程图', Workflow], ['data', '本次分析的数据', Table2]] as const).map(([v, label, Icon]) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -209,7 +178,7 @@ export default function WorkbenchPanel({
         </div>
       ) : view === 'data' ? (
         <div className="flex-1 overflow-y-auto scroll-hide px-3 py-3">
-          <DataPanel datasets={datasets} onClean={onClean} onViewFull={onViewDataset} />
+          <DataPanel datasets={datasets} results={results} onClean={onClean} onViewFull={onViewDataset} />
         </div>
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-hide px-3 py-3 space-y-1.5">

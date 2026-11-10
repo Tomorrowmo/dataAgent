@@ -1,4 +1,5 @@
 'use client';
+import { useAlgoNames } from '@/lib/useAlgoNames';
 
 import { useEffect, useState } from 'react';
 import { Database, Wrench, BarChart3, Code2, List, Info, MessageSquare, CheckCircle2, AlertTriangle, ChevronDown, Save, Loader2, Pencil, X } from 'lucide-react';
@@ -281,6 +282,8 @@ function EditFlowModal({ tpl, onClose }: { tpl: FlowTemplate; onClose: () => voi
 
 function FlowCard({ node }: { node: FlowNode }) {
   const Icon = actionIcon(node);
+  const label = useAlgoNames();
+  const algo = node.type === 'tool' && node.slug ? label(node.slug) : null;
   const border =
     node.type === 'input' ? 'border-l-ink-400'
       : node.type === 'answer' ? (node.status === 'error' ? 'border-l-red-400' : 'border-l-emerald-400')
@@ -289,14 +292,17 @@ function FlowCard({ node }: { node: FlowNode }) {
   const resultLine = describeResult(node);
 
   return (
-    <div className={`rounded-lg ring-1 ring-ink-200 bg-white border-l-[3px] ${border} px-2.5 py-2`}>
+    <div title={algo?.desc || undefined} className={`rounded-lg ring-1 ring-ink-200 bg-white border-l-[3px] ${border} px-2.5 py-2`}>
       <div className="flex items-center gap-2">
         <Icon className="w-3.5 h-3.5 text-ink-500 shrink-0" />
-        <span className="text-[12px] font-medium font-mono truncate">{node.title}</span>
+        <span className={`text-[12px] font-medium truncate ${algo ? '' : 'font-mono'}`}>{algo ? algo.name : node.title}</span>
         {node.status === 'error' && <AlertTriangle className="w-3 h-3 text-red-500 ml-auto shrink-0" />}
         {node.status === 'ok' && node.type !== 'input' && <CheckCircle2 className="w-3 h-3 text-emerald-500 ml-auto shrink-0" />}
       </div>
-      {node.subtitle && <div className="text-[10.5px] text-ink-400 mt-0.5 ml-5.5">{node.subtitle}</div>}
+      {algo
+        ? <div className="text-[10.5px] text-ink-400 mt-0.5 ml-5.5 font-mono truncate">{node.slug}</div>
+        : node.subtitle && <div className="text-[10.5px] text-ink-400 mt-0.5 ml-5.5">{node.subtitle}</div>}
+      {algo?.desc && <div className="text-[10.5px] text-ink-500 mt-0.5 ml-5.5 line-clamp-1">{algo.desc}</div>}
       {node.params && Object.keys(node.params).length > 0 && node.type === 'tool' && (
         <div className="text-[10.5px] text-ink-500 mt-1 ml-5.5 font-mono break-all line-clamp-2">
           {formatParams(node.params)}
