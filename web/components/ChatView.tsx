@@ -755,7 +755,6 @@ export default function ChatView({
             demoBusy={demoBusy}
             demo={demo}
             demoErr={demoErr}
-            onOpenConversation={(cid) => onConversationCreated(cid)}
             onViewDataset={onViewDataset}
           />
         ) : (
@@ -1239,14 +1238,6 @@ function demoKpis(d: DemoResult): ExampleKpi[] {
   ];
 }
 
-const isoToDate = (iso?: string | null) => (iso ? new Date(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z') : null);
-function shortDate(iso?: string | null): string {
-  const d = isoToDate(iso);
-  if (!d || Number.isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return d.toDateString() === new Date().toDateString() ? `今天 ${p(d.getHours())}:${p(d.getMinutes())}` : `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /** The answer card on the home page: chart + key values + processing chain. */
 function ExampleCard({ code, title, tag, chartHtml, chartNode, kpis, chain, action, empty }: {
   code?: string; title: string; tag: string; chartHtml?: string; chartNode?: React.ReactNode;
@@ -1288,30 +1279,6 @@ function ExampleCard({ code, title, tag, chartHtml, chartNode, kpis, chain, acti
   );
 }
 
-/** A dataset chart as tall as the example SVG charts (viewBox 520 × 250, scaled to
- *  the card width), so the right-hand card keeps one size across tabs. */
-function FitChart({ datasetId, name }: { datasetId: number; name: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [h, setH] = useState(268);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width; if (w > 0) setH(Math.round((w * 250) / 520)); });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return <div ref={ref}><DatasetChart datasetId={datasetId} name={name} height={h} bare /></div>;
-}
-
-/** "11-10 09:40" in local time. */
-function fmtShort(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
-  if (Number.isNaN(d.getTime())) return '—';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 /** Built-in wind-tunnel card, filled with the values the built-in demo actually computed. */
 function WindDemoCard({ demo, onViewDataset }: { demo: DemoResult; onViewDataset?: (id: number) => void }) {
   const b = BUILTIN_RESULTS.wind_lift;
@@ -1326,7 +1293,7 @@ type HomeSel = { tab: string; q: string };
 
 function Welcome({
   lang, examples, sel, onSelect, datasets, activeNames, onAsk, asking,
-  onClickUpload, uploading, onDemo, demoBusy, demo, demoErr, onOpenConversation, onViewDataset,
+  onClickUpload, uploading, onDemo, demoBusy, demo, demoErr, onViewDataset,
 }: {
   lang: 'en' | 'zh';
   examples: ExamplesConfig;
@@ -1342,16 +1309,11 @@ function Welcome({
   demoBusy: boolean;
   demo: DemoResult | null;
   demoErr: string;
-  onOpenConversation: (id: number) => void;
   onViewDataset?: (id: number) => void;
 }) {
   const zh = lang === 'zh';
-  const mine = datasets
-    .filter((d) => d.kind === 'derived' && d.state !== 'cleaned' && d.origin?.code)
-    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '') || b.id - a.id)
-    .slice(0, 6);
   const tabs = examples.tabs.filter((t) => !t.hidden && t.questions.some((q) => !q.hidden));
-  const allTabs = [...(mine.length ? [{ id: 'mine', name: zh ? '我的结果' : 'My results' }] : []), ...tabs.map((t) => ({ id: t.id, name: t.name }))];
+  const allTabs = tabs.map((t) => ({ id: t.id, name: t.name }));
   const tabId = allTabs.some((t) => t.id === sel.tab) ? sel.tab : (allTabs[0]?.id ?? '');
   const tab = tabs.find((t) => t.id === tabId);
   const questions = tab ? tab.questions.filter((q) => !q.hidden) : [];
@@ -1365,8 +1327,6 @@ function Welcome({
   const page = Math.min(pages - 1, pageByTab[tabId] ?? Math.floor(Math.max(0, selIdx) / PAGE));
   const shownQs = questions.slice(page * PAGE, page * PAGE + PAGE);
   const goPage = (n: number) => { setPageByTab((m) => ({ ...m, [tabId]: n })); const first = questions[n * PAGE]; if (first) onSelect({ tab: tabId, q: first.id }); };
-  const algoName = useAlgoLookup();
-  const mineDs = tabId === 'mine' ? (mine.find((d) => String(d.id) === sel.q) ?? mine[0]) : undefined;
 
   const row = (key: string, on: boolean, text: React.ReactNode, onClick: () => void, sub?: React.ReactNode, body?: React.ReactNode) => (
     <div key={key} className={`relative rounded-md transition-colors ${on
@@ -1412,23 +1372,7 @@ function Welcome({
   };
 
   let card: React.ReactNode = null;
-  if (mineDs) {
-    const o = mineDs.origin;
-    card = (
-      <ExampleCard code={o?.code} title={mineDs.name} tag={zh ? '我的结果' : 'Mine'}
-        chartNode={<FitChart datasetId={mineDs.id} name={mineDs.name} />}
-        kpis={[
-          { label: zh ? '行 × 列' : 'Rows × cols', value: `${mineDs.rows.toLocaleString()} × ${mineDs.columns}` },
-          { label: zh ? '算法' : 'Algorithm', value: o?.algorithm ? algoName(o.algorithm.slug || o.algorithm.label).name : '—' },
-          { label: zh ? '产生于' : 'Created', value: fmtShort(mineDs.created_at) },
-        ]}
-        chain={[o?.algorithm ? `${o.algorithm.slug}${o.algorithm.version != null ? ` v${o.algorithm.version}` : ''}` : '', `${mineDs.rows.toLocaleString()} × ${mineDs.columns}`].filter(Boolean)}
-        action={<span className="flex gap-3">
-          {o?.conversation?.exists && <button type="button" onClick={() => onOpenConversation(o.conversation!.id!)} className="text-brand-700 hover:underline">{zh ? '回到对话' : 'Open chat'}</button>}
-          {onViewDataset && <button type="button" onClick={() => onViewDataset(mineDs.id)} className="text-brand-700 hover:underline">{zh ? '查看运行记录' : 'Run record'}</button>}
-        </span>} />
-    );
-  } else if (q) {
+  if (q) {
     const b = q.builtin_key ? BUILTIN_RESULTS[q.builtin_key] : undefined;
     if (q.builtin_key === 'wind_lift' && demo) card = <WindDemoCard demo={demo} onViewDataset={onViewDataset} />;
     else if (b) card = <ExampleCard code={b.code} title={b.title} tag={zh ? '示例结果' : 'Example'} chartHtml={b.chart()} kpis={b.kpis} chain={b.chain} />;
@@ -1478,7 +1422,7 @@ function Welcome({
                   className={`h-[26px] px-2.5 rounded-[5px] text-[12.5px] ${t.id === tabId ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(22,25,29,0.1)]' : 'text-ink-600 hover:text-ink-900'}`}>{t.name}</button>
               ))}
             </div>
-            {tabId !== 'mine' && pages > 1 && (
+            {pages > 1 && (
               <span className="ml-auto inline-flex items-center gap-1 text-xs text-ink-500">
                 <button type="button" disabled={page === 0} onClick={() => goPage(page - 1)} className="w-6 h-6 grid place-items-center rounded hover:bg-ink-900/5 disabled:opacity-30" aria-label={zh ? '上一页' : 'Previous'}><ChevronRight className="w-3.5 h-3.5 rotate-180" /></button>
                 <span className="font-mono tabular-nums">{page + 1} / {pages}</span>
@@ -1487,10 +1431,7 @@ function Welcome({
             )}
           </div>
           <div className="space-y-0.5 h-[384px] overflow-y-auto -mx-1 px-1">
-            {tabId === 'mine'
-              ? mine.map((d) => row(String(d.id), d.id === mineDs?.id, d.name, () => onSelect({ tab: 'mine', q: String(d.id) }),
-                  <>{d.origin?.code} · {shortDate(d.created_at)}</>))
-              : shownQs.map((x) => row(x.id, x.id === q?.id, x.text, () => onSelect({ tab: tabId, q: x.id }), undefined, askBody(x)))}
+            {shownQs.map((x) => row(x.id, x.id === q?.id, x.text, () => onSelect({ tab: tabId, q: x.id }), undefined, askBody(x)))}
           </div>
         </div>
       </div>
