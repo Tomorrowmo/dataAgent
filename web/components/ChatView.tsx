@@ -1318,6 +1318,15 @@ function Welcome({
   const tab = tabs.find((t) => t.id === tabId);
   const questions = tab ? tab.questions.filter((q) => !q.hidden) : [];
   const q = questions.find((x) => x.id === sel.q) ?? questions[0];
+  // Fixed-height list (改进清单-6 · 1): at most PAGE questions show at once, more
+  // go to further pages — the page layout never changes with the question count.
+  const PAGE = 6;
+  const pages = Math.max(1, Math.ceil(questions.length / PAGE));
+  const [pageByTab, setPageByTab] = useState<Record<string, number>>({});
+  const selIdx = q ? questions.indexOf(q) : 0;
+  const page = Math.min(pages - 1, pageByTab[tabId] ?? Math.floor(Math.max(0, selIdx) / PAGE));
+  const shownQs = questions.slice(page * PAGE, page * PAGE + PAGE);
+  const goPage = (n: number) => { setPageByTab((m) => ({ ...m, [tabId]: n })); const first = questions[n * PAGE]; if (first) onSelect({ tab: tabId, q: first.id }); };
   const mineDs = tabId === 'mine' ? (mine.find((d) => String(d.id) === sel.q) ?? mine[0]) : undefined;
 
   const row = (key: string, on: boolean, text: React.ReactNode, onClick: () => void, sub?: React.ReactNode, body?: React.ReactNode) => (
@@ -1425,12 +1434,19 @@ function Welcome({
                   className={`h-[26px] px-2.5 rounded-[5px] text-[12.5px] ${t.id === tabId ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(22,25,29,0.1)]' : 'text-ink-600 hover:text-ink-900'}`}>{t.name}</button>
               ))}
             </div>
+            {tabId !== 'mine' && pages > 1 && (
+              <span className="ml-auto inline-flex items-center gap-1 text-xs text-ink-500">
+                <button type="button" disabled={page === 0} onClick={() => goPage(page - 1)} className="w-6 h-6 grid place-items-center rounded hover:bg-ink-900/5 disabled:opacity-30" aria-label={zh ? '上一页' : 'Previous'}><ChevronRight className="w-3.5 h-3.5 rotate-180" /></button>
+                <span className="font-mono tabular-nums">{page + 1} / {pages}</span>
+                <button type="button" disabled={page >= pages - 1} onClick={() => goPage(page + 1)} className="w-6 h-6 grid place-items-center rounded hover:bg-ink-900/5 disabled:opacity-30" aria-label={zh ? '下一页' : 'Next'}><ChevronRight className="w-3.5 h-3.5" /></button>
+              </span>
+            )}
           </div>
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 h-[384px] overflow-y-auto -mx-1 px-1">
             {tabId === 'mine'
               ? mine.map((d) => row(String(d.id), d.id === mineDs?.id, d.name, () => onSelect({ tab: 'mine', q: String(d.id) }),
                   <>{d.origin?.code} · {shortDate(d.created_at)}</>))
-              : questions.map((x) => row(x.id, x.id === q?.id, x.text, () => onSelect({ tab: tabId, q: x.id }), undefined, askBody(x)))}
+              : shownQs.map((x) => row(x.id, x.id === q?.id, x.text, () => onSelect({ tab: tabId, q: x.id }), undefined, askBody(x)))}
           </div>
         </div>
       </div>
