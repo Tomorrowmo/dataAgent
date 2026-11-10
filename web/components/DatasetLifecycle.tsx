@@ -97,7 +97,7 @@ export function DatasetFilters({ f, onChange }: { f: DsFilter; onChange: (f: DsF
 
 /** 「有 N 份中间结果将在 3 天内清理」 — acting on an item records that its
  *  reminder was seen (required before it can be deleted). */
-export function RetentionBanner({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+export function RetentionBanner({ refreshKey, onChanged, className = 'm-4 mb-0' }: { refreshKey: number; onChanged: () => void; className?: string }) {
   const [items, setItems] = useState<RetentionItem[]>([]);
   const [noticeDays, setNoticeDays] = useState(3);
   const [open, setOpen] = useState(false);
@@ -113,7 +113,7 @@ export function RetentionBanner({ refreshKey, onChanged }: { refreshKey: number;
   const all = items.map((i) => i.id);
   const btn = 'h-6 px-2 rounded border border-ink-300 bg-white text-xs text-ink-800 hover:bg-ink-50 disabled:opacity-50';
   return (
-    <div className="m-4 mb-0 rounded border border-warning-200 bg-warning-50 text-sm">
+    <div className={`${className} rounded border border-warning-200 bg-warning-50 text-sm`}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <Clock className="w-4 h-4 text-warning-700" />
         <span className="text-warning-800">有 {items.length} 份中间结果将在 {noticeDays} 天内清理。保留需要的，其余到期后删除数据（运行记录保留）。</span>
@@ -212,8 +212,8 @@ export function ProvenanceCard({ ds, onOpenConversation, onOpenTemplate, onNewDa
         <button className={btn} disabled={!!busy || !a?.reproduce} onClick={() => again('reproduce')} title="用当时的算法版本、参数和输入重新计算">
           {busy === 'reproduce' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <History className="w-3.5 h-3.5" />} 复现
         </button>
-        {a && !a.rerun && a.rerun_reason && <span className="text-xs text-ink-500">重跑不可用：{a.rerun_reason}</span>}
-        {a && !a.reproduce && a.reproduce_reason && a.reproduce_reason !== a.rerun_reason && <span className="text-xs text-ink-500">复现不可用：{a.reproduce_reason}</span>}
+        {a && !a.rerun && a.rerun_reason && <span className="text-xs text-hint">重跑不可用：{a.rerun_reason}</span>}
+        {a && !a.reproduce && a.reproduce_reason && a.reproduce_reason !== a.rerun_reason && <span className="text-xs text-hint">复现不可用：{a.reproduce_reason}</span>}
         {a?.warning && <span className="text-xs text-warning-700">{a.warning}</span>}
       </div>
       {msg && <div className="px-4 py-2 border-t border-ink-150 text-xs text-ink-700">{msg}</div>}

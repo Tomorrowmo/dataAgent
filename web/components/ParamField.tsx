@@ -1,6 +1,7 @@
 'use client';
 
-import type { ParamSpec } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { api, type ParamSpec } from '@/lib/api';
 import { paramKind, paramHint, paramLabel } from '@/lib/algoMeta';
 
 /** A single algorithm-parameter input, rendered from its JSON-schema spec:
@@ -92,6 +93,9 @@ export default function ParamField({ name, spec, value, cols, aiHint, onChange }
       </div>
     );
   }
+  if (kind === 'dataset') {
+    return <div>{label}<DatasetSelect value={value} onChange={onChange} /></div>;
+  }
   if (kind === 'bool') {
     return (
       <div>{label}
@@ -109,5 +113,21 @@ export default function ParamField({ name, spec, value, cols, aiHint, onChange }
         type={kind === 'num' ? 'number' : 'text'}
         className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm font-mono" />
     </div>
+  );
+}
+
+/** A parameter that names a second dataset (type "dataset", e.g. 对齐两份数据 · other):
+ *  pick it from the user's source data; the value sent is the dataset name. */
+function DatasetSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    api.listDatasets().then((ds) => setNames([...new Set(ds.filter((d) => d.kind !== 'derived').map((d) => d.name))])).catch(() => {});
+  }, []);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full border border-ink-200 rounded-lg px-2 py-1.5 bg-white text-sm">
+      <option value="">选择一份数据…</option>
+      {value && !names.includes(value) && <option value={value}>{value}</option>}
+      {names.map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
   );
 }

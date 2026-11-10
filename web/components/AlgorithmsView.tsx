@@ -1,8 +1,9 @@
 'use client';
 
+import ErrorNote, { NEXT } from '@/components/ErrorNote';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy } from 'lucide-react';
+import { AlertTriangle, Loader2, Play, Save, Workflow, Trash2, ArrowRight, Database, GitBranch, Table2, ChevronDown, ChevronRight, Plus, BarChart3, Upload, Search, Code2, Copy, MessageSquare } from 'lucide-react';
 import { api, downloadFile, type Algorithm, type Dataset, type RunResult, type ParamSpec, type FlowTemplate } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import ParamField from '@/components/ParamField';
@@ -13,9 +14,10 @@ import AlgoStudio from '@/components/AlgoStudio';
 import AlgoEditor, { type EditorTarget } from '@/components/AlgoEditor';
 import RunApp from '@/components/RunApp';
 import DatasetChart from '@/components/DatasetChart';
-import { RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent } from '@/lib/algoMeta';
+import { RETURNS_ZH, dispName, dispDesc, dispExample, catZh, cellStr, groupByIntent, matchAlgo, intentZh, algoIntent, algoLabel } from '@/lib/algoMeta';
 import { AiMark, SourceTag, StatusDot } from '@/components/ui';
 import { IntentIcon } from '@/components/AnalysisIcon';
+import { Overview, Entries, EntryTile, Hint, Section, Rows, Row, Counts, ListHead, ListGroup, BackBar } from '@/components/LibraryOverview';
 
 // The 算法库 view: a single left list (two pinned entries 上传/AI + the
 // intent-grouped algorithms) and a right area that shows the selected thing.
@@ -50,7 +52,7 @@ export function TemplatesView({ onRunInChat, focusTemplate }: { onRunInChat?: (c
   function refresh(selectId?: number) {
     api.listTemplates().then((ts) => {
       setTpls(ts);
-      setSelId((cur) => selectId ?? (cur && ts.some((t) => t.id === cur) ? cur : ts[0]?.id ?? null));
+      setSelId((cur) => selectId ?? (cur && ts.some((t) => t.id === cur) ? cur : null));
     }).catch(() => {});
   }
   useEffect(() => {
@@ -68,46 +70,48 @@ export function TemplatesView({ onRunInChat, focusTemplate }: { onRunInChat?: (c
   }
 
   const selected = tpls.find((t) => t.id === selId) ?? null;
+  const [q, setQ] = useState('');
+  const isExample = (tp: FlowTemplate) => tp.name.startsWith('【示例】');
+  const shown = q.trim() ? tpls.filter((tp) => (tp.name + tp.description).toLowerCase().includes(q.trim().toLowerCase())) : tpls;
+  const mine = shown.filter((tp) => !isExample(tp));
+  const examples = shown.filter(isExample);
+  const row = (tp: FlowTemplate) => (
+    <button key={tp.id} onClick={() => setSelId(tp.id)}
+      className={`w-full text-left rounded px-2 py-1.5 flex items-center gap-2 transition-colors ${selId === tp.id ? 'bg-brand-50' : 'hover:bg-ink-50'}`}>
+      <Workflow className="w-3.5 h-3.5 text-ink-500 shrink-0" />
+      <span className={`text-[13px] truncate flex-1 ${selId === tp.id ? 'font-medium text-ink-900' : 'text-ink-800'}`}>{tp.name}</span>
+      <span className="text-[11px] text-ink-400 shrink-0">{tp.n_steps} 步</span>
+    </button>
+  );
 
   return (
     <div className="flex h-full">
       {/* master list — full-width on mobile (hidden once a template is picked) */}
-      <div className={`w-full md:w-[240px] shrink-0 border-r border-ink-200 bg-ink-50/40 flex flex-col ${selId ? 'max-md:hidden' : ''}`}>
-        <div className="p-3 border-b border-ink-200">
-          <button onClick={createBlank} disabled={creating}
-            className="w-full flex items-center justify-center gap-1.5 bg-brand-600 text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50">
-            <Plus className="w-4 h-4" /> 新建流程
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto scroll-hide p-2 space-y-1.5">
-          {tpls.length === 0 && (
-            <div className="text-xs text-ink-400 text-center px-3 py-6">还没有流程模板。<br />「新建流程」开始拖拽编排,或在对话「流程图」里保存。</div>
-          )}
-          {tpls.map((tp) => (
-            <button key={tp.id} onClick={() => setSelId(tp.id)}
-              className={`w-full text-left rounded-lg p-2.5 ring-1 transition ${selId === tp.id ? 'bg-brand-50 ring-brand-300' : 'bg-white ring-ink-200 hover:ring-brand-200'}`}>
-              <div className="flex items-center gap-1.5"><Workflow className="w-3.5 h-3.5 text-brand-600 shrink-0" /><span className="font-medium text-sm truncate">{tp.name}</span></div>
-              <div className="text-[11px] text-ink-400 mt-0.5">{tp.n_steps} 步</div>
-            </button>
-          ))}
+      <div className={`w-full md:w-[290px] shrink-0 border-r border-ink-200 bg-white flex flex-col ${selId ? 'max-md:hidden' : ''}`}>
+        <ListHead title="流程" q={q} onQ={setQ} placeholder="搜索流程"
+          extra={<button onClick={createBlank} disabled={creating} title="新建流程"
+            className="h-7 px-2 rounded-md ring-1 ring-ink-300 text-xs text-ink-700 hover:bg-ink-50 inline-flex items-center gap-1 disabled:opacity-50"><Plus className="w-3.5 h-3.5" />新建</button>} />
+        <div className="flex-1 overflow-y-auto scroll-hide p-2">
+          <ListGroup id="flow-g-mine" label="我的" n={mine.length} />
+          {mine.length === 0 && <div className="px-2 py-1.5 text-xs text-hint">{q.trim() ? '没有匹配的流程' : '还没有'}</div>}
+          <div className="space-y-0.5">{mine.map(row)}</div>
+          {examples.length > 0 && <>
+            <ListGroup id="flow-g-example" label="示例" n={examples.length} />
+            <div className="space-y-0.5">{examples.map(row)}</div>
+          </>}
         </div>
       </div>
-      {/* detail: free-form canvas (edit) or mini-program (run). On mobile hidden
-          until a template is picked, then full-screen with a back button. */}
+      {/* detail: free-form canvas (edit) or mini-program (run). Nothing picked → overview. */}
       <div className={`flex-1 min-w-0 flex flex-col ${selId ? '' : 'max-md:hidden'}`}>
         {selected ? (
           <>
-            {/* mobile back to list */}
-            <button onClick={() => setSelId(null)}
-              className="md:hidden w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
-              ← 返回流程列表
-            </button>
+            <BackBar onBack={() => setSelId(null)}><span className="text-xs text-ink-500 truncate">{selected.name}</span></BackBar>
             <div className="border-b border-ink-200 bg-white px-3 py-1.5 flex items-center gap-2">
               <div className="inline-flex rounded-lg ring-1 ring-ink-200 overflow-hidden text-xs">
                 <button onClick={() => setMode('edit')} className={mode === 'edit' ? 'bg-brand-600 text-white px-2.5 py-1' : 'px-2.5 py-1 text-ink-600 hover:bg-ink-50'}>编辑画布</button>
                 <button onClick={() => setMode('run')} className={mode === 'run' ? 'bg-brand-600 text-white px-2.5 py-1' : 'px-2.5 py-1 text-ink-600 hover:bg-ink-50'}>运行 · 小程序</button>
               </div>
-              <span className="text-[11px] text-ink-500 max-lg:hidden">运行模式 = 给非专家用：选数据 + 填参数 + 跑，并看到可信的处理过程</span>
+              <span className="text-xs text-hint max-lg:hidden">运行模式 = 给非专家用：选数据 + 填参数 + 跑，并看到可信的处理过程</span>
               {onRunInChat && (
                 <div className="ml-auto flex items-center gap-2">
                   <select aria-label="运行用的数据集" value={chatDs ?? ''} onChange={(e) => setChatDs(e.target.value ? Number(e.target.value) : null)}
@@ -148,12 +152,32 @@ export function TemplatesView({ onRunInChat, focusTemplate }: { onRunInChat?: (c
             </div>
           </>
         ) : (
-          <div className="h-full grid place-items-center p-6">
-            <div className="max-w-md text-center space-y-2">
-              <div className="text-base font-semibold text-ink-900">流程：把一次满意的分析固化下来</div>
-              <p className="text-sm text-ink-600 leading-relaxed">流程是一串固定的算法步骤。换一份数据就能一键重跑，<b>不需要 AI</b>，结果可复现。</p>
-              <p className="text-sm text-ink-600 leading-relaxed">在对话里分析满意后，点回答末尾的「存为流程」；也可以在左侧「新建流程」，在画布上拖拽编排。</p>
-            </div>
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-hide">
+            <Overview title="流程"
+              lead="流程是保存下来的处理步骤，换一份数据可以一键重跑，不经过 AI，结果可复现。选中左侧一个流程，可以运行，或在画布里编辑。">
+              <Entries>
+                <EntryTile primary icon={<Plus className="w-4 h-4" strokeWidth={1.75} />} title="新建流程"
+                  desc="打开空白画布，从算法库拖入步骤；画布里可以让 AI 帮你填参数" onClick={createBlank} disabled={creating} />
+                <EntryTile icon={<MessageSquare className="w-4 h-4" strokeWidth={1.75} />} title="从对话保存"
+                  desc="在对话里分析满意后，点回答末尾的「存为流程」，这次的步骤和参数就存成流程" />
+              </Entries>
+              <Hint>流程会锁定所用算法的版本；算法有新版本时，打开流程会提示是否更新。</Hint>
+              {tpls.some(isExample) && (
+                <Section title="示例流程">
+                  <Rows>
+                    {tpls.filter(isExample).map((tp) => (
+                      <Row key={tp.id} name={tp.name.replace('【示例】', '')}
+                        meta={tp.steps.map((st) => st.label || algoLabel(st.slug, st.slug ?? st.action).name).join(' → ')}
+                        action="打开" onAction={() => setSelId(tp.id)} />
+                    ))}
+                  </Rows>
+                </Section>
+              )}
+              <Counts items={[
+                { label: '我的', n: tpls.filter((tp) => !isExample(tp)).length, onClick: () => document.getElementById('flow-g-mine')?.scrollIntoView({ behavior: 'smooth' }) },
+                { label: '示例', n: tpls.filter(isExample).length, onClick: () => document.getElementById('flow-g-example')?.scrollIntoView({ behavior: 'smooth' }) },
+              ]} />
+            </Overview>
           </div>
         )}
       </div>
@@ -238,37 +262,42 @@ function LibraryView({ t, focusAlgo, active, onUseInChat }: { t: (k: string) => 
 
   const searching = q.trim().length > 0;
   const hits = searching ? algos.filter((a) => matchAlgo(a, q)) : [];
-  const groups = searching ? [] : groupByIntent(algos);   // 改法 A + D
+  // 「我的」 = uploaded + AI-written (drafts first); the built-ins stay grouped by intent.
+  const isDraft = (a: Algorithm) => a.source === 'ai' && a.verified === false;
+  const mine = algos.filter((a) => a.source !== 'builtin').sort((x, y) => Number(!isDraft(x)) - Number(!isDraft(y)));
+  const groups = groupByIntent(algos.filter((a) => a.source === 'builtin'));
+  const allGroups = [...(mine.length ? [{ key: 'mine', label: '我的', items: mine }] : []), ...groups];
+
+  // The overview's AI box hands its description to the AI studio (seed).
+  const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null);
+  // 「上传自由算法」: pick the .py right away, then open the upload editor with it loaded.
+  const [seedFile, setSeedFile] = useState<{ file: File; nonce: number } | null>(null);
+  const pyRef = useRef<HTMLInputElement>(null);
+  const jumpTo = (key: string) => {
+    setQ('');
+    setCollapsed((s) => { const n = new Set(s); n.delete(key); return n; });
+    setTimeout(() => document.getElementById('algo-g-' + key)?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 0);
+  };
 
   const showDetail = selected !== null || editor !== null;
   return (
     <div className="flex h-full">
-      {/* Left list: full-width on mobile (hidden once something is picked);
-          fixed column on desktop. */}
-      <div className={`w-full md:w-[300px] shrink-0 border-r border-ink-200 flex flex-col bg-ink-50 ${showDetail ? 'max-md:hidden' : ''}`}>
-        <div className="p-3 border-b border-ink-200 space-y-2">
-          {/* two prominent capability cards, side by side — extend the library */}
-          <div className="grid grid-cols-2 gap-2">
-            <EntryCard icon={<Upload className="w-4 h-4 text-brand-600" strokeWidth={1.75} />} label="上传自由算法" hint="贴代码即用" ai={false} sel={selected === 'upload'} onClick={() => pick('upload')} />
-            <EntryCard icon={<AiMark />} label="生成算法" hint="描述需求，生成后需复核" ai sel={selected === 'ai'} onClick={() => pick('ai')} />
-          </div>
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="想做什么？例：去掉温度尖峰…"
-              className="w-full border border-ink-300 rounded pl-8 pr-2 h-8 bg-white text-xs focus:outline-none focus:border-brand-600" />
-          </div>
-        </div>
+      <input ref={pyRef} type="file" accept=".py,.txt" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { setSeedFile({ file: f, nonce: Date.now() }); pick('upload'); } }} />
+      {/* Left list: full-width on mobile (hidden once something is picked). */}
+      <div className={`w-full md:w-[290px] shrink-0 border-r border-ink-200 flex flex-col bg-white ${showDetail ? 'max-md:hidden' : ''}`}>
+        <ListHead title="算法" q={q} onQ={setQ} placeholder="想做什么？例：去掉温度尖峰…" />
         <div className="flex-1 overflow-y-auto scroll-hide p-2">
           {searching ? (
-            <div className="space-y-1.5">
+            <div className="space-y-0.5">
               {hits.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => pick(a)} />)}
-              {hits.length === 0 && <div className="text-xs text-ink-400 text-center py-6">没有匹配的算法</div>}
+              {hits.length === 0 && <div className="text-xs text-hint text-center py-6">没有匹配的算法</div>}
             </div>
           ) : (
-            groups.map((g) => {
+            allGroups.map((g) => {
               const open = !collapsed.has(g.key);
               return (
-                <div key={g.key} className="mb-1.5">
+                <div key={g.key} id={'algo-g-' + g.key} className="mb-1.5 scroll-mt-2">
                   <button onClick={() => toggleGroup(g.key)}
                     className="w-full flex items-center gap-1 px-1 py-1 text-xs font-semibold text-ink-600 hover:text-ink-900">
                     {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
@@ -276,7 +305,7 @@ function LibraryView({ t, focusAlgo, active, onUseInChat }: { t: (k: string) => 
                     <span className="ml-auto font-mono font-normal text-ink-500">{g.items.length}</span>
                   </button>
                   {open && (
-                    <div className="space-y-1 mt-0.5">
+                    <div className="space-y-0.5 mt-0.5">
                       {g.items.map((a) => <AlgoRow key={a.slug + (a.id ?? '')} a={a} sel={isSel(a)} onClick={() => pick(a)} />)}
                     </div>
                   )}
@@ -284,39 +313,31 @@ function LibraryView({ t, focusAlgo, active, onUseInChat }: { t: (k: string) => 
               );
             })
           )}
-          {!searching && groups.length === 0 && <div className="text-xs text-ink-400 text-center py-6">暂无算法</div>}
+          {!searching && allGroups.length === 0 && <div className="text-xs text-hint text-center py-6">暂无算法</div>}
         </div>
       </div>
 
-      {/* Right: upload & AI forms stay MOUNTED (just hidden) so switching between
-          them doesn't lose typed code / the AI description. Algo run panel and
-          the empty hint render conditionally. On mobile this is hidden until
-          something is picked (then full-screen with a back button). */}
+      {/* Right: upload & AI studios stay MOUNTED (just hidden) so switching away
+          doesn't lose typed code / the AI conversation. Nothing picked → overview. */}
       <div className={`flex-1 min-w-0 flex ${showDetail ? '' : 'max-md:hidden'}`}>
         {/* Detail / run column. With the editor open it narrows to the run panel's
-            width and the 代码编辑器 fills the space beside it — edit on the right,
-            run the saved version on the left. Below xl the editor takes the pane. */}
-        <div className={`overflow-y-auto scroll-hide ${draft ? 'hidden' : editor ? 'w-[44rem] max-w-[50%] shrink-0 max-xl:hidden' : 'flex-1 min-w-0'}`}>
-          {showDetail && (
-            <button onClick={() => pick(null)}
-              className="md:hidden sticky top-0 z-10 w-full text-left px-4 py-2.5 bg-white border-b border-ink-200 text-sm text-brand-600 font-medium">
-              ← 返回列表
-            </button>
-          )}
-          <div className={selected === 'upload' ? 'h-full' : 'hidden'}><AlgoStudio start="upload" onSaved={() => reload()} /></div>
-          <div className={selected === 'ai' ? 'h-full' : 'hidden'}><AlgoStudio start="ai" onSaved={() => reload()} /></div>
-          {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor}
-            datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'}
-            prefill={prefill} onClearPrefill={() => setPrefill(null)} onUseInChat={onUseInChat} />}
-          {selected === null && !editor && (
-            <div className="h-full grid place-items-center px-6">
-              <div className="max-w-md text-center space-y-2">
-                <div className="text-base font-semibold text-ink-900">算法库：分析用的工具箱</div>
-                <p className="text-sm text-ink-600 leading-relaxed">对话里 AI 调用的就是这里的算法。你也可以<b>不经过 AI</b>：从左侧选一个算法，选数据、填参数，直接运行。</p>
-                <p className="text-sm text-ink-600 leading-relaxed">需要的算法没有？用左上角「上传自由算法」贴入自己的代码，或「生成算法」让 AI 写一个（确认保留后才能用于流程）。</p>
-              </div>
-            </div>
-          )}
+            width and the 代码编辑器 fills the space beside it. Below xl the editor takes the pane. */}
+        <div className={`flex flex-col min-h-0 ${draft ? 'hidden' : editor ? 'w-[44rem] max-w-[50%] shrink-0 max-xl:hidden' : 'flex-1 min-w-0'}`}>
+          {showDetail && <BackBar onBack={() => pick(null)}>
+            <span className="text-xs text-ink-500 truncate">{selected === 'upload' ? '上传自由算法' : selected === 'ai' ? 'AI 生成算法' : isAlgoSel(selected) ? dispName(selected) : ''}</span>
+          </BackBar>}
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-hide">
+            <div className={selected === 'upload' ? 'h-full' : 'hidden'}><AlgoStudio start="upload" seedFile={seedFile} onSaved={() => reload()} /></div>
+            <div className={selected === 'ai' ? 'h-full' : 'hidden'}><AlgoStudio start="ai" seed={seed} onSaved={() => reload()} /></div>
+            {isAlgoSel(selected) && <RunPanel key={selected.slug + (selected.id ?? '') + ':' + rev} algo={selected} t={t} onOpenEditor={setEditor}
+              datasetId={testDs} onDatasetChange={setTestDs} editorOpen={editor !== null && editorMode === 'edit'}
+              prefill={prefill} onClearPrefill={() => setPrefill(null)} onUseInChat={onUseInChat} />}
+            {selected === null && !editor && (
+              <AlgoOverview algos={algos} groups={allGroups}
+                onGenerate={(text) => { setSeed({ text, nonce: Date.now() }); pick('ai'); }}
+                onOpen={(s) => { if (s === 'upload') pyRef.current?.click(); else if (s === 'paste') pick('upload'); else pick(s); }} onJump={jumpTo} />
+            )}
+          </div>
         </div>
         {editor && (
           <div className="flex-1 min-w-0 border-l border-ink-200">
@@ -334,19 +355,56 @@ function LibraryView({ t, focusAlgo, active, onUseInChat }: { t: (k: string) => 
   );
 }
 
-/** Capability entry above the algorithm list (上传自由算法 / 生成算法) — these
- *  EXTEND the library. The AI one is marked by shape (dashed + AI mark), not colour. */
-function EntryCard({ icon, label, hint, ai, sel, onClick }: {
-  icon: React.ReactNode; label: string; hint: string; ai: boolean; sel: boolean; onClick: () => void;
+const AI_EXAMPLES = ['把通道里的缓慢漂移去掉', '按转速计算阶次谱', '按 α ≤ 10° 取线性段，拟合升力线斜率、截距和 R²'];
+
+/** 算法 overview: AI 生成 (inline description box) + 上传 → 待审核 → 库里有什么. */
+function AlgoOverview({ algos, groups, onGenerate, onOpen, onJump }: {
+  algos: Algorithm[]; groups: { key: string; label: string; items: Algorithm[] }[];
+  onGenerate: (text: string) => void; onOpen: (s: Sel | 'paste') => void; onJump: (key: string) => void;
 }) {
+  const [text, setText] = useState('');
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const pending = algos.filter((a) => a.source === 'ai' && a.verified === false);
+  const go = () => { const v = text.trim(); if (v) { onGenerate(v); setText(''); } };
   return (
-    <button onClick={onClick}
-      className={`rounded p-2.5 transition-colors text-left flex flex-col gap-1 bg-white hover:bg-ink-50 border ${ai ? 'border-dashed' : ''} ${
-        sel ? 'border-brand-600 ring-1 ring-brand-600' : ai ? 'border-ink-500' : 'border-ink-300'
-      }`}>
-      <span className="flex items-center gap-1.5 font-medium text-[13px] leading-tight text-ink-900">{icon}{label}</span>
-      <span className="text-[11px] text-ink-500 leading-tight">{hint}</span>
-    </button>
+    <Overview title="算法"
+      lead="对话里 AI 调用的就是这里的算法。选中左侧一个算法，可以不经过 AI 直接选数据运行；需要的算法没有，可以上传自己的代码，或让 AI 写一个。">
+      <Entries>
+        <EntryTile primary icon={<span className="font-mono text-[10px] font-semibold border border-current rounded-sm px-0.5 leading-[14px]">AI</span>}
+          title="AI 生成算法" desc="描述要做的计算，AI 写好代码并在沙箱自测，通过后待你审核" onClick={() => taRef.current?.focus()} />
+        <EntryTile icon={<Upload className="w-4 h-4" strokeWidth={1.75} />} title="上传自由算法" desc="选择一个 .py 文件，载入编辑器并自动检查能否接入平台" onClick={() => onOpen('upload')} />
+      </Entries>
+      <p className="mt-1.5 text-xs text-ink-500 text-right">没有 .py 文件？<button onClick={() => onOpen('paste')} className="text-brand-700 hover:underline">直接粘贴代码</button></p>
+      <div className="mt-2.5 p-3.5 rounded-lg bg-white ring-1 ring-brand-100 shadow-sm">
+        <textarea ref={taRef} value={text} onChange={(e) => setText(e.target.value)} rows={3}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); } }}
+          placeholder="描述你想要的算法，例如：按 α ≤ 10° 取线性段，拟合升力线斜率并给出截距和 R²"
+          className="w-full resize-none bg-transparent text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 focus:outline-none" />
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-ink-150 pt-2.5">
+          {AI_EXAMPLES.map((e) => (
+            <button key={e} onClick={() => { setText(e); taRef.current?.focus(); }}
+              className="h-6 px-2.5 rounded-full bg-ink-100 text-xs text-ink-700 hover:bg-ink-150">{e}</button>
+          ))}
+          <button onClick={go} disabled={!text.trim()}
+            className="ml-auto h-8 px-3.5 rounded-md bg-brand-600 text-white text-[13px] hover:bg-brand-700 disabled:opacity-40">
+            生成
+          </button>
+        </div>
+      </div>
+      <Hint>提交后进入「AI 生成算法」：AI 写代码、用合成数据自测，存为草稿；确认保存后才能用于流程。对话里 AI 新写的算法也会出现在下面的「待审核」。</Hint>
+
+      {pending.length > 0 && (
+        <Section title="待审核" note={`${pending.length} 个 · AI 写的、还没确认保存`}>
+          <Rows>
+            {pending.map((a) => (
+              <Row key={a.slug + (a.id ?? '')} tag="待审核" name={dispName(a)} meta={dispDesc(a)} action="审核" onAction={() => onOpen(a)} />
+            ))}
+          </Rows>
+        </Section>
+      )}
+
+      <Counts items={groups.map((g) => ({ label: g.label, n: g.items.length, onClick: () => onJump(g.key) }))} />
+    </Overview>
   );
 }
 
@@ -668,11 +726,7 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 p-3 space-y-2">
-          <div className="text-sm text-red-700 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span className="whitespace-pre-wrap font-mono text-xs">{error}</span>
-          </div>
+        <ErrorNote error={error} next={NEXT.userRun}>
           <button onClick={explainErr} disabled={explaining}
             className="text-xs h-7 px-2.5 rounded bg-white border border-ink-300 text-ink-800 hover:bg-ink-50 flex items-center gap-1.5 disabled:opacity-50">
             {explaining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AiMark />} 用人话解释这个错误
@@ -682,7 +736,7 @@ function RunPanel({ algo, t, onOpenEditor, datasetId, onDatasetChange: setDatase
               {errorExplain}
             </div>
           )}
-        </div>
+        </ErrorNote>
       )}
       {result && result.status === 'ok' && (
         <div className="space-y-2">

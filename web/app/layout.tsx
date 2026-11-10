@@ -4,6 +4,7 @@ export const metadata: Metadata = {
   title: 'RLab Cortex — Verifiable data analysis agent',
   description:
     'RLab Cortex is a verifiable analysis agent for engineers and scientists. Curated algorithms, sandboxed custom code, and LLM-generated tools — all with auditable provenance.',
+  icons: { icon: '/logo.png', apple: '/logo.png' },
 };
 
 export const viewport: Viewport = {

@@ -1,5 +1,6 @@
 'use client';
 
+import ErrorNote, { NEXT } from '@/components/ErrorNote';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -12,7 +13,7 @@ import {
   Database, Wrench, Play, Save, Loader2, Trash2, Layers, Table2,
   CheckCircle2, AlertTriangle, GitBranch, ArrowRight, X, Search, BarChart3, ChevronDown, ChevronRight,
 } from 'lucide-react';
-import { AiMark } from '@/components/ui';
+import { AiMark, Hint } from '@/components/ui';
 import { api, type Algorithm, type Dataset, type FlowTemplate, type TemplateStep, type TemplateRunResult, type FlowGraph, type ParamSpec } from '@/lib/api';
 import { ALGO_ZH, paramToStr, coerceParam, dispName, dispDesc, dispExample, catZh, RETURNS_ZH, SOURCE_ZH, COL_MULTI, COL_SINGLE, paramKind, matchAlgo, groupByIntent, intentZh, algoIntent } from '@/lib/algoMeta';
 import { IntentIcon } from '@/components/AnalysisIcon';
@@ -102,7 +103,7 @@ function InputNode({ selected }: NodeProps) {
         <span className="grid place-items-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 shrink-0"><Database className="w-3.5 h-3.5" /></span>
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold text-ink-900 truncate leading-tight">输入数据</div>
-          <div className="text-[10px] text-ink-400">模版入口 · 可多选,批量逐个执行</div>
+          <div className="text-[10px] text-hint">模版入口 · 可多选，批量逐个执行</div>
         </div>
       </div>
       <div className="px-3 py-2 space-y-1.5">
@@ -956,7 +957,7 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
               <div className="font-semibold text-sm flex-1">本次运行参数</div>
               <button onClick={() => setRunForm(null)} className="text-ink-400 hover:text-ink-700"><X className="w-4 h-4" /></button>
             </div>
-            <div className="px-4 py-3 text-[11px] text-ink-500">填好这几个参数即可在 <b>{runDs?.name ?? '所选数据集'}</b> 上运行这套流程(默认值已填,可改)。</div>
+            <Hint className="px-4 py-3">填好这几个参数即可在 <b className="font-medium">{runDs?.name ?? '所选数据集'}</b> 上运行这套流程（默认值已填，可改）。</Hint>
             <div className="px-4 pb-2 space-y-2.5 overflow-y-auto scroll-hide">
               {runtimeList.map((r) => {
                 const spec = bySlug.get(r.node!.data.slug ?? '')?.params_schema?.[r.param];
@@ -1136,7 +1137,7 @@ function NodeInspector({ node, algo, cols, colsFromUpstream, datasetId, width, o
             </div>
           )}
           {keys.length === 0 ? (
-            <div className="text-xs text-ink-400">该算法无可调参数。</div>
+            <div className="text-xs text-hint">该算法无可调参数。</div>
           ) : keys.map((k) => {
             const isRt = runtimeParams.includes(k);
             return (
@@ -1197,7 +1198,7 @@ function AlgoPalette({ algos, onPick, onClose }: {
         {searching ? (
           <>
             {list.map((a) => <PaletteChip key={a.slug + (a.id ?? '')} a={a} onPick={onPick} />)}
-            {list.length === 0 && <div className="text-[11px] text-ink-400 text-center py-5">没有匹配的算法</div>}
+            {list.length === 0 && <div className="text-xs text-hint text-center py-5">没有匹配的算法</div>}
           </>
         ) : (
           groups.map((g) => {
@@ -1216,7 +1217,7 @@ function AlgoPalette({ algos, onPick, onClose }: {
           })
         )}
       </div>
-      <div className="px-2.5 py-1.5 border-t border-ink-200 text-[10px] text-ink-400 leading-snug">
+      <div className="px-2.5 py-1.5 border-t border-ink-200 text-[11px] text-hint leading-snug">
         拖到画布放置,或点击加到末尾
       </div>
     </div>
@@ -1324,7 +1325,7 @@ function RunResults({ res, datasetId, paramsByIndex, stepCols, runDs, onPreview 
                 </button>
               )}
             </div>
-            {s.error && <div className="mt-1 text-[11px] font-mono text-red-600 break-all">{s.error}</div>}
+            {s.error && <div className="mt-1"><ErrorNote compact error={s.error} next={NEXT.userFlow} /></div>}
             {errExplain[s.i] && (
               <div className="mt-1 text-[11px] text-ink-700 bg-red-50/60 ring-1 ring-red-100 rounded-md px-2 py-1.5 whitespace-pre-wrap">{errExplain[s.i]}</div>
             )}

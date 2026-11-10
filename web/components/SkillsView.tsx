@@ -5,7 +5,8 @@ import {
   Puzzle, Upload, Loader2, CheckCircle2, AlertTriangle, Trash2, Power, FileText,
   ChevronDown, Pencil, Check, X, Send, Undo2, Bot, Wrench, BookOpen, CircleDot,
 } from 'lucide-react';
-import { AiMark } from '@/components/ui';
+import { AiMark, Hint as UiHint } from '@/components/ui';
+import { Overview, Entries, EntryTile, Hint, Section as OvSection, Rows, Row, Counts, ListHead, ListGroup, BackBar } from '@/components/LibraryOverview';
 import { api, importSkillStream, type Skill, type SkillCard, type SkillImportEvent } from '@/lib/api';
 
 // 技能 Skills: import a skill package and watch it being read (live steps), then
@@ -30,7 +31,7 @@ export default function SkillsView() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [imp, setImp] = useState<ImportState | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [toggling, setToggling] = useState<number | null>(null);
+  const [q, setQ] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reload = () => api.listSkills().then(setSkills).catch(() => {});
@@ -53,130 +54,118 @@ export default function SkillsView() {
     }
   }
 
-  async function toggle(s: Skill) {
-    setToggling(s.id);
-    try { await api.updateSkill(s.id, { status: s.status === 'active' ? 'disabled' : 'active' }); await reload(); }
-    finally { setToggling(null); }
-  }
-
   const importing = !!imp && !imp.done;
-  const fileInput = (
-    <input ref={fileRef} type="file" accept=".zip,.md,.txt" className="hidden"
-      onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }} />
-  );
-
-  // ── detail page ──
+  const pickFile = () => { if (!importing) fileRef.current?.click(); };
   const open = skills.find((s) => s.id === openId);
-  if (open) {
-    return (
-      <div className="h-full overflow-y-auto scroll-hide">
-        {fileInput}
-        <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-ink-200 px-5 py-2">
-          <button onClick={() => { setOpenId(null); reload(); }} className="text-sm text-brand-700 hover:text-brand-900">← 所有技能</button>
-        </div>
-        <SkillDetail key={open.id} skill={open} justImported={false}
-          onChanged={(s) => { if (!s) { setOpenId(null); } reload(); }} />
-      </div>
-    );
-  }
+  const showDetail = !!open || !!imp;
+  const kw = q.trim().toLowerCase();
+  const shown = kw ? skills.filter((s) => `${s.config?.name ?? ''} ${s.name} ${s.config?.summary ?? ''} ${s.description}`.toLowerCase().includes(kw)) : skills;
+  const mine = shown.filter((s) => !s.is_default);
+  const defaults = shown.filter((s) => s.is_default);
+  const allDefaults = skills.filter((s) => s.is_default);
+  const drafts = skills.filter((s) => s.status === 'draft');
+  const pickSkill = (id: number | null) => { if (importing) return; setImp(null); setOpenId(id); };
 
-  // ── gallery ──
-  const mine = skills.filter((s) => !s.is_default);
-  const defaults = skills.filter((s) => s.is_default);
   return (
-    <div className="h-full overflow-y-auto scroll-hide"
+    <div className="flex h-full"
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
       onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!importing) onPick(e.dataTransfer.files?.[0]); }}>
-      {fileInput}
-      <div className="max-w-6xl mx-auto px-5 py-6 space-y-6">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-[240px]">
-            <h1 className="text-xl font-semibold flex items-center gap-2"><Puzzle className="w-5 h-5 text-brand-600" />技能 Skills</h1>
-            <p className="text-sm text-ink-500 mt-1">技能是写给对话里 AI 的分析规范（比如你们的检测流程、判定标准）。启用后，在对话输入框上方的「Skills」里勾选，AI 就按这个方法来分析；不勾选时 AI 按通用方法处理。</p>
-          </div>
-          <button onClick={() => fileRef.current?.click()} disabled={importing}
-            className="flex items-center gap-1.5 bg-brand-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-brand-700 disabled:opacity-60">
-            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} {importing ? '正在导入…' : '添加 Skill'}
-          </button>
+      <input ref={fileRef} type="file" accept=".zip,.md,.txt" className="hidden"
+        onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }} />
+
+      {/* left list */}
+      <div className={`w-full md:w-[290px] shrink-0 border-r border-ink-200 bg-white flex flex-col ${showDetail ? 'max-md:hidden' : ''}`}>
+        <ListHead title="技能" q={q} onQ={setQ} placeholder="搜索技能"
+          extra={<button onClick={pickFile} disabled={importing} title="导入技能"
+            className="h-7 px-2 rounded-md ring-1 ring-ink-300 text-xs text-ink-700 hover:bg-ink-50 inline-flex items-center gap-1 disabled:opacity-50">
+            {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}导入</button>} />
+        <div className="flex-1 overflow-y-auto scroll-hide p-2">
+          <ListGroup id="skill-g-mine" label="我的" n={mine.length} />
+          {mine.length === 0 && <div className="px-2 py-1.5 text-xs text-hint">{kw ? '没有匹配的技能' : '还没有'}</div>}
+          <div className="space-y-0.5">{mine.map((s) => <SkillRow key={s.id} s={s} sel={s.id === openId} onClick={() => pickSkill(s.id)} />)}</div>
+          {defaults.length > 0 && <>
+            <ListGroup id="skill-g-default" label="平台默认 · 所有用户可用" n={defaults.length} />
+            <div className="space-y-0.5">{defaults.map((s) => <SkillRow key={s.id} s={s} sel={s.id === openId} onClick={() => pickSkill(s.id)} />)}</div>
+          </>}
         </div>
+      </div>
 
+      {/* right: import progress / detail / overview */}
+      <div className={`flex-1 min-w-0 flex flex-col ${showDetail ? '' : 'max-md:hidden'}`}>
         {imp ? (
-          <div className="rounded-2xl ring-1 ring-brand-200 bg-white">
-            <ImportProgress state={imp} onRetry={() => fileRef.current?.click()} onClose={() => setImp(null)} />
-          </div>
-        ) : (
-          <button onClick={() => fileRef.current?.click()}
-            className={`w-full rounded-2xl border-2 border-dashed py-6 px-4 text-sm flex flex-col items-center gap-1.5 transition ${
-              dragOver ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-200 bg-white text-ink-500 hover:border-brand-300 hover:bg-brand-50/40'}`}>
-            <Upload className="w-6 h-6 text-brand-500" />
-            <span className="font-medium text-ink-700">把 skill 的 .zip 或 SKILL.md 拖到这里</span>
-            <span className="text-xs">也可以点击选择文件 · zip 里包含 SKILL.md，可附带脚本和参考资料</span>
-          </button>
-        )}
-
-        <section>
-          <h2 className="text-sm font-medium text-ink-600 mb-2">我的 Skills <span className="text-ink-400">({mine.length})</span></h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {mine.map((s) => <SkillTile key={s.id} s={s} busy={toggling === s.id} onOpen={() => setOpenId(s.id)} onToggle={() => toggle(s)} />)}
-            <button onClick={() => fileRef.current?.click()} disabled={importing}
-              className="rounded-2xl border-2 border-dashed border-ink-200 text-ink-400 hover:border-brand-300 hover:text-brand-600 min-h-[150px] flex flex-col items-center justify-center gap-1 text-sm disabled:opacity-50">
-              <Upload className="w-5 h-5" /> 添加 Skill
-            </button>
-          </div>
-        </section>
-
-        {defaults.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-ink-600 mb-2">平台默认 <span className="text-ink-400">· 所有用户可用，可停用</span></h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {defaults.map((s) => <SkillTile key={s.id} s={s} busy={toggling === s.id} onOpen={() => setOpenId(s.id)} onToggle={() => toggle(s)} />)}
+          <>
+            <BackBar onBack={() => { if (!importing) setImp(null); }}><span className="text-xs text-ink-500 truncate">导入技能</span></BackBar>
+            <div className="flex-1 min-h-0 overflow-y-auto scroll-hide">
+              <ImportProgress state={imp} onRetry={pickFile} onClose={() => setImp(null)} />
             </div>
-          </section>
+          </>
+        ) : open ? (
+          <>
+            <BackBar onBack={() => { setOpenId(null); reload(); }}><span className="text-xs text-ink-500 truncate">{open.config?.name || open.name}</span></BackBar>
+            <div className="flex-1 min-h-0 overflow-y-auto scroll-hide">
+              <SkillDetail key={open.id} skill={open} justImported={false}
+                onChanged={(s) => { if (!s) { setOpenId(null); } reload(); }} />
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-hide">
+            <Overview title="技能"
+              lead="技能是写给对话里 AI 的分析规范，比如你们的检测流程、判定标准、报告格式。在对话输入框上方的「Skills」里勾选后，AI 按它来分析；不勾选时按通用方法处理。">
+              <div className={`rounded-lg transition ${dragOver ? 'ring-2 ring-brand-600 ring-offset-4 ring-offset-ink-50' : ''}`}>
+                <Entries>
+                  <EntryTile primary icon={<Upload className="w-4 h-4" strokeWidth={1.75} />} title="导入技能"
+                    desc="上传 .zip 或 SKILL.md，AI 会整理成说明卡供你核对，启用后可用" onClick={pickFile} disabled={importing} />
+                  <EntryTile icon={<Puzzle className="w-4 h-4" strokeWidth={1.75} />} title="平台默认技能"
+                    desc={`${allDefaults.length} 个，所有用户可用，可以修改说明或停用`}
+                    onClick={() => { setQ(''); setTimeout(() => document.getElementById('skill-g-default')?.scrollIntoView({ behavior: 'smooth' }), 0); }} />
+                </Entries>
+              </div>
+              <Hint>zip 里要有 SKILL.md，可以附带脚本和参考资料；能在平台上运行的脚本会注册成工具。也可以把文件直接拖到这个页面。</Hint>
+
+              {drafts.length > 0 && (
+                <OvSection title="待启用" note={`${drafts.length} 个 · 导入后还没启用`}>
+                  <Rows>
+                    {drafts.map((s) => (
+                      <Row key={s.id} tag="草稿" name={s.config?.name || s.name} meta={s.config?.summary || s.description} action="查看" onAction={() => pickSkill(s.id)} />
+                    ))}
+                  </Rows>
+                </OvSection>
+              )}
+
+              <OvSection title="怎么用">
+                <Rows>
+                  {['在这里导入技能，核对说明后点「启用」', '在对话输入框上方的「Skills」里勾选要用的技能', 'AI 按技能里的步骤和标准来分析；说明不对的地方，可以在技能详情里直接改，或让 AI 调整'].map((x, i) => (
+                    <div key={i} className="flex gap-2.5 px-3.5 py-2.5 text-[13px] text-ink-700">
+                      <span className="w-5 h-5 rounded-full bg-ink-100 text-ink-600 grid place-items-center font-mono text-[11px] shrink-0">{i + 1}</span>{x}
+                    </div>
+                  ))}
+                </Rows>
+              </OvSection>
+
+              <Counts items={[
+                { label: '我的', n: skills.filter((s) => !s.is_default).length, onClick: () => document.getElementById('skill-g-mine')?.scrollIntoView({ behavior: 'smooth' }) },
+                { label: '平台默认', n: allDefaults.length, onClick: () => document.getElementById('skill-g-default')?.scrollIntoView({ behavior: 'smooth' }) },
+              ]} />
+            </Overview>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-const FIT_TAG: Record<string, { label: string; cls: string }> = {
-  full: { label: '完全可用', cls: 'text-emerald-700 bg-emerald-50 ring-emerald-100' },
-  partial: { label: '部分可用', cls: 'text-amber-800 bg-amber-50 ring-amber-100' },
-  low: { label: '平台上基本无法执行', cls: 'text-red-700 bg-red-50 ring-red-100' },
-};
-
-/** One skill in the gallery: what it is, whether it's on, how well it fits —
- *  enabled / disabled can be switched right here; drafts go through review. */
-function SkillTile({ s, busy, onOpen, onToggle }: { s: Skill; busy: boolean; onOpen: () => void; onToggle: () => void }) {
-  const nTool = s.scripts.filter((x) => scriptKind(x) === 'tool').length;
-  const nRef = s.scripts.filter((x) => scriptKind(x) === 'reference').length;
-  const fit = s.config?.platform_fit?.level ? FIT_TAG[s.config.platform_fit.level] : null;
+/** One skill in the left list: name + state (drafts / disabled are marked). */
+function SkillRow({ s, sel, onClick }: { s: Skill; sel: boolean; onClick: () => void }) {
   const on = s.status === 'active';
   return (
-    <div onClick={onOpen} role="button"
-      className={`group text-left rounded-2xl ring-1 bg-white p-4 cursor-pointer transition hover:shadow-sm flex flex-col gap-2 min-h-[150px] ${
-        s.status === 'draft' ? 'ring-amber-200' : 'ring-ink-200 hover:ring-brand-300'}`}>
-      <div className="flex items-start gap-2">
-        <Puzzle className={`w-4 h-4 mt-0.5 shrink-0 ${on ? 'text-brand-600' : 'text-ink-400'}`} />
-        <div className="font-medium text-sm text-ink-800 flex-1 min-w-0 line-clamp-2">{s.config?.name || s.name}</div>
-        {s.status === 'draft' ? (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">待启用</span>
-        ) : (
-          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} disabled={busy} title={on ? '点击停用' : '点击启用'}
-            className={`relative w-9 h-5 rounded-full shrink-0 transition ${on ? 'bg-emerald-500' : 'bg-ink-300'} disabled:opacity-50`}>
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
-          </button>
-        )}
-      </div>
-      <div className="text-xs text-ink-500 line-clamp-3 flex-1">{s.config?.summary || s.description || '（还没有说明）'}</div>
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-        {fit && <span className={`px-1.5 py-0.5 rounded ring-1 ${fit.cls}`}>{fit.label}</span>}
-        {nTool > 0 && <span className="px-1.5 py-0.5 rounded bg-ink-50 ring-1 ring-ink-200 text-ink-600">{nTool} 个平台工具</span>}
-        {nRef > 0 && <span className="px-1.5 py-0.5 rounded bg-ink-50 ring-1 ring-ink-200 text-ink-500">{nRef} 个参考脚本</span>}
-        {s.status === 'draft' && <span className="text-amber-700 ml-auto group-hover:underline">查看并启用 →</span>}
-        {s.status === 'disabled' && <span className="text-ink-400 ml-auto">已停用</span>}
-      </div>
-    </div>
+    <button onClick={onClick}
+      className={`w-full text-left rounded px-2 py-1.5 flex items-center gap-2 transition-colors ${sel ? 'bg-brand-50' : 'hover:bg-ink-50'}`}>
+      <Puzzle className={`w-3.5 h-3.5 shrink-0 ${on ? 'text-brand-600' : 'text-ink-400'}`} />
+      <span className={`text-[13px] truncate flex-1 ${sel ? 'font-medium text-ink-900' : on ? 'text-ink-800' : 'text-ink-500'}`}>{s.config?.name || s.name}</span>
+      {s.status === 'draft' && <span className="text-[10.5px] px-1.5 rounded-sm bg-warning-50 text-warning-700 shrink-0">草稿</span>}
+      {s.status === 'disabled' && <span className="text-[10.5px] px-1.5 rounded-sm bg-ink-100 text-ink-500 shrink-0">已停用</span>}
+    </button>
   );
 }
 
@@ -307,6 +296,8 @@ function SkillDetail({ skill, justImported, onChanged }: { skill: Skill; justImp
   const card: SkillCard = { ...EMPTY_CARD, ...(skill.config as Partial<SkillCard>) };
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
+  // Read-only by default; 「编辑」 makes the card's sections editable and opens the AI panel.
+  const [editing, setEditing] = useState(false);
   const tools = skill.scripts.filter((x) => scriptKind(x) === 'tool');
   const refScripts = skill.scripts.filter((x) => scriptKind(x) === 'reference');
   const st = STATUS[skill.status];
@@ -334,7 +325,7 @@ function SkillDetail({ skill, justImported, onChanged }: { skill: Skill; justImp
       <div className="flex flex-wrap items-start gap-3 mb-3">
         <Puzzle className="w-6 h-6 text-brand-600 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <InlineText value={card.name || skill.name} className="text-lg font-semibold" onSave={(v) => saveCard({ ...card, name: v }, '名称已保存')} />
+          <InlineText editable={editing} value={card.name || skill.name} className="text-lg font-semibold" onSave={(v) => saveCard({ ...card, name: v }, '名称已保存')} />
           <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs">
             <span className={`px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
             {skill.is_default && <span className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 ring-1 ring-brand-100">平台默认</span>}
@@ -364,57 +355,81 @@ function SkillDetail({ skill, justImported, onChanged }: { skill: Skill; justImp
       </div>
       {skill.status === 'draft' && (
         <div className="text-sm text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-3 py-2 mb-3">
-          {justImported ? '导入完成。' : ''}这是草稿：看一下下面的说明，不对的地方直接点「编辑」改，或者让右边的 AI 改；改动会立即保存。没问题就点右上角「启用」。
+          {justImported ? '导入完成。' : ''}这是草稿：看一下下面的说明，不对的地方点说明框右上角的「编辑」，可以直接改，也可以让 AI 改；改动会立即保存。没问题就点「启用」。
         </div>
       )}
-      {skill.is_default && <div className="text-xs text-ink-500 mb-3">平台自带的通用 skill，所有用户默认可用；可以修改说明或停用，但不能删除。</div>}
+      {skill.is_default && <UiHint className="mb-3">平台自带的通用 skill，所有用户默认可用；可以修改说明或停用，但不能删除。</UiHint>}
       {note && <div className={`text-xs mb-3 ${note.startsWith('操作失败') ? 'text-red-600' : 'text-emerald-700'}`}>{note}</div>}
 
       <div className="flex gap-5 max-xl:flex-col">
         <div className="flex-1 min-w-0 space-y-4">
-          <Section title="一句话说明">
-            <InlineText value={card.summary} multiline placeholder="（还没有说明）" onSave={(v) => saveCard({ ...card, summary: v })} />
-          </Section>
-          {card.platform_fit?.level ? <Section title="平台适配"><FitBanner fit={card.platform_fit} /></Section> : null}
-          {LIST_SECTIONS.map((sec) => (
-            <Section key={sec.key} title={sec.label}>
-              <InlineList items={card[sec.key]} ordered={sec.ordered} onSave={(v) => saveCard({ ...card, [sec.key]: v })} />
-            </Section>
-          ))}
-          <Section title="附带的脚本">
-            {skill.scripts.length === 0 ? <div className="text-sm text-ink-400">没有脚本 —— 计算会用平台已有的算法。</div> : (
-              <div className="space-y-1.5">
-                {[...tools, ...refScripts].map((x) => {
-                  const purpose = card.tools.find((t) => t.file === x.path)?.purpose;
-                  return (
-                    <div key={x.path}>
-                      <ScriptLine path={x.path} kind={scriptKind(x)}
-                        note={[x.tool_slug ? `已注册为平台工具 ${x.tool_slug}。` : '', purpose || x.note || ''].filter(Boolean).join(' ')} />
-                      {!x.ok && x.errors.length > 0 && (
-                        <details className="text-[11px] text-ink-400 ml-2 mt-0.5">
-                          <summary className="cursor-pointer select-none">为什么不能在平台上直接运行</summary>
-                          <ul className="list-disc pl-5 font-mono">{x.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
-                        </details>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Section>
-          <Section title="参考资料">
-            {skill.references.length === 0 ? <div className="text-sm text-ink-400">无</div>
-              : skill.references.map((r) => (
-                <div key={r.path} className="text-sm text-ink-600 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />{r.path}<span className="text-ink-400 text-xs">（{r.chars} 字）</span></div>
+          {/* the skill itself, framed like the algorithm code editor: read-only until 「编辑」 */}
+          <div className={`rounded-md bg-white border transition-colors ${editing ? 'border-brand-400 ring-1 ring-brand-400' : 'border-ink-200'}`}>
+            <div className={`flex items-center gap-2 px-4 h-10 border-b ${editing ? 'border-brand-100 bg-brand-50/60' : 'border-ink-150 bg-ink-50'}`}>
+              <FileText className="w-4 h-4 text-ink-500" strokeWidth={1.75} />
+              <span className="text-[13px] font-semibold text-ink-800">技能说明</span>
+              <span className="text-xs text-ink-500 max-sm:hidden">{editing ? '编辑中 · 点各段的「编辑」修改，改动立即保存' : 'AI 在对话里按这份说明分析'}</span>
+              <button onClick={() => setEditing((v) => !v)}
+                className={`ml-auto h-7 px-3 rounded text-[12.5px] inline-flex items-center gap-1.5 ${editing ? 'bg-brand-600 text-white hover:bg-brand-700' : 'bg-white ring-1 ring-ink-300 text-ink-800 hover:bg-ink-50'}`}>
+                {editing ? <><Check className="w-3.5 h-3.5" />完成</> : <><Pencil className="w-3.5 h-3.5" />编辑</>}
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <Section title="一句话说明">
+                <InlineText editable={editing} value={card.summary} multiline placeholder="（还没有说明）" onSave={(v) => saveCard({ ...card, summary: v })} />
+              </Section>
+              {card.platform_fit?.level ? <Section title="平台适配"><FitBanner fit={card.platform_fit} /></Section> : null}
+              {LIST_SECTIONS.map((sec) => (
+                <Section key={sec.key} title={sec.label}>
+                  <InlineList editable={editing} items={card[sec.key]} ordered={sec.ordered} onSave={(v) => saveCard({ ...card, [sec.key]: v })} />
+                </Section>
               ))}
-          </Section>
-          <details>
-            <summary className="text-xs text-ink-500 cursor-pointer select-none inline-flex items-center gap-1"><ChevronDown className="w-3 h-3" />SKILL.md 原文</summary>
-            <pre className="mt-2 text-[12px] whitespace-pre-wrap bg-ink-50 rounded-lg p-3 max-h-96 overflow-auto">{skill.instructions || '（空）'}</pre>
-          </details>
+            </div>
+          </div>
+
+          {/* attached files: scripts / references / the original SKILL.md */}
+          <div className="rounded-md bg-white border border-ink-200">
+            <div className="flex items-center gap-2 px-4 h-10 border-b border-ink-150 bg-ink-50">
+              <span className="text-[13px] font-semibold text-ink-800">附带文件</span>
+              <span className="text-xs text-ink-500 truncate">来自 {skill.source_filename}</span>
+            </div>
+            <div className="p-4 space-y-4">
+              <Section title="附带的脚本">
+                {skill.scripts.length === 0 ? <div className="text-xs text-hint">没有脚本，计算会用平台已有的算法。</div> : (
+                  <div className="space-y-1.5">
+                    {[...tools, ...refScripts].map((x) => {
+                      const purpose = card.tools.find((t) => t.file === x.path)?.purpose;
+                      return (
+                        <div key={x.path}>
+                          <ScriptLine path={x.path} kind={scriptKind(x)}
+                            note={[x.tool_slug ? `已注册为平台工具 ${x.tool_slug}。` : '', purpose || x.note || ''].filter(Boolean).join(' ')} />
+                          {!x.ok && x.errors.length > 0 && (
+                            <details className="text-[11px] text-ink-400 ml-2 mt-0.5">
+                              <summary className="cursor-pointer select-none">为什么不能在平台上直接运行</summary>
+                              <ul className="list-disc pl-5 font-mono">{x.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Section>
+              <Section title="参考资料">
+                {skill.references.length === 0 ? <div className="text-sm text-ink-400">无</div>
+                  : skill.references.map((r) => (
+                    <div key={r.path} className="text-sm text-ink-600 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />{r.path}<span className="text-ink-400 text-xs">（{r.chars} 字）</span></div>
+                  ))}
+              </Section>
+              <details>
+                <summary className="text-xs text-ink-500 cursor-pointer select-none inline-flex items-center gap-1"><ChevronDown className="w-3 h-3" />SKILL.md 原文</summary>
+                <pre className="mt-2 text-[12px] whitespace-pre-wrap bg-ink-50 rounded-lg p-3 max-h-96 overflow-auto">{skill.instructions || '（空）'}</pre>
+              </details>
+            </div>
+          </div>
         </div>
 
-        <SkillAIPanel skill={skill} onChanged={(s, msg) => { live(msg); onChanged(s); }} />
+        {editing && <SkillAIPanel skill={skill} onChanged={(s, msg) => { live(msg); onChanged(s); }} />}
       </div>
     </div>
   );
@@ -429,8 +444,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function InlineText({ value, onSave, multiline = false, placeholder = '', className = 'text-sm text-ink-800' }: {
-  value: string; onSave: (v: string) => Promise<void>; multiline?: boolean; placeholder?: string; className?: string;
+function InlineText({ value, onSave, multiline = false, placeholder = '', className = 'text-sm text-ink-800', editable = true }: {
+  value: string; onSave: (v: string) => Promise<void>; multiline?: boolean; placeholder?: string; className?: string; editable?: boolean;
 }) {
   const [edit, setEdit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -438,7 +453,7 @@ function InlineText({ value, onSave, multiline = false, placeholder = '', classN
     return (
       <div className={`group flex items-start gap-1.5 ${className}`}>
         <span className={`whitespace-pre-wrap ${value ? '' : 'text-ink-400'}`}>{value || placeholder}</span>
-        <button onClick={() => setEdit(value)} title="编辑" className="opacity-0 group-hover:opacity-100 text-ink-400 hover:text-brand-600 shrink-0 mt-1"><Pencil className="w-3.5 h-3.5" /></button>
+        {editable && <button onClick={() => setEdit(value)} title="编辑" className="text-ink-400 hover:text-brand-600 shrink-0 mt-1"><Pencil className="w-3.5 h-3.5" /></button>}
       </div>
     );
   }
@@ -458,22 +473,22 @@ function InlineText({ value, onSave, multiline = false, placeholder = '', classN
   );
 }
 
-function InlineList({ items, ordered, onSave }: { items: string[]; ordered?: boolean; onSave: (v: string[]) => Promise<void> }) {
+function InlineList({ items, ordered, onSave, editable = true }: { items: string[]; ordered?: boolean; onSave: (v: string[]) => Promise<void>; editable?: boolean }) {
   const [edit, setEdit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (edit === null) {
     const List = ordered ? 'ol' : 'ul';
     return (
-      <div className="group relative rounded-lg hover:bg-ink-50/70 -mx-2 px-2 py-1">
+      <div className={`relative rounded-lg -mx-2 px-2 py-1 ${editable ? 'border border-dashed border-ink-200 hover:bg-ink-50/70 pr-16' : ''}`}>
         {items.length === 0 ? <div className="text-sm text-ink-400">（无）</div> : (
           <List className={`text-sm text-ink-800 space-y-0.5 pl-5 ${ordered ? 'list-decimal' : 'list-disc'}`}>
             {items.map((x, i) => <li key={i}>{x}</li>)}
           </List>
         )}
-        <button onClick={() => setEdit(items.join('\n'))}
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-xs text-ink-500 hover:text-brand-600 inline-flex items-center gap-1 bg-white ring-1 ring-ink-200 rounded-md px-1.5 py-0.5">
+        {editable && <button onClick={() => setEdit(items.join('\n'))}
+          className="absolute top-1 right-1 text-xs text-ink-600 hover:text-brand-600 inline-flex items-center gap-1 bg-white ring-1 ring-ink-200 rounded-md px-1.5 py-0.5">
           <Pencil className="w-3 h-3" /> 编辑
-        </button>
+        </button>}
       </div>
     );
   }
@@ -534,14 +549,14 @@ function SkillAIPanel({ skill, onChanged }: { skill: Skill; onChanged: (s: Skill
   }
 
   return (
-    <div className="xl:w-[340px] shrink-0 rounded-2xl ring-1 ring-violet-100 bg-violet-50/30 flex flex-col xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-7rem)] min-h-[320px]">
-      <div className="px-3 py-2 border-b border-violet-100 flex items-center gap-1.5 text-sm font-medium text-violet-800">
+    <div className="xl:w-[340px] shrink-0 rounded-md border border-ink-200 bg-white flex flex-col xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-7rem)] min-h-[320px]">
+      <div className="px-3 h-10 border-b border-ink-150 bg-ink-50 rounded-t-md flex items-center gap-1.5 text-[13px] font-semibold text-ink-800">
         <AiMark /> 让 AI 调整说明
       </div>
       <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto scroll-hide p-3 space-y-2.5">
         {msgs.length === 0 && (
-          <div className="text-xs text-ink-500 space-y-2">
-            <p>用一句话说要怎么改，AI 会直接改好左边的说明并保存；不满意可以撤销。</p>
+          <div className="text-xs text-hint space-y-2">
+            <p>用一句话说要怎么改，AI 会直接改好左边的技能说明并保存；不满意可以撤销。</p>
             <div className="flex flex-wrap gap-1.5">
               {QUICK.map((q) => <button key={q} onClick={() => send(q)} className="px-2 py-1 rounded-full ring-1 ring-violet-200 text-violet-700 bg-white hover:bg-violet-50">{q}</button>)}
             </div>
@@ -562,7 +577,7 @@ function SkillAIPanel({ skill, onChanged }: { skill: Skill; onChanged: (s: Skill
         ))}
         {busy && <div className="flex items-center gap-1.5 text-xs text-ink-500"><Loader2 className="w-3.5 h-3.5 animate-spin" />AI 正在修改…</div>}
       </div>
-      <div className="p-2 border-t border-violet-100 flex gap-1.5 items-end">
+      <div className="p-2 border-t border-ink-150 flex gap-1.5 items-end">
         <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={2}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
           placeholder="例如：注意事项加一条「只对比同一张图的两个版本」"

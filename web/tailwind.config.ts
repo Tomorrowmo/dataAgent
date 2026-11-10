@@ -65,6 +65,8 @@ const config: Config = {
         success,
         warning,
         danger,
+        // 提示文字 (改进清单-5 · 8, 方案 A): blue-grey, set apart from neutral body text.
+        hint: '#5b7089',
         // Remap Tailwind's stock palettes so the existing component classes
         // follow the token rules without a 400-site rewrite:
         //   violet / purple / fuchsia (old "AI" accent) → neutral: AI gets no colour

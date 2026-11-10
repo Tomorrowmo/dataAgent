@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Database, Table2, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
-import { AiMark } from '@/components/ui';
+import { AiMark, Hint } from '@/components/ui';
 import { api, type Dataset } from '@/lib/api';
 import { useAlgoNames } from '@/lib/useAlgoNames';
 
@@ -50,9 +50,9 @@ export default function DataPanel({ datasets: sources, results = [], onClean, on
 
   if (!datasets.length) {
     return (
-      <div className="text-[12px] text-ink-400 italic py-6 text-center">
-        还没有选择数据集。选一个后,这里会显示它的列结构和前几行。
-      </div>
+      <Hint center className="py-6">
+        还没有选择数据集。选一个后，这里会显示它的列结构和前几行。
+      </Hint>
     );
   }
 

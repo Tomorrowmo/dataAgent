@@ -194,7 +194,9 @@ async def execute_again(session: AsyncSession, run: Run, *, reproduce: bool) -> 
     row: Optional[Algorithm] = None
     version: Optional[int] = None
     if registry.get_builtin(run.algorithm_slug):
-        res = registry.execute_builtin(run.algorithm_slug, df, run.params or {})
+        from .dataset_params import resolve_dataset_params
+        res = registry.execute_builtin(run.algorithm_slug, df, run.params or {},
+                                       frames=await resolve_dataset_params(session, ds.owner_id, run.algorithm_slug, run.params or {}))
     else:
         row = await session.get(Algorithm, run.algorithm_id)
         from .flow_runner import code_for

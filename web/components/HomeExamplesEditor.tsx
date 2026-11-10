@@ -5,6 +5,7 @@
 // keep their prepared result card. A new question can take its example result
 // from one of the admin's own runs — the server copies what the card needs.
 
+import { Hint } from '@/components/ui';
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Eye, EyeOff, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -59,7 +60,7 @@ export default function HomeExamplesEditor() {
     <div className="bg-white rounded-md border border-ink-200 p-5 mt-5">
       <div className="flex items-baseline gap-3">
         <h3 className="font-medium">主页示例问题（管理员）</h3>
-        {isDefault && <span className="text-xs text-ink-500">当前为内置默认内容</span>}
+        {isDefault && <span className="text-xs text-hint">当前为内置默认内容</span>}
       </div>
       <p className="mt-1 text-xs text-ink-600 leading-relaxed">所有用户在主页看到同一套示例问题。内置问题带有预先做好的示例结果；新加的问题可以从你自己的运行记录里选一条作为示例结果。</p>
 
@@ -89,7 +90,7 @@ export default function HomeExamplesEditor() {
           </div>
 
           <ul className="mt-3 divide-y divide-ink-150 border-y border-ink-150">
-            {tab.questions.length === 0 && <li className="py-3 text-xs text-ink-500">这个页签还没有问题。</li>}
+            {tab.questions.length === 0 && <li className="py-3 text-xs text-hint">这个页签还没有问题。</li>}
             {tab.questions.map((q, i) => (
               <li key={q.id} className={`py-2 ${q.hidden ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-1">
@@ -195,12 +196,12 @@ function RunPicker({ onClose, onPicked }: { onClose: () => void; onPicked: (s: i
       <div className="w-full max-w-xl max-h-[80vh] overflow-hidden flex flex-col bg-white rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center px-4 py-3 border-b border-ink-150">
           <span className="font-medium text-sm">选择示例结果</span>
-          <span className="ml-2 text-xs text-ink-500">你自己的、产生了表格的运行记录</span>
+          <span className="ml-2 text-xs text-hint">你自己的、产生了表格的运行记录</span>
           <button type="button" onClick={onClose} className="ml-auto p-1 text-ink-500 hover:text-ink-900"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {!runs && !err && <div className="p-6 text-center text-sm text-ink-500"><Loader2 className="w-4 h-4 animate-spin inline-block" /></div>}
-          {runs && runs.length === 0 && <div className="p-6 text-sm text-ink-500">还没有可用的运行记录。先在对话或算法库里跑一次分析。</div>}
+          {runs && runs.length === 0 && <Hint className="p-6">还没有可用的运行记录。先在对话或算法库里跑一次分析。</Hint>}
           <ul className="divide-y divide-ink-150">
             {runs?.map((r) => (
               <li key={r.id}>
@@ -233,7 +234,7 @@ function RunPicker({ onClose, onPicked }: { onClose: () => void; onPicked: (s: i
             <div className="flex items-center gap-3 pt-1">
               <button type="button" onClick={make} disabled={busy || ys.length === 0} className="h-8 px-3 rounded bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-50 inline-flex items-center gap-1.5">
                 {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}使用这个结果</button>
-              <span className="text-xs text-ink-500">最多 3 条纵轴；数据会复制一份保存，之后与原记录无关</span>
+              <span className="text-xs text-hint">最多 3 条纵轴；数据会复制一份保存，之后与原记录无关</span>
             </div>
           </div>
         )}

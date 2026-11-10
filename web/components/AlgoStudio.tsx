@@ -35,7 +35,11 @@ const STARTERS: Record<'ai' | 'upload', string[]> = {
   upload: ['补齐平台规范（META + run）', '这段代码在做什么？', '把写死的数字改成可调参数'],
 };
 
-export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload'; onSaved?: (a: Algorithm) => void }) {
+/** `seed`: a description typed elsewhere (the 算法 overview's AI box) — sent as
+ *  the first request once the datasets have loaded; a new nonce sends again. */
+export default function AlgoStudio({ start, onSaved, seed, seedFile }: { start: 'ai' | 'upload'; onSaved?: (a: Algorithm) => void; seed?: { text: string; nonce: number } | null;
+  /** A .py picked elsewhere (the 算法 overview's 「上传自由算法」): loaded into the editor and checked, once per nonce. */
+  seedFile?: { file: File; nonce: number } | null }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,6 +50,7 @@ export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload';
   const [openTab, setOpenTab] = useState<{ tab: 'out' | 'data'; nonce: number } | undefined>();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [datasetId, setDatasetId] = useState<number | null>(null);
+  const [dsReady, setDsReady] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -56,8 +61,20 @@ export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload';
       setDatasets(d);
       // One dataset serves both the AI (real column names) and debug runs.
       setDatasetId((cur) => cur ?? d.find((x) => x.kind !== 'derived')?.id ?? null);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setDsReady(true));
   }, []);
+  const loadedFile = useRef<number | null>(null);
+  useEffect(() => {
+    if (!seedFile || loadedFile.current === seedFile.nonce) return;
+    loadedFile.current = seedFile.nonce;
+    onPickFile(seedFile.file);
+  }, [seedFile?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sentSeed = useRef<number | null>(null);
+  useEffect(() => {
+    if (!seed || !dsReady || busy || sentSeed.current === seed.nonce) return;
+    sentSeed.current = seed.nonce;
+    send(seed.text);
+  }, [seed?.nonce, dsReady, busy]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs]);
 
   const push = (m: Omit<Msg, 'id'>) => { const id = nextId.current++; setMsgs((x) => [...x, { ...m, id }]); return id; };
@@ -199,7 +216,7 @@ export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload';
 
         <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto scroll-hide px-3 py-3 space-y-3">
           {msgs.length === 0 && (
-            <div className="text-xs text-ink-500 space-y-2">
+            <div className="text-xs text-hint space-y-2">
               <p>{start === 'ai'
                 ? '用一句话描述你想要的算法。不清楚的地方我会先问你；写好后代码出现在右侧，可以继续说怎么改，也可以直接手改。'
                 : '点上面的「上传 .py」，或把代码粘贴到右侧后点「检查接入」。我会先检查它能不能加入平台，不符合的地方自动修好；修的过程在这里显示，结果在右侧。'}</p>
@@ -273,7 +290,7 @@ export default function AlgoStudio({ start, onSaved }: { start: 'ai' | 'upload';
                       <button key={o} disabled={busy} onClick={() => send(o)}
                         className="text-xs px-2.5 py-1 rounded-full bg-white ring-1 ring-violet-300 text-violet-700 hover:bg-violet-100 disabled:opacity-50">{o}</button>
                     ))}
-                    <span className="text-[11px] text-ink-400 self-center">或直接在下面回答</span>
+                    <span className="text-xs text-hint self-center">或直接在下面回答</span>
                   </div>
                 )}
                 {m.kind === 'result' && m.result && (

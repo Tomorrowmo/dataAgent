@@ -148,7 +148,7 @@ export default function SaveToolModal({ slug, meta, onSaved, onReused, onCancel,
         </div>
 
         <div className="px-4 py-3 space-y-3 overflow-y-auto scroll-hide">
-          <div className="text-[11px] text-ink-500 flex items-center gap-1.5"><AiMark /> {hint ?? '名称、说明、参数已由 AI 预填,确认或修改后保存 —— 这样它就是个通用工具,以后任何数据都能复用。'}</div>
+          <div className="text-xs text-hint flex items-center gap-1.5"><AiMark /> {hint ?? '名称、说明、参数已由 AI 预填,确认或修改后保存 —— 这样它就是个通用工具,以后任何数据都能复用。'}</div>
 
           {showReuse && similar.length > 0 && (
             <div className="text-[11px] text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-2.5 py-2">
@@ -218,7 +218,7 @@ export default function SaveToolModal({ slug, meta, onSaved, onReused, onCancel,
                   )}
                 </div>
               ))}
-              {params.length === 0 && <div className="text-xs text-ink-400">这个工具没有可调参数。</div>}
+              {params.length === 0 && <div className="text-xs text-hint">这个工具没有可调参数。</div>}
             </div>
             <button onClick={addParam} className="mt-1.5 text-[11px] px-2 py-1 rounded-md ring-1 ring-dashed ring-brand-300 text-brand-600 hover:bg-brand-50 inline-flex items-center gap-1">
               ＋ 加一个参数

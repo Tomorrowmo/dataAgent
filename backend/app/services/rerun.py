@@ -124,7 +124,9 @@ async def execute_rerun(session: AsyncSession, owner_id: int, plan: Plan,
         spec = registry.get_builtin(st.slug)
         row = None
         if spec:
-            result = registry.execute_builtin(st.slug, df, st.params)
+            from .dataset_params import resolve_dataset_params
+            result = registry.execute_builtin(st.slug, df, st.params,
+                                              frames=await resolve_dataset_params(session, owner_id, st.slug, st.params))
             label = spec.name
             algo_info: Dict[str, Any] = {"slug": st.slug, "source": "builtin"}
         else:

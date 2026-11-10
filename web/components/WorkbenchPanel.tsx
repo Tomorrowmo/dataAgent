@@ -1,4 +1,5 @@
 'use client';
+import { Hint } from '@/components/ui';
 import ResizeHandle, { useResizableWidth } from '@/components/ResizeHandle';
 
 import { useEffect, useRef, useState } from 'react';
@@ -31,6 +32,12 @@ import type { Dataset } from '@/lib/api';
  */
 
 export type Event = { kind: string; payload: Record<string, unknown> };
+
+/** A streamed fragment (thought_delta / answer_delta …) followed by another of the same kind and step: the next one already contains its text. */
+function isSupersededDelta(events: Event[], i: number): boolean {
+  const ev = events[i], nx = events[i + 1];
+  return ev.kind.endsWith('_delta') && !!nx && nx.kind === ev.kind && nx.payload?.step === ev.payload?.step;
+}
 export type EventTrace = {
   events: Event[];
   busy: boolean;              // currently streaming?
@@ -135,7 +142,7 @@ export default function WorkbenchPanel({
   }, [datasets.length, trace.events.length, trace.busy]);
 
   return (
-    <aside style={{ width }} className="relative shrink-0 border-l border-ink-200 bg-ink-50/50 flex flex-col h-full max-md:!fixed max-md:!inset-0 max-md:!z-50 max-md:!w-full max-md:!border-l-0">
+    <aside style={{ width }} className="relative shrink-0 border-l border-ink-300 bg-ink-50/50 flex flex-col h-full max-md:!fixed max-md:!inset-0 max-md:!z-50 max-md:!w-full max-md:!border-l-0">
       <ResizeHandle side="left" widthAt={(x) => window.innerWidth - x} onResize={(w) => rw.set(w)}
         onDone={() => rw.set(rw.current.current, true)} onReset={rw.reset} />
       <div className="px-3 py-2.5 border-b border-ink-200 bg-white flex items-center gap-2">
@@ -183,9 +190,9 @@ export default function WorkbenchPanel({
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-hide px-3 py-3 space-y-1.5">
         {trace.events.length === 0 && !trace.busy && (
-          <div className="text-[12px] text-ink-500 py-6 text-center">
+          <Hint center className="py-6">
             空闲中 · 发送一条消息后这里会实时显示 agent 的每一步
-          </div>
+          </Hint>
         )}
         {trace.events.length === 0 && trace.busy && (
           <TimelineRow
@@ -197,7 +204,9 @@ export default function WorkbenchPanel({
         )}
         {(() => {
           const resolved = resolvedStarts(trace.events);
-          return trace.events.map((ev, i) => (
+          // Streamed thinking arrives as many thought_delta fragments, each carrying
+          // the text so far — show only the last of each run (one row per step).
+          return trace.events.map((ev, i) => (isSupersededDelta(trace.events, i) ? null :
             <EventRow key={i} ev={ev} idx={i} resolved={resolved.has(i)} />
           ));
         })()}
@@ -205,7 +214,7 @@ export default function WorkbenchPanel({
       )}
 
       <div className="px-3 py-2 border-t border-ink-200 bg-white text-[11px] text-ink-400 flex items-center justify-between">
-        <span>{trace.events.length} 事件</span>
+        <span>{trace.events.filter((_, i) => !isSupersededDelta(trace.events, i)).length} 事件</span>
         {trace.turnStartedAt && trace.busy && (
           <LiveDuration startedAt={trace.turnStartedAt} />
         )}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Play, Save, Download, Trash2, X, Copy, ShieldCheck } from 'lucide-react';
-import { AiMark, StatusDot } from '@/components/ui';
+import { AiMark, StatusDot, Hint } from '@/components/ui';
 import { api, type Algorithm, type Dataset, type TestResult, type GenerationResult, type AlgoVersion, type ParamSpec, type RunResult, type RunDiagnosis } from '@/lib/api';
 import { cellStr } from '@/lib/algoMeta';
 import ParamField from '@/components/ParamField';
@@ -439,7 +439,7 @@ export default function AlgoEditor({
             {target.mode === 'builtin' ? (
               <>
                 <button onClick={forkBuiltin} className={primary}><Copy className="w-3.5 h-3.5" /> 复制为我的算法</button>
-                <span className="text-[11px] text-ink-500">内置算法只读，复制后可修改、调试、保存版本</span>
+                <span className="text-xs text-hint">内置算法只读，复制后可修改、调试、保存版本</span>
               </>
             ) : (
               <>
@@ -506,7 +506,7 @@ export default function AlgoEditor({
               )}
 
               {tab === 'out' && target.mode !== 'builtin' && (!out ? (
-                <div className="text-xs text-ink-400">点「调试运行」（Ctrl+Enter）：静态校验 → 沙箱子进程用「运行设置」里的数据集和参数运行当前代码。print 的输出也会显示在这里。</div>
+                <Hint>点「调试运行」（Ctrl+Enter）：静态校验 → 沙箱子进程用「运行设置」里的数据集和参数运行当前代码。print 的输出也会显示在这里。</Hint>
               ) : (
                 <>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -543,14 +543,14 @@ export default function AlgoEditor({
                     </li>
                   ))}
                 </ul>
-              ) : <div className="text-xs text-ink-400">没有问题。「校验」做静态检查：只允许 numpy / pandas / scipy / sklearn / 标准库；禁止 os、文件、网络、eval 等；必须有顶级 META 字典和 run(df, **params)。</div>)}
+              ) : <Hint>没有问题。「校验」做静态检查：只允许 numpy / pandas / scipy / sklearn / 标准库；禁止 os、文件、网络、eval 等；必须有顶级 META 字典和 run(df, **params)。</Hint>)}
 
               {tab === 'data' && (() => {
                 const cols = (datasets.find((d) => d.id === datasetId)?.schema?.columns ?? []).map((c) => c.name);
                 const keys = Object.keys(schema);
                 return (
                   <div className="space-y-3">
-                    <div className="text-xs text-ink-500">「调试运行」和保存时的沙箱复跑，都用下面的数据和参数调用 <code>run(df, **params)</code>。</div>
+                    <Hint>「调试运行」和保存时的沙箱复跑，都用下面的数据和参数调用 <code>run(df, **params)</code>。</Hint>
                     <div>
                       <label className="block text-xs text-ink-700 font-medium mb-1">数据集<span className="text-ink-500 font-normal">{studio ? '（和左侧对话里的参考数据集是同一个）' : '（和算法详情里的数据集是同一个）'}</span></label>
                       <select value={datasetId ?? ''} onChange={(e) => setDatasetId(e.target.value ? Number(e.target.value) : null)}
@@ -563,7 +563,7 @@ export default function AlgoEditor({
                     <div className="space-y-2.5">
                       <div className="text-xs text-ink-700 font-medium">参数 <span className="text-ink-400 font-normal">· 来自代码里的 META.params_schema，带 * 的必填</span></div>
                       {metaErr ? <div className="text-xs text-amber-700">读不到 META（{metaErr}），先让代码符合规范才能填参数。</div>
-                        : keys.length === 0 ? <div className="text-xs text-ink-400">这个算法没有声明参数。</div>
+                        : keys.length === 0 ? <div className="text-xs text-hint">这个算法没有声明参数。</div>
                           : keys.map((k) => (
                             <ParamField key={k} name={k} spec={schema[k] ?? {}} value={paramVals[k] ?? ''} cols={cols}
                               onChange={(v) => setParamVals((p) => ({ ...p, [k]: v }))} />
@@ -575,7 +575,7 @@ export default function AlgoEditor({
 
               {tab === 'ai' && (
                 <div className="space-y-2">
-                  <div className="text-xs text-ink-500">把当前代码、你的要求和最近一次报错交给 AI 改写（会在沙箱自测）。改写稿<b>不会直接覆盖</b>，先看再「应用到编辑器」。</div>
+                  <Hint>把当前代码、你的要求和最近一次报错交给 AI 改写（会在沙箱自测）。改写稿<b>不会直接覆盖</b>，先看再「应用到编辑器」。</Hint>
                   <textarea value={fixAsk} onChange={(e) => setFixAsk(e.target.value)} rows={3}
                     placeholder="例如：加一个 window 参数；缺失值先插值再计算；修正下面的报错"
                     className="w-full text-sm border border-ink-300 rounded p-2" />
@@ -613,7 +613,7 @@ export default function AlgoEditor({
                     </li>
                   ))}
                 </ul>
-              ) : <div className="text-xs text-ink-400">还没有历史版本。</div>)}
+              ) : <div className="text-xs text-hint">还没有历史版本。</div>)}
             </div>
           </div>
         </div>

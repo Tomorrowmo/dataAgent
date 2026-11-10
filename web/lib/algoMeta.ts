@@ -36,11 +36,17 @@ export const ALGO_ZH: Record<string, { name: string; desc: string; example?: str
   derived_column: { name: '表达式计算', desc: '用公式从已有列算出新列，例如单位换算、系数计算、比值。', example: '算 L/D = CL / CD' },
   drop_columns: { name: '删除列', desc: '去掉不需要的列。', example: '删掉备注列' },
   bin_column: { name: '分箱', desc: '把连续量切成有序的档位（等宽或等频），便于之后分组汇总。', example: '把温度分成 5 档' },
+  filter_rows: { name: '按条件筛选行', desc: '只保留满足条件的行，例如某一列在一个区间内；多个条件用 and / or 连接。', example: '只看 0 <= alpha_deg <= 12' },
+  align_datasets: { name: '对齐两份数据', desc: '按共同的一列（如攻角）把两份数据逐点对齐，每个比较列变成 列名_A、列名_B 两列，之后可算差值。', example: '两次吹风按 alpha_deg 对齐' },
   group_aggregate: { name: '分组汇总', desc: '按一列或多列分组，对每组求均值、中位数、求和、最值、标准差或计数。', example: '按批次求平均' },
 };
 
 // Friendly Chinese label + hint per parameter name.
 export const PARAM_ZH: Record<string, { label: string; hint?: string }> = {
+  other: { label: '第二份数据', hint: '和当前数据对比的那一份' },
+  on: { label: '对齐列', hint: '两份数据共有的列，例如 alpha_deg' },
+  condition: { label: '筛选条件', hint: '例如 0 <= alpha_deg <= 12，多个条件用 and / or' },
+  how: { label: '对齐方式', hint: 'inner = 只保留两边都有的点' },
   columns: { label: '处理哪些列', hint: '不选 = 全部数值列' },
   cols: { label: '处理哪些列', hint: '不选 = 全部数值列' },
   inputs: { label: '输入变量(自变量)', hint: '勾选作为输入的列' },
@@ -68,7 +74,7 @@ export const PARAM_ZH: Record<string, { label: string; hint?: string }> = {
 };
 
 export const COL_MULTI = new Set(['columns', 'cols', 'inputs', 'features']);
-export const COL_SINGLE = new Set(['x', 'y', 'output', 'target', 'column', 'col']);
+export const COL_SINGLE = new Set(['x', 'y', 'output', 'target', 'column', 'col', 'on']);
 
 export function coerceParam(spec: ParamSpec, raw: string): unknown {
   const v = raw.trim();
@@ -91,10 +97,11 @@ export function paramsSummary(p?: Record<string, unknown>): string {
   return Object.entries(p).slice(0, 3).map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join(',')}]` : String(v)}`).join('  ');
 }
 
-export type ParamKind = 'colmulti' | 'colsingle' | 'enum' | 'bool' | 'num' | 'text';
+export type ParamKind = 'colmulti' | 'colsingle' | 'enum' | 'bool' | 'num' | 'text' | 'dataset';
 
 export function paramKind(name: string, spec: ParamSpec): ParamKind {
   const n = name.toLowerCase();
+  if (spec.type === 'dataset') return 'dataset';
   if (spec.enum) return 'enum';
   if (spec.type === 'boolean') return 'bool';
   if (COL_MULTI.has(n) || spec.type === 'array') return 'colmulti';
@@ -165,6 +172,7 @@ const SLUG_INTENT: Record<string, string> = {
   correlation: 'reduce',              // regression, but it's "看结构"
   find_peaks: 'feature',
   fft_frequency_analysis: 'feature',
+  filter_rows: 'clean',
 };
 
 export function algoIntent(a: Algorithm): string {

@@ -26,7 +26,10 @@ OUTPUT FORMAT — STRICTLY a single fenced ```python``` block containing:
    - `category` : one of regression | filter | preprocess | structure | reduce | custom
    - `params_schema` : {param_name: {type, default?, required?, description, enum?}}
    - `returns` : 'dataframe' | 'dict' | 'series' | 'scalar'
+   - LANGUAGE: the users read Simplified Chinese. Write `name` (short, e.g. "两份数据逐点偏差对比"), `description` (1–3 plain sentences: what it computes, what it returns) and every `params_schema[...]['description']` in Simplified Chinese. Column names, formulas and units stay as they are (e.g. "rel_pct = (A-B)/|B|*100"). `slug` stays an English snake_case identifier.
 2. A `run(df, **params)` function. It MUST take a pandas DataFrame `df` as the first argument (may be None for purely generative algorithms) and keyword parameters.
+   - `df` is the ONLY table the algorithm ever receives. Params arrive as JSON values (strings, numbers, booleans, lists, dicts) — NEVER a DataFrame, and a dataset name passed as a param cannot be loaded (no file access). Do NOT declare params like `dataset_a` / `dataset_b` / `other_df`.
+   - If the task compares TWO datasets, design run() for a table that is ALREADY aligned by the platform's `align_datasets` tool: the key column plus `<col>_A` and `<col>_B` for each compared column (e.g. alpha_deg, CL_A, CL_B), and take the base column names as a param.
 3. A `test_cases` list. Each item is {'df': <DataFrame or None>, 'params': <dict>}. Provide 1–3 synthetic cases the sandbox will execute to prove correctness.
 
 HARD RULES — code that violates these will be rejected:
@@ -34,7 +37,7 @@ HARD RULES — code that violates these will be rejected:
 - Every third-party module referenced anywhere in the file (top-level META, test_cases, OR inside run()) MUST be imported at the very top of the file. If you use `pd.DataFrame(...)` or `np.array(...)` anywhere — including in `test_cases` — you MUST emit `import pandas as pd` and/or `import numpy as np` at the top. Do not rely on implicit availability.
 - NO file I/O, NO network, NO subprocess, NO eval/exec/compile, NO open(), NO __import__.
 - NO global side effects outside META / run / test_cases.
-- Validate parameters explicitly inside run() and raise ValueError with a clear message on bad input.
+- Validate parameters explicitly inside run() and raise ValueError with a clear message on bad input — write that message in Simplified Chinese and name the parameter or column, e.g. raise ValueError("参数 dataset_b 需要一张数据表，收到的是 str").
 - Comments and docstrings are welcome but keep them short and useful.
 
 LIBRARY PREFERENCE — picking lighter libraries makes the sandbox much faster:

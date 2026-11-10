@@ -140,12 +140,12 @@ export default function Sidebar({
       </div>
       {mobileOpen && <div className="md:hidden fixed inset-0 z-40 bg-ink-900/30" onClick={() => setMobileOpen(false)} />}
 
-      <aside style={{ width: sw.width }} className={`relative shrink-0 bg-ink-100 border-r border-ink-200 flex flex-col px-2.5 pt-3.5 pb-2.5 min-h-0 h-full max-md:!w-[220px]
+      <aside style={{ width: sw.width }} className={`relative shrink-0 bg-ink-100 border-r border-ink-300 flex flex-col px-2.5 pt-3.5 pb-2.5 min-h-0 h-full max-md:!w-[220px]
         max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-2xl max-md:transition-transform ${mobileOpen ? '' : 'max-md:-translate-x-full'}`}>
         <ResizeHandle side="right" widthAt={(x) => x} onResize={(w) => sw.set(w)}
           onDone={() => sw.set(sw.current.current, true)} onReset={sw.reset} />
         <div className="flex items-center gap-2.5 px-2 pb-3.5">
-          <Link href="/" title="RLab Cortex" className="w-6 h-6 rounded-[5px] bg-brand-600 text-white grid place-items-center font-mono text-[12px] font-semibold shrink-0">R</Link>
+          <Link href="/" title="RLab Cortex" className="w-7 h-7 shrink-0 grid place-items-center"><img src="/logo.png" alt="RLab Cortex" className="w-7 h-7 object-contain shrink-0" /></Link>
           <div className="min-w-0 leading-tight">
             <div className="text-sm font-semibold text-ink-900">RLab Cortex</div>
             {version && (
@@ -178,8 +178,8 @@ export default function Sidebar({
           </label>
         )}
         <div className="flex-1 min-h-0 overflow-y-auto scroll-hide -mx-0.5 px-0.5">
-          {convs.length === 0 && <div className="px-2.5 py-2 text-xs text-ink-400">{t('side.noSessions')}</div>}
-          {convs.length > 0 && shown.length === 0 && <div className="px-2.5 py-2 text-xs text-ink-400">{zh ? '没有匹配的会话' : 'No match'}</div>}
+          {convs.length === 0 && <div className="px-2.5 py-2 text-xs text-hint">{t('side.noSessions')}</div>}
+          {convs.length > 0 && shown.length === 0 && <div className="px-2.5 py-2 text-xs text-hint">{zh ? '没有匹配的会话' : 'No match'}</div>}
           {shown.map((c) => {
             const active = activeView === 'chat' && activeConv === c.id;
             return (

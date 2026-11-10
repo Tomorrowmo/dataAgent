@@ -173,7 +173,9 @@ async def run_flow(session: AsyncSession, owner_id: int, tpl_name: str, steps: L
         algo_info: Dict[str, Any] = {"slug": slug}
         row = None
         if registry.get_builtin(str(slug)):
-            res = registry.execute_builtin(str(slug), in_df, params)
+            from .dataset_params import resolve_dataset_params
+            res = registry.execute_builtin(str(slug), in_df, params,
+                                           frames=await resolve_dataset_params(session, owner_id, str(slug), params))
             algo_info["source"] = "builtin"
         else:
             row = await _algo_row(session, owner_id, st)

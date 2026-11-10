@@ -1,9 +1,10 @@
 'use client';
 
+import ErrorNote, { NEXT } from '@/components/ErrorNote';
 import { useEffect, useRef, useState } from 'react';
 import { Send, Wrench, MessagesSquare, User, Play, Loader2, AlertTriangle, Upload, Database, PanelRightOpen, ChevronDown, ChevronRight, GitBranch, RotateCcw, Square, ImageIcon, FileText, X, Puzzle, Check, Info } from 'lucide-react';
 import Markdown from '@/components/Markdown';
-import { AiMark, SourceTag } from '@/components/ui';
+import { AiMark, SourceTag, Hint } from '@/components/ui';
 import DatasetChart from '@/components/DatasetChart';
 import AnalysisIcon from '@/components/AnalysisIcon';
 import { BUILTIN_RESULTS, DEFAULT_EXAMPLES, SAMPLES, normalizeExamples, snapshotChart, type ExampleKpi, type ExampleQuestion, type ExamplesConfig } from '@/lib/homeExamples';
@@ -289,12 +290,17 @@ export default function ChatView({
     // conversation's primary dataset plus the sources its processing chain
     // started from (改进清单-5 · 6).
     const convForSources = conversationId;
-    Promise.all([api.getPipeline(convForSources).catch(() => null), api.listConversations().catch(() => [] as Conversation[])])
-      .then(([pl, convs]) => {
+    Promise.all([api.getPipeline(convForSources).catch(() => null), api.listConversations().catch(() => [] as Conversation[]),
+      api.listMessages(convForSources).catch(() => [] as ChatMessage[])])
+      .then(([pl, convs, msgs]) => {
         if (convForSources !== conversationIdRef.current) return;
         const ids: number[] = [];
+        // The last turn's full source set (recorded on each user message) — keeps a
+        // comparison dataset that was never processed. Older conversations lack it.
+        const lastUser = [...msgs].reverse().find((m) => m.role === 'user' && Array.isArray(m.meta?.dataset_ids));
+        for (const n of (lastUser?.meta?.dataset_ids as number[] | undefined) ?? []) if (!ids.includes(n)) ids.push(n);
         const primary = convs.find((c) => c.id === convForSources)?.dataset_id;
-        if (primary) ids.push(primary);
+        if (primary && !ids.includes(primary)) ids.push(primary);
         for (const k of Object.keys(pl?.pipeline_state ?? {})) { const n = Number(k); if (n && !ids.includes(n)) ids.push(n); }
         if (ids.length) setActiveDatasets(ids);
       });
@@ -332,6 +338,15 @@ export default function ChatView({
   }, [messages]);
 
   async function handleFileUpload(file: File) {
+    // An image brought into the chat (drop / paperclip / 导入数据 on the home page)
+    // is an ATTACHMENT for the AI: it reads the question and decides whether to
+    // answer from the picture or digitize it into a table. Extracting every image
+    // as a table up front failed on charts / photos and never asked what for.
+    if (/^image\//.test(file.type) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      attachChatImage(file);
+      setTimeout(() => inputAreaRef.current?.focus(), 0);
+      return;
+    }
     setError('');
     setUploading(true);
 
@@ -786,7 +801,6 @@ export default function ChatView({
             {demoErr && <span className="text-danger-700">{demoErr}</span>}
           </div>
         )}
-        {!isFreshSession && demo && <div className="max-w-3xl mx-auto"><WindDemoCard demo={demo} onViewDataset={onViewDataset} /></div>}
         <input
           ref={fileInputRef}
           type="file"
@@ -840,9 +854,9 @@ export default function ChatView({
           <div className="mb-2 inline-flex items-center gap-2 rounded-xl ring-1 ring-brand-200 bg-brand-50/40 pl-1.5 pr-2 py-1.5">
             <img src={chatImage.previewUrl} alt={chatImage.name} className="w-9 h-9 rounded object-cover" />
             <div className="text-xs">
-              <div className="text-ink-700 max-w-[180px] truncate">{chatImage.name}</div>
-              <div className="text-[10.5px] text-ink-400">
-                {chatImage.uploading ? '上传中…' : chatImage.error ? '上传失败' : '附图待分析 — 直接提问'}
+              <div className="text-ink-700 max-w-[260px] truncate">{chatImage.name}</div>
+              <div className="text-[11px] text-hint">
+                {chatImage.uploading ? '上传中…' : chatImage.error ? '上传失败' : '直接提问即可：AI 会看图回答；需要图里的数据，就说「把数据提取成表」'}
               </div>
             </div>
             <button onClick={clearChatImage} title="移除图片" className="text-ink-400 hover:text-ink-700 p-0.5">
@@ -866,7 +880,7 @@ export default function ChatView({
                   <span className="text-[10px] text-ink-400 shrink-0">{d.rows.toLocaleString()}×{d.columns}</span>
                 </button>
               ))}
-              {matches.length === 0 && <div className="px-2 py-2 text-xs text-ink-400">无匹配数据集</div>}
+              {matches.length === 0 && <div className="px-2 py-2 text-xs text-hint">无匹配数据集</div>}
             </div>
           );
         })()}
@@ -1155,7 +1169,7 @@ function DatasetPicker({ datasets, activeIds, primaryId, onToggle, variant = 'bu
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索数据集…"
             className="w-full border border-ink-200 rounded-lg px-2 py-1.5 text-sm mb-1.5 focus:outline-none focus:border-brand-400" />
           <div className="max-h-72 overflow-y-auto scroll-hide space-y-0.5">
-            {filtered.length === 0 && <div className="text-xs text-ink-400 px-2 py-3 text-center">无匹配的数据集</div>}
+            {filtered.length === 0 && <div className="text-xs text-hint px-2 py-3 text-center">无匹配的数据集</div>}
             {filtered.map((d) => {
               const sel = activeIds.includes(d.id);
               const isPrimary = primaryId === d.id;
@@ -1171,7 +1185,7 @@ function DatasetPicker({ datasets, activeIds, primaryId, onToggle, variant = 'bu
               );
             })}
           </div>
-          {activeIds.length > 1 && <div className="text-[11px] text-ink-400 px-2 pt-1.5 border-t border-ink-100 mt-1">已选 {activeIds.length} 个 · 第一个(★)为主数据集,其余用于对比</div>}
+          {activeIds.length > 1 && <div className="text-xs text-hint px-2 pt-1.5 border-t border-ink-100 mt-1">已选 {activeIds.length} 个 · 第一个(★)为主数据集,其余用于对比</div>}
         </div>
       )}
     </div>
@@ -1274,6 +1288,30 @@ function ExampleCard({ code, title, tag, chartHtml, chartNode, kpis, chain, acti
   );
 }
 
+/** A dataset chart as tall as the example SVG charts (viewBox 520 × 250, scaled to
+ *  the card width), so the right-hand card keeps one size across tabs. */
+function FitChart({ datasetId, name }: { datasetId: number; name: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState(268);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width; if (w > 0) setH(Math.round((w * 250) / 520)); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return <div ref={ref}><DatasetChart datasetId={datasetId} name={name} height={h} bare /></div>;
+}
+
+/** "11-10 09:40" in local time. */
+function fmtShort(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') || /[+-]\d\d:\d\d$/.test(iso) ? iso : iso + 'Z');
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** Built-in wind-tunnel card, filled with the values the built-in demo actually computed. */
 function WindDemoCard({ demo, onViewDataset }: { demo: DemoResult; onViewDataset?: (id: number) => void }) {
   const b = BUILTIN_RESULTS.wind_lift;
@@ -1327,6 +1365,7 @@ function Welcome({
   const page = Math.min(pages - 1, pageByTab[tabId] ?? Math.floor(Math.max(0, selIdx) / PAGE));
   const shownQs = questions.slice(page * PAGE, page * PAGE + PAGE);
   const goPage = (n: number) => { setPageByTab((m) => ({ ...m, [tabId]: n })); const first = questions[n * PAGE]; if (first) onSelect({ tab: tabId, q: first.id }); };
+  const algoName = useAlgoLookup();
   const mineDs = tabId === 'mine' ? (mine.find((d) => String(d.id) === sel.q) ?? mine[0]) : undefined;
 
   const row = (key: string, on: boolean, text: React.ReactNode, onClick: () => void, sub?: React.ReactNode, body?: React.ReactNode) => (
@@ -1377,7 +1416,12 @@ function Welcome({
     const o = mineDs.origin;
     card = (
       <ExampleCard code={o?.code} title={mineDs.name} tag={zh ? '我的结果' : 'Mine'}
-        chartNode={<DatasetChart datasetId={mineDs.id} name={mineDs.name} height={240} bare />}
+        chartNode={<FitChart datasetId={mineDs.id} name={mineDs.name} />}
+        kpis={[
+          { label: zh ? '行 × 列' : 'Rows × cols', value: `${mineDs.rows.toLocaleString()} × ${mineDs.columns}` },
+          { label: zh ? '算法' : 'Algorithm', value: o?.algorithm ? algoName(o.algorithm.slug || o.algorithm.label).name : '—' },
+          { label: zh ? '产生于' : 'Created', value: fmtShort(mineDs.created_at) },
+        ]}
         chain={[o?.algorithm ? `${o.algorithm.slug}${o.algorithm.version != null ? ` v${o.algorithm.version}` : ''}` : '', `${mineDs.rows.toLocaleString()} × ${mineDs.columns}`].filter(Boolean)}
         action={<span className="flex gap-3">
           {o?.conversation?.exists && <button type="button" onClick={() => onOpenConversation(o.conversation!.id!)} className="text-brand-700 hover:underline">{zh ? '回到对话' : 'Open chat'}</button>}
@@ -1394,7 +1438,7 @@ function Welcome({
         <div className="px-4 pb-5 pt-1 space-y-3 text-sm text-ink-700">
           {q.needs && <div><div className="text-xs text-ink-500">{zh ? '需要的数据' : 'Data needed'}</div><div className="mt-0.5">{q.needs}</div></div>}
           {q.methods && <div><div className="text-xs text-ink-500">{zh ? '会用到的方法' : 'Methods'}</div><div className="mt-0.5 font-mono text-[13px]">{q.methods}</div></div>}
-          <div className="text-xs text-ink-500">{zh ? '这个问题还没有示例结果。选好数据后点它，问题会填进下方输入框。' : 'No example result yet. Pick data, then click the question to fill it in below.'}</div>
+          <Hint>{zh ? '这个问题还没有示例结果。选好数据后点它，问题会填进下方输入框。' : 'No example result yet. Pick data, then click the question to fill it in below.'}</Hint>
         </div>} />
     );
   }
@@ -1419,10 +1463,10 @@ function Welcome({
             {zh ? '导入数据' : 'Import data'}
           </button>
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-ink-500">
+        <Hint className="mt-3">
           {zh ? '可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。其他格式会先生成读取程序，确认后保存，之后同类文件直接使用。'
             : 'Tables, Tecplot exports, CGNS / VTK simulation results and table screenshots import directly. Other formats get a generated reader, saved after you confirm and reused for files of the same kind.'}
-        </p>
+        </Hint>
         {demoErr && <div className="mt-2 text-xs text-danger-700">{demoErr}</div>}
 
         <div className="mt-8">
@@ -1451,7 +1495,7 @@ function Welcome({
         </div>
       </div>
 
-      <div className="min-w-0 min-[1180px]:sticky min-[1180px]:top-5">{card}</div>
+      <div className="min-w-0 min-[1180px]:self-center min-[1180px]:sticky min-[1180px]:top-5">{card}</div>
     </div>
   );
 }
@@ -1703,7 +1747,7 @@ function MessageBubble({ msg, t, liveThought = '', turnStartedAt, onSuggest, rev
   const procEvents = visibleEvents.filter((e) => !isOutputEvent(e));
   return (
     <div className="flex gap-3 max-w-3xl mx-auto">
-      <div className="w-7 h-7 shrink-0 rounded bg-brand-600 text-white grid place-items-center font-mono text-xs font-medium">R</div>
+      <img src="/logo.png" alt="RLab Cortex" className="w-7 h-7 object-contain shrink-0" />
       <div className={`flex-1 min-w-0 rounded-md bg-white border border-ink-200 border-l-[3px] px-4 py-3 prose-tight text-sm ${bubbleClass}`}>
         {usedSkills.length > 0 && (
           <div className="inline-flex items-center gap-1 text-[11px] text-violet-700 bg-violet-50 ring-1 ring-violet-100 rounded-md px-1.5 py-0.5 mb-2">
@@ -1830,12 +1874,16 @@ function isOutputEvent(e: Event): boolean {
  *  focused on the answer; the full step-by-step lives in the right-side 工作台. */
 function ProcessTrace({ events, active, t }: { events: Event[]; active: boolean; t: (k: string) => string }) {
   const [open, setOpen] = useState(false);
+  // Real steps = agent iterations (the same "第 N 步" the live indicator shows),
+  // not every streamed text fragment (thought_delta) — those made it read "644 步".
+  const iter = Math.max(0, ...events.map((e) => Number((e.payload as { step?: unknown })?.step) || 0));
+  const steps = iter || events.filter((e) => e.kind === 'tool_call').length || 1;
   return (
     <div className="mb-2">
       <button onClick={() => setOpen((o) => !o)}
         className="text-[11px] text-ink-400 hover:text-ink-600 inline-flex items-center gap-1">
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        过程 · {events.length} 步{open ? '' : '（在工作台看详情）'}
+        过程 · {steps} 步{open ? '' : '（在工作台看详情）'}
       </button>
       {open && <div className="mt-1.5">{events.map((e, i) => <EventChip key={i} ev={e} active={active} t={t} />)}</div>}
     </div>
@@ -2073,7 +2121,7 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
       return <div className="text-xs text-ink-500 mb-2">{t('chat.found')} {(result.tools as unknown[]).length} {t('chat.tools')}</div>;
     }
     if (result.error) {
-      return <div className="text-xs text-red-600 mb-2 bg-red-50 rounded-lg px-2 py-1.5">⚠ {String(result.error).slice(0, 200)}</div>;
+      return <div className="mb-2"><ErrorNote compact error={String(result.error)} next={active ? NEXT.aiRunning : NEXT.aiDone} /></div>;
     }
     if (result.meta) {
       const toolName = String((result.meta as Record<string, unknown>).name ?? '');
@@ -2138,7 +2186,7 @@ function SkillBar({ skills, active, onToggle }: { skills: Skill[]; active: numbe
           <div className="absolute bottom-full mb-2 left-0 w-80 max-h-72 overflow-y-auto scroll-hide bg-white rounded-xl ring-1 ring-ink-200 shadow-lg z-30 p-1">
             <div className="px-2 py-1 text-[10.5px] text-ink-400">勾选后，智能体会按这些 skill 的方法来分析</div>
             {skills.length === 0 && (
-              <div className="px-2 py-3 text-xs text-ink-400">还没有可用的 skill —— 在左侧「技能 Skills」里添加并确认后会出现在这里。</div>
+              <div className="px-2 py-3 text-xs text-hint">还没有可用的 skill —— 在左侧「技能 Skills」里添加并确认后会出现在这里。</div>
             )}
             {skills.map((x) => {
               const sel = active.includes(x.id);

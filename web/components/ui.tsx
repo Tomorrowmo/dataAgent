@@ -1,6 +1,7 @@
 // Small shared visual primitives for the design system
 // (docs/ui-redesign-proposal.html · 02 设计规范 / 03 组件).
 import type { ReactNode } from 'react';
+import { Info } from 'lucide-react';
 
 /** The "AI" mark: a tiny mono label. AI-generated content has no colour of its
  *  own — it is identified by this mark plus a dashed outline. */
@@ -53,5 +54,19 @@ export function StatusDot({ tone, children, className = '' }: {
       <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${map[0]}`} />
       {children}
     </span>
+  );
+}
+
+/** 提示文字 (改进清单-5 · 8, 方案 A): 12px blue-grey. A standalone line gets a
+ *  small ⓘ; `inline` (a short note next to a control or label) has no icon.
+ *  Errors are not hints — they stay red. */
+export function Hint({ children, inline = false, center = false, className = '' }: {
+  children: ReactNode; inline?: boolean; center?: boolean; className?: string;
+}) {
+  if (inline) return <span className={`text-xs leading-relaxed font-normal text-hint ${className}`}>{children}</span>;
+  return (
+    <p className={`flex gap-1.5 items-start text-xs leading-relaxed font-normal text-hint ${center ? 'justify-center text-center' : ''} ${className}`}>
+      <Info className="w-3.5 h-3.5 shrink-0 mt-[2px]" strokeWidth={2} /><span>{children}</span>
+    </p>
   );
 }

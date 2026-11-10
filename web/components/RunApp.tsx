@@ -1,5 +1,7 @@
 'use client';
 
+import { explainErrorText } from '@/lib/errorHints';
+import { NEXT } from '@/components/ErrorNote';
 import { useEffect, useMemo, useState } from 'react';
 import { Play, Loader2, CheckCircle2, AlertTriangle, GitBranch, ArrowRight, ChevronLeft, Database, Workflow, BarChart3 } from 'lucide-react';
 import { api, type Algorithm, type Dataset, type FlowTemplate, type TemplateRunResult } from '@/lib/api';
@@ -156,10 +158,22 @@ export default function RunApp({ tpl, datasets, algos, onBack }: {
                   <span className="font-medium text-ink-700 truncate">{s.label}</span>
                   {s.report && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-600 ring-1 ring-sky-100 shrink-0">报告</span>}
                   {typeof s.rows === 'number' && s.rows > 0 && <span className="text-ink-400 shrink-0 ml-auto">{s.rows.toLocaleString()} 行</span>}
-                  {s.error && <span className="text-red-600 truncate ml-auto">{s.error}</span>}
+                  {s.error && <span className="text-red-600 truncate ml-auto" title={s.error}>{explainErrorText(s.error).summary}</span>}
                 </div>
               ))}
             </div>
+            {res.steps.some((s) => s.status === 'error') && (() => {
+              const bad = res.steps.find((s) => s.status === 'error')!;
+              return (
+                <div className="text-xs rounded-md bg-danger-50 border border-danger-200 px-2.5 py-2 space-y-1">
+                  <div className="text-danger-700">第 {bad.i + 1} 步「{bad.label}」出错：{explainErrorText(bad.error ?? '').summary}</div>
+                  <div className="flex items-start gap-1.5 text-ink-700">
+                    <span className="shrink-0 px-1.5 py-px rounded-sm text-[11px] font-medium bg-warning-100 text-warning-800">需要你处理</span>
+                    <span>{NEXT.userFlow.text}</span>
+                  </div>
+                </div>
+              );
+            })()}
             {res.derived_chain && res.derived_chain.length > 0 && (
               <div className="text-xs bg-violet-50/70 ring-1 ring-violet-100 rounded-lg px-3 py-2.5">
                 <div className="text-violet-700 font-medium mb-2 flex items-center gap-1.5"><GitBranch className="w-3.5 h-3.5" /> 处理过程(可追溯)<span className="text-violet-400 font-normal">—— 点任意阶段查看那一步的数据</span></div>

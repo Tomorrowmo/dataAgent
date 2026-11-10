@@ -1,5 +1,6 @@
 'use client';
 
+import { Hint } from '@/components/ui';
 import HomeExamplesEditor from '@/components/HomeExamplesEditor';
 import { useEffect, useState } from 'react';
 import { BrainCircuit, Save, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
@@ -216,10 +217,10 @@ export default function SettingsView() {
           placeholder={hasKey ? t('set.llm.keyExists') : preset.key_hint}
           className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-brand-500"
         />
-        <div className="text-xs text-ink-500 mt-2">
+        <Hint className="mt-2">
           {preset.docs && <>{t('set.llm.docHint')} <a className="text-brand-600 hover:underline" href={preset.docs} target="_blank" rel="noreferrer">{preset.docs}</a>. </>}
           {t('set.llm.clearHint')}
-        </div>
+        </Hint>
 
         <button onClick={save} disabled={busy} className={`mt-4 px-4 py-2 rounded-xl font-medium flex items-center gap-2 ${saved ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white hover:bg-brand-700'} disabled:opacity-50`}>
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
@@ -242,7 +243,7 @@ function RetentionSettings() {
   const field = (k: keyof RetentionPolicy, label: string, hint: string) => (
     <label className="block">
       <span className="text-sm text-ink-800">{label}</span>
-      <span className="ml-2 text-xs text-ink-500">{hint}</span>
+      <span className="ml-2 text-xs text-hint">{hint}</span>
       <div className="mt-1 flex items-center border border-ink-300 rounded h-8 w-40 overflow-hidden">
         <input type="number" min={1} value={p[k]} onChange={(e) => setP({ ...p, [k]: Math.max(1, Number(e.target.value) || 1) })}
           className="flex-1 min-w-0 h-full px-2 text-right font-mono text-sm border-0" />

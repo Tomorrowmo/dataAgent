@@ -178,7 +178,7 @@ function HeroDemo() {
     <div className="mt-14 mx-auto max-w-lg text-left">
       <div className="rounded-md bg-white border border-ink-200 shadow-md overflow-hidden">
         <div className="flex items-center gap-1.5 px-3 py-2 border-b border-ink-200 bg-ink-50">
-          <span className="w-5 h-5 rounded bg-brand-600 text-white grid place-items-center font-mono text-[10px] font-medium">R</span>
+          <img src="/logo.png" alt="RLab Cortex" className="w-5 h-5 object-contain shrink-0" />
           <span className="ml-1 text-[11px] text-ink-600 font-medium">RLab Cortex</span>
         </div>
         <div className="p-4 space-y-3">
@@ -186,7 +186,7 @@ function HeroDemo() {
             <div className="bg-white border border-ink-200 text-ink-800 text-sm rounded-md px-3 py-2 max-w-[82%]">{t('hero.demo.q')}</div>
           </div>
           <div className="flex gap-2">
-            <div className="w-7 h-7 rounded bg-brand-600 text-white grid place-items-center font-mono text-xs font-medium shrink-0">R</div>
+            <img src="/logo.png" alt="RLab Cortex" className="w-7 h-7 object-contain shrink-0" />
             <div className="flex-1 bg-white border border-ink-200 border-l-[3px] border-l-brand-600 rounded-md px-3 py-2.5">
               <div className="inline-flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 ring-1 ring-emerald-100 rounded-md px-1.5 py-0.5 mb-2">
                 <CheckCircle2 className="w-3 h-3" /> {t('hero.demo.badge')}

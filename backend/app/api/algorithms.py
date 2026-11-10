@@ -714,7 +714,9 @@ async def run_to_dataset(
 
     spec = registry.get_builtin(body.slug)
     if spec:
-        res = registry.execute_builtin(body.slug, df, body.params)
+        from ..services.dataset_params import resolve_dataset_params
+        res = registry.execute_builtin(body.slug, df, body.params,
+                                       frames=await resolve_dataset_params(session, user.id, body.slug, body.params))
         label = spec.name
     else:
         row = await find_algorithm(session, body.slug, user.id)
@@ -769,7 +771,9 @@ async def run_algorithm(
         df = load_dataset_df(ds)
 
     if registry.get_builtin(body.slug):
-        result = registry.execute_builtin(body.slug, df, body.params)
+        from ..services.dataset_params import resolve_dataset_params
+        result = registry.execute_builtin(body.slug, df, body.params,
+                                          frames=await resolve_dataset_params(session, user.id, body.slug, body.params))
         algo_id = None
     else:
         row = await find_algorithm(session, body.slug, user.id)

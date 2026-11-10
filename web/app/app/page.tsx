@@ -86,6 +86,7 @@ export default function WorkspacePage() {
               setPendingAsk({ prompt, datasetId, nonce: Date.now() });
               setView('chat');
             }}
+            onUseInChat={(datasetId) => { setActiveConv(null); setPendingFill({ text: '', datasetId, nonce: Date.now() }); setView('chat'); }}
             onGoSettings={() => setView('settings')}
             focusDataset={focusDataset}
             onBackToChat={() => setView('chat')}

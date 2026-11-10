@@ -353,7 +353,13 @@ async def send_message(
     # "(附了一张图)" and the ref survives (best-effort; temp files are transient).
     user_msg = Message(
         conversation_id=conv.id, role="user", content=body.message,
-        meta={"image_ref": to_rel(image_ref)} if image_ref else {},   # stored relative, never a server path
+        meta={
+            **({"image_ref": to_rel(image_ref)} if image_ref else {}),   # stored relative, never a server path
+            # Every source dataset loaded for this turn (primary first): reopening the
+            # conversation restores ALL of them, not just the primary — a second
+            # dataset used only for comparison would otherwise silently drop out.
+            **({"dataset_ids": [d.id for d in datasets]} if datasets else {}),
+        },
     )
     session.add(user_msg)
     await session.commit()

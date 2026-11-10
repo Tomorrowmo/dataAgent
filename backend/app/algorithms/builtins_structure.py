@@ -94,15 +94,23 @@ def _safe_eval(expression: str, df: pd.DataFrame):
             if isinstance(node.op, ast.Not):
                 return ~v if isinstance(v, pd.Series) else (not v)
             raise ValueError("unsupported unary operator")
-        if isinstance(node, ast.Compare) and len(node.ops) == 1:
-            l, r = ev(node.left), ev(node.comparators[0])
-            op = node.ops[0]
-            for t, fn in ((ast.Eq, lambda: l == r), (ast.NotEq, lambda: l != r),
-                          (ast.Lt, lambda: l < r), (ast.LtE, lambda: l <= r),
-                          (ast.Gt, lambda: l > r), (ast.GtE, lambda: l >= r)):
-                if isinstance(op, t):
-                    return fn()
-            raise ValueError("unsupported comparison")
+        if isinstance(node, ast.Compare):
+            # Chains like `0 <= alpha_deg <= 12` = pairwise comparisons AND-ed together.
+            def cmp(op, l, r):
+                for t, fn in ((ast.Eq, lambda: l == r), (ast.NotEq, lambda: l != r),
+                              (ast.Lt, lambda: l < r), (ast.LtE, lambda: l <= r),
+                              (ast.Gt, lambda: l > r), (ast.GtE, lambda: l >= r)):
+                    if isinstance(op, t):
+                        return fn()
+                raise ValueError("unsupported comparison")
+            left = ev(node.left)
+            acc = None
+            for op, comp in zip(node.ops, node.comparators):
+                right = ev(comp)
+                part = cmp(op, left, right)
+                acc = part if acc is None else (acc & part)
+                left = right
+            return acc
         if isinstance(node, ast.BoolOp):
             vals = [ev(v) for v in node.values]
             acc = vals[0]
@@ -332,4 +340,110 @@ register_builtin(
         tags=["structure", "aggregate"],
     ),
     _group_aggregate,
+)
+
+
+# ---------------------------------------------------------------- filter rows by a condition
+def _filter_rows(df: pd.DataFrame, *, condition: str) -> pd.DataFrame:
+    """Keep the rows where `condition` holds, e.g. `alpha_deg >= 0 and alpha_deg <= 12`
+    or `0 <= alpha_deg <= 12`. Same whitelist evaluator as derived_column."""
+    if not condition or not str(condition).strip():
+        raise ValueError("参数 condition 不能为空，例如 alpha_deg >= 0 and alpha_deg <= 12")
+    aliases: Dict[str, Any] = {}
+
+    def _alias(m: "re.Match[str]") -> str:
+        key = f"bt_{len(aliases)}"
+        aliases[key] = m.group(1)
+        return key
+
+    expr = _BACKTICK_RE.sub(_alias, condition)
+    frame = df
+    if aliases:
+        frame = df.rename(columns={v: k for k, v in aliases.items()})
+    try:
+        mask = _safe_eval(expr, frame)
+    except Exception as err:
+        raise ValueError(
+            f"条件「{condition}」没法计算：{err}。可用的列：{', '.join(str(c) for c in df.columns)}。"
+        ) from err
+    if not isinstance(mask, pd.Series):
+        raise ValueError(f"条件「{condition}」没有用到任何列，算出来是一个固定值，不能用来筛选行。")
+    out = df[mask.fillna(False).astype(bool)].reset_index(drop=True)
+    if out.empty:
+        ranges = [f"{c} ∈ [{df[c].min():g}, {df[c].max():g}]" for c in df.columns
+                  if pd.api.types.is_numeric_dtype(df[c]) and df[c].notna().any()][:8]
+        raise ValueError(f"条件「{condition}」把所有行都筛掉了。各数值列的范围：{'；'.join(ranges) or '（没有数值列）'}。")
+    return out
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="filter_rows",
+        name="Filter rows",
+        category="preprocess",
+        description="Use to keep only the rows that satisfy a condition — e.g. a range of one column (`0 <= alpha_deg <= 12`), "
+                    "or several conditions joined with and/or. Run it BEFORE fitting / summarizing a sub-range.",
+        params_schema={
+            "condition": {"type": "string", "required": True,
+                          "description": "Row condition over column names, e.g. `alpha_deg >= 0 and alpha_deg <= 12`"},
+        },
+        returns="dataframe",
+        tags=["preprocess", "filter", "subset"],
+        aliases=["filter", "select_rows", "subset_rows", "row_filter"],
+    ),
+    _filter_rows,
+)
+
+
+# ---------------------------------------------------------------- align two datasets on a key column
+def _align_datasets(df: pd.DataFrame, *, other: Any, on: Any, columns: Optional[List[str]] = None,
+                    how: str = "inner") -> pd.DataFrame:
+    """Join the input (A) with a second dataset (B) on key column(s). Each compared
+    column appears twice: `<col>_A` and `<col>_B`. `other` is a dataset name / id that
+    the caller has already loaded into a DataFrame (param type "dataset")."""
+    if not isinstance(other, pd.DataFrame):
+        raise ValueError(f"参数 other 要填第二份数据的名称或编号：没有找到「{other}」这份数据。")
+    keys = [on] if isinstance(on, str) else list(on or [])
+    if not keys:
+        raise ValueError("参数 on 不能为空：填两份数据共有的对齐列，例如 alpha_deg")
+    for k in keys:
+        if k not in df.columns or k not in other.columns:
+            side = "第一份" if k not in df.columns else "第二份"
+            raise ValueError(f"对齐列「{k}」在{side}数据里不存在。两份数据共有的列：{', '.join(c for c in df.columns if c in other.columns) or '（没有）'}。")
+    shared = [c for c in df.columns if c in other.columns and c not in keys]
+    cols = list(columns) if columns else shared
+    missing = [c for c in cols if c not in df.columns or c not in other.columns]
+    if missing:
+        raise ValueError(f"列「{'、'.join(missing)}」不是两份数据都有。两份数据共有的列：{', '.join(shared) or '（没有）'}。")
+    if how not in ("inner", "outer", "left"):
+        raise ValueError("参数 how 只能是 inner（只保留两边都有的点）、outer 或 left")
+    a = df[keys + cols].rename(columns={c: f"{c}_A" for c in cols})
+    b = other[keys + cols].rename(columns={c: f"{c}_B" for c in cols})
+    out = pd.merge(a, b, on=keys, how=how)
+    if out.empty:
+        raise ValueError(f"两份数据在「{'、'.join(keys)}」上没有一个相同的值，对不齐。检查对齐列的取值是否一致（例如单位、小数位）。")
+    order = keys + [f"{c}_{s}" for c in cols for s in ("A", "B")]
+    return out[order].sort_values(keys).reset_index(drop=True)
+
+
+register_builtin(
+    AlgorithmSpec(
+        slug="align_datasets",
+        name="Align two datasets",
+        category="structure",
+        description="Use to COMPARE TWO DATASETS point by point (重复性 / 两次试验 / 两个版本): joins the input with a second dataset "
+                    "on a key column (e.g. alpha_deg); every compared column comes out as <col>_A (input) and <col>_B (other). "
+                    "Then compute differences with derived_column (e.g. dCL = CL_A - CL_B) and segment them with bin_column + group_aggregate.",
+        params_schema={
+            "other": {"type": "dataset", "required": True, "description": "Name (or id) of the second dataset"},
+            "on": {"type": "string", "required": True, "description": "Key column present in both, e.g. alpha_deg"},
+            "columns": {"type": "array", "items": "string", "required": False,
+                        "description": "Columns to compare; default = all columns the two share"},
+            "how": {"type": "string", "default": "inner", "enum": ["inner", "outer", "left"], "required": False},
+        },
+        returns="dataframe",
+        tags=["structure", "compare", "join"],
+        aliases=["merge_datasets", "join_datasets", "compare_datasets"],
+    ),
+    _align_datasets,
 )

@@ -185,6 +185,7 @@ def execute_builtin(
     slug: str,
     df: Optional[pd.DataFrame],
     params: Dict[str, Any],
+    frames: Optional[Dict[str, pd.DataFrame]] = None,
 ) -> Dict[str, Any]:
     """Run a trusted built-in algorithm in-process.
 
@@ -224,6 +225,10 @@ def execute_builtin(
         pass
     # Right shape, wrong container: fix `columns: "signal"` → `["signal"]` etc.
     params = _coerce_params(_BUILTINS[slug].spec, params)
+    # Params of type "dataset" (a second table, e.g. align_datasets.other): the
+    # caller resolved the name / id to a DataFrame — see services/dataset_params.
+    if frames:
+        params = {**(params or {}), **{k: v for k, v in frames.items() if k in (params or {})}}
     started = time.perf_counter()
     try:
         result = fn(df, **(params or {}))
