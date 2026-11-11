@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>算法页效果图</title>
+<style>
+:root{
+  --bg:#f8f9fa; --side:#f3f4f6; --ink-100:#f3f4f6; --ink-150:#eceef1; --ink-200:#dfe2e6; --ink-300:#c6cbd1; --ink-400:#a0a6ae;
+  --ink-500:#69707a; --ink-600:#525861; --ink-700:#363b42; --ink-900:#16191d;
+  --brand:#2b4c6f; --brand-700:#223d5a; --brand-50:#eef3f8; --brand-100:#dbe5ef;
+  --ok:#2f7d4f; --ok-50:#eef7f1; --warn:#7a5300; --warn-50:#fdf6e7;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink-900);background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr);height:100vh}
+/* sidebar (as implemented) */
+.side{background:var(--side);border-right:1px solid var(--ink-200);display:flex;flex-direction:column;padding:14px 10px}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+.logo{width:24px;height:24px;border-radius:5px;background:var(--brand);color:#fff;display:grid;place-items:center;font:600 12px var(--mono)}
+.brand b{font-size:14px}.brand span{font:11px var(--mono);color:var(--ink-500)}
+.new{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;margin:0 2px 14px;border-radius:6px;background:#fff;font-size:13px;box-shadow:0 0 0 1px var(--ink-200)}
+.new kbd{margin-left:auto;font:11px var(--mono);color:var(--ink-400)}
+.nav a{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:6px;color:var(--ink-600);text-decoration:none;font-size:13px}
+.nav a.on{background:#fff;color:var(--ink-900);font-weight:500;box-shadow:0 1px 2px rgba(22,25,29,.07)}
+.nav .c{margin-left:auto;font-size:11px;color:var(--ink-400)}
+.grp{margin:16px 10px 4px;font-size:11px;color:var(--ink-400)}
+.rec a{display:block;padding:6px 10px;font-size:12.5px;color:var(--ink-700);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec i{font-style:normal;font-size:11px;color:var(--ink-400);margin-right:6px}
+
+.main{overflow-y:auto}
+.wrap{max-width:1160px;margin:0 auto;padding:28px 40px 48px}
+/* view switch (mockup only) */
+.switch{position:fixed;bottom:14px;right:16px;z-index:9;display:flex;gap:2px;padding:2px;border-radius:7px;background:#16191d}
+.switch button{height:26px;padding:0 10px;border-radius:5px;font-size:12px;color:#c6cbd1}
+.switch button.on{background:#fff;color:#16191d}
+.view{display:none}.view.on{display:block}
+
+/* ── library home ── */
+.head{display:flex;align-items:flex-start;gap:24px}
+.head h1{font-size:22px;font-weight:600}
+.head p{margin-top:6px;font-size:13.5px;line-height:1.7;color:var(--ink-600);max-width:46em}
+.acts{margin-left:auto;display:flex;gap:8px;flex:none}
+.btn{height:34px;padding:0 14px;border-radius:6px;font-size:13px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.btn.p{background:var(--brand);color:#fff}
+.btn.s{background:#fff;box-shadow:0 0 0 1px var(--ink-300)}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.75}
+.ai{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 3px;line-height:14px}
+.bar{margin-top:22px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.search{flex:1;min-width:240px;max-width:420px;height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:6px;background:#fff;box-shadow:0 0 0 1px var(--ink-200);color:var(--ink-400);font-size:13px}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:7px;background:rgba(22,25,29,.05)}
+.seg button{height:28px;padding:0 11px;border-radius:5px;font-size:12.5px;color:var(--ink-600)}
+.seg button.on{background:#fff;color:var(--ink-900);box-shadow:0 1px 2px rgba(22,25,29,.1)}
+.seg em{font-style:normal;color:var(--ink-400);margin-left:4px;font-size:11px}
+.pending{margin-top:16px;display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;background:var(--warn-50);color:var(--warn);font-size:12.5px}
+.pending b{font-weight:500}
+.pending a{margin-left:auto;color:var(--brand);text-decoration:none}
+.cat{margin-top:26px}
+.cat h2{display:flex;align-items:baseline;gap:8px;font-size:14px;font-weight:600}
+.cat h2 span{font-size:12px;font-weight:400;color:var(--ink-500)}
+.grid{margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.card{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150),0 1px 2px rgba(22,25,29,.04);cursor:pointer;transition:box-shadow .15s}
+.card:hover{box-shadow:0 0 0 1px var(--ink-300),0 4px 12px -4px rgba(22,25,29,.12)}
+.card .t{display:flex;align-items:center;gap:8px}
+.card .t b{font-weight:500;font-size:14px}
+.tag{margin-left:auto;font-size:11px;padding:1px 6px;border-radius:3px;background:var(--ink-100);color:var(--ink-600);flex:none}
+.tag.mine{background:var(--brand-50);color:var(--brand-700)}
+.tag.draft{background:var(--warn-50);color:var(--warn)}
+.card code{font:11.5px var(--mono);color:var(--ink-400)}
+.card p{font-size:12.5px;line-height:1.6;color:var(--ink-600);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .m{margin-top:auto;padding-top:4px;display:flex;gap:10px;font-size:11.5px;color:var(--ink-400)}
+.ic{width:26px;height:26px;border-radius:6px;background:var(--ink-100);display:grid;place-items:center;flex:none;color:var(--ink-600)}
+.ic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6}
+
+
+.sec{margin-top:28px;font-size:14px;font-weight:600}
+.sec span{font-weight:400;color:var(--ink-400);font-size:13px}
+.sec2{display:flex;align-items:flex-end;gap:16px}
+.sec2 .sec{flex:none}
+.search.sm{margin-left:auto;flex:none;width:240px;min-width:0;height:30px;font-size:12.5px}
+.sub3{margin-top:14px;font-size:12px;color:var(--ink-500)}
+.grid.g2{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:8px}
+.card.s2{padding:12px 14px;gap:4px;min-height:74px}
+.card.s2 .t b{font-size:13.5px}
+.card.s2 p{font-size:12px;-webkit-line-clamp:2}
+.card.add{align-items:center;justify-content:center;text-align:center;color:var(--ink-500);background:transparent;box-shadow:none;border:1px dashed var(--ink-300);font-size:13px}
+.card.add small{font-size:11.5px;color:var(--ink-400)}
+/* ── detail ── */
+.crumb{font-size:12.5px;color:var(--ink-500);display:flex;align-items:center;gap:6px}
+.crumb a{color:var(--brand);text-decoration:none}
+.dhead{margin-top:10px;display:flex;align-items:flex-start;gap:20px}
+.dhead h1{font-size:22px;font-weight:600;display:flex;align-items:center;gap:10px}
+.dhead h1 .tag{margin-left:0;font-size:12px;font-weight:400}
+.dhead .sub{margin-top:4px;display:flex;gap:12px;font-size:12px;color:var(--ink-500);align-items:center}
+.dhead .sub code{font:12px var(--mono)}
+.dhead p{margin-top:8px;font-size:13.5px;color:var(--ink-600);line-height:1.7;max-width:48em}
+.tabs{margin-top:20px;display:flex;gap:24px;border-bottom:1px solid var(--ink-200)}
+.tabs button{padding:0 0 10px;font-size:14px;color:var(--ink-500);position:relative}
+.tabs button.on{color:var(--ink-900);font-weight:500}
+.tabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--brand)}
+.tabs em{font-style:normal;font-size:11px;color:var(--ink-400);margin-left:4px}
+.runlay{margin-top:18px;display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:20px;align-items:start}
+.panel{background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--ink-150)}
+.panel h3{padding:12px 14px 0;font-size:13px;font-weight:600}
+.form{padding:10px 14px 14px;display:flex;flex-direction:column;gap:12px}
+.f label{display:flex;align-items:baseline;gap:8px;font-size:13px}
+.f label span{font-size:11.5px;color:#5b7089}
+.f .in{margin-top:5px;height:32px;border-radius:5px;box-shadow:0 0 0 1px var(--ink-300);display:flex;align-items:center;padding:0 9px;font-size:13px;background:#fff}
+.f .in.mono{font-family:var(--mono)}
+.f .chips{margin-top:5px;display:flex;gap:5px;flex-wrap:wrap}
+.chip{height:24px;padding:0 9px;border-radius:12px;font-size:12px;display:inline-flex;align-items:center;background:var(--ink-100);color:var(--ink-700)}
+.chip.on{background:var(--brand-50);color:var(--brand-700);box-shadow:inset 0 0 0 1px var(--brand-100)}
+.run{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--ink-150)}
+.run small{font-size:11.5px;color:#5b7089}
+.out-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--ink-150);font-size:13px}
+.out-h .okb{font-size:11px;padding:1px 6px;border-radius:3px;background:var(--ok-50);color:var(--ok)}
+.out-h code{font:11.5px var(--mono);color:var(--ink-400)}
+.out-h .r{margin-left:auto;display:flex;gap:12px;font-size:12.5px}
+.out-h .r a{color:var(--brand);text-decoration:none}
+.chart{padding:8px 10px 0}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:500;color:var(--ink-600);background:var(--bg);text-align:right;padding:6px 12px}
+td{font-family:var(--mono);text-align:right;padding:5px 12px;border-top:1px solid var(--ink-150);color:var(--ink-700)}
+th:first-child,td:first-child{text-align:left}
+.note{margin-top:14px;font-size:12px;color:#5b7089;display:flex;gap:6px}
+.side-actions{display:flex;gap:8px;margin-left:auto;flex:none}
+.anno{position:fixed;left:236px;bottom:14px;max-width:540px;background:#16191d;color:#e7e9ec;font-size:12px;line-height:1.7;padding:10px 14px;border-radius:6px;z-index:9}
+.anno b{color:#fff}
+</style>
+</head>
+<body>
+<div class="switch"><button class="on" data-v="home">库首页</button><button data-v="detail">点开一个算法</button></div>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">R</div><div><b>RLab Cortex</b><br><span>v1.0.1</span></div></div>
+    <div class="new">＋ 新建分析<kbd>Ctrl K</kbd></div>
+    <nav class="nav"><a>数据<span class="c">8</span></a><a>流程<span class="c">6</span></a></nav>
+    <div class="grp">工具库</div>
+    <nav class="nav"><a class="on">算法</a><a>技能</a></nav>
+    <div class="grp">最近</div>
+    <div class="rec">
+      <a><i>今天</i>取 α ≤ 10° 为线性段，求升力线斜率…</a>
+      <a><i>今天</i>振动信号的主峰频率及其谐波</a>
+      <a><i>今天</i>第 1 圈到第 50 圈的容量衰减和内阻变化</a>
+      <a><i>今天</i>脉动压力信号的主频是多少？</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ═════════ 库首页 ═════════ -->
+    <div class="view on" id="home"><div class="wrap">
+      <div class="head">
+        <div>
+          <h1>算法</h1>
+          <p>对话里 AI 调用的就是这里的算法。点开一个算法，可以不经过 AI 直接选数据运行。</p>
+        </div>
+        <div class="acts"><button class="btn p"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>添加算法</button></div>
+      </div>
+
+      <h2 class="sec">我的算法 <span>(3)</span></h2>
+      <div class="grid g2">
+<div class="card s2"><div class="t"><b>攻角扫描气动系数汇总</b><span class="tag draft">待审核</span></div><p>取 α ≤ 上限的线性段拟合升力线斜率，给出失速攻角和最大升阻比。</p></div>
+<div class="card s2"><div class="t"><b>两端点变化汇总</b><span class="tag draft">待审核</span></div><p>比较两个端点处各列的值、变化量和百分比。</p></div>
+<div class="card s2"><div class="t"><b>离群点汇总</b><span class="tag ">AI 生成</span></div><p>统计每列被标记为离群的点数和所在行。</p></div>
+        <div class="card s2 add"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg>添加算法<small>上传代码，或描述需求让 AI 写</small></div>
+      </div>
+
+      <div class="sec2"><h2 class="sec">内置算法 <span>· 所有用户可用 (25)</span></h2>
+        <div class="search sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>搜索，例如：找主频</div></div>
+      <div class="sub3">平滑 · 去噪</div>
+      <div class="grid g2">
+<div class="card s2"><div class="t"><b>Savitzky-Golay 平滑</b></div><p>多项式最小二乘平滑，比移动平均更好地保留峰形。</p></div>
+<div class="card s2"><div class="t"><b>巴特沃斯滤波</b></div><p>零相位低通 / 高通 / 带阻滤波。</p></div>
+<div class="card s2"><div class="t"><b>移动平均</b></div><p>加上宽度 N 的滑动均值列。</p></div>
+<div class="card s2"><div class="t"><b>中值滤波</b></div><p>对离群尖峰更稳健的平滑。</p></div>
+<div class="card s2"><div class="t"><b>高斯滤波</b></div><p>一维高斯平滑，抑制快变噪声。</p></div>
+<div class="card s2"><div class="t"><b>极值标注</b></div><p>在曲线上标出峰值点。</p></div>
+      </div>
+      <div class="sub3">找特征 · 找异常</div>
+      <div class="grid g2">
+<div class="card s2"><div class="t"><b>FFT 频谱分析</b></div><p>找主频和周期成分。</p></div>
+<div class="card s2"><div class="t"><b>峰值检测</b></div><p>峰的位置、高度和个数。</p></div>
+<div class="card s2"><div class="t"><b>异常值检测</b></div><p>按列标记离群点。</p></div>
+      </div>
+      <div class="sub3">拟合 · 建模</div>
+      <div class="grid g2">
+<div class="card s2"><div class="t"><b>线性回归</b></div><p>线性关系的系数、R² 和 RMSE。</p></div>
+<div class="card s2"><div class="t"><b>多项式回归</b></div><p>用 N 次多项式拟合曲线趋势。</p></div>
+<div class="card s2"><div class="t"><b>非线性曲线拟合</b></div><p>指数、对数、幂律、S 形拟合。</p></div>
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:var(--ink-400)">…其余：准备 · 清洗（3）、降维 · 看结构（4）、结构操作（5）</p>
+    </div></div>
+
+    <!-- ═════════ 详情 ═════════ -->
+    <div class="view" id="detail"><div class="wrap">
+      <div class="crumb"><a href="#" data-back>算法</a><span>/</span><span>平滑 · 去噪</span><span>/</span><span style="color:var(--ink-900)">Savitzky-Golay 平滑</span></div>
+      <div class="dhead">
+        <div>
+          <h1>Savitzky-Golay 平滑 <span class="tag">内置</span></h1>
+          <div class="sub"><code>savgol_filter</code><span>返回：数据表</span><span>软件 1.0.1</span></div>
+          <p>多项式最小二乘平滑：在每个点附近的窗口内拟合一个低阶多项式，用拟合值替代原值。比移动平均更好地保留峰的位置和高度。例如：「平滑曲线但保留峰形」。</p>
+        </div>
+        <div class="side-actions">
+          <button class="btn s">在对话中使用</button>
+          <button class="btn s">复制为我的算法</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="on">运行</button>
+        <button>代码<em>只读</em></button>
+        <button>版本与使用记录</button>
+      </div>
+
+      <div class="runlay">
+        <div class="panel">
+          <h3>运行设置</h3>
+          <div class="form">
+            <div class="f"><label>数据 <span>选一份源数据或中间结果</span></label><div class="in">示例·天平信号　1000×4　▾</div></div>
+            <div class="f"><label>处理哪些列 <span>不选 = 全部数值列</span></label><div class="chips"><span class="chip on">Fz_N</span><span class="chip">Fx_N</span><span class="chip">alpha_deg</span></div></div>
+            <div class="f"><label>窗口长度 <span>奇数，越大越平滑</span></label><div class="in mono">21</div></div>
+            <div class="f"><label>多项式阶数 <span>小于窗口长度</span></label><div class="in mono">3</div></div>
+          </div>
+          <div class="run"><button class="btn p"><svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>运行</button><small>不经过 AI，结果存为中间结果并记录运行编号</small></div>
+        </div>
+
+        <div class="panel">
+          <div class="out-h"><span class="okb">完成</span><b style="font-weight:500">运行结果</b><code>R-0031.1 · 0.04 s</code>
+            <span class="r"><a href="#">查看数据</a><a href="#">存为流程的一步</a></span></div>
+          <div class="chart">
+            <svg viewBox="0 0 520 210" style="display:block;width:100%;height:auto">
+              <g stroke="#eef0f2"><path d="M50 30H500M50 80H500M50 130H500M50 180H500"/></g>
+              <path d="M50 180H500M50 24V180" stroke="#c6cbd1" fill="none"/>
+              <polyline fill="none" stroke="#a0a6ae" stroke-width="1" points="50,150 58,140 66,158 74,136 82,152 90,128 98,146 106,120 114,140 122,116 130,134 138,108 146,128 154,102 162,122 170,98 178,116 186,90 194,110 202,86 210,104 218,80 226,98 234,74 242,92 250,70 258,86 266,64 274,82 282,58 290,76 298,54 306,70 314,48 322,66 330,44 338,60 346,40 354,56 362,36 370,52 378,32 386,48 394,30 402,44 410,28 418,40 426,26 434,38 442,24 450,36 458,22 466,34 474,20 482,30 490,18 498,28"/>
+              <path d="M50 148 L498 24" stroke="#2e5f8a" stroke-width="2.4" fill="none"/>
+              <g font-size="10.5" fill="#69707a" font-family="IBM Plex Mono,monospace"><text x="44" y="34" text-anchor="end">1100</text><text x="44" y="184" text-anchor="end">500</text><text x="54" y="18">Fz_N</text><text x="500" y="196" text-anchor="end">time_s</text></g>
+              <g font-size="11" fill="#363b42"><path d="M330 14h14" stroke="#a0a6ae"/><text x="348" y="18">原始</text><path d="M392 14h14" stroke="#2e5f8a" stroke-width="2"/><text x="410" y="18">平滑后 Fz_N_savgol</text></g>
+            </svg>
+          </div>
+          <table>
+            <tr><th>time_s</th><th>Fz_N</th><th>Fz_N_savgol</th></tr>
+            <tr><td>0.00</td><td>418.92</td><td>418.76</td></tr>
+            <tr><td>0.01</td><td>431.07</td><td>419.18</td></tr>
+            <tr><td>0.02</td><td>409.55</td><td>419.61</td></tr>
+          </table>
+        </div>
+      </div>
+      <p class="note">ⓘ「代码」页签：内置算法只读，可「复制为我的算法」后修改；自建和 AI 生成的算法在这里编辑、调试运行、保存新版本。AI 共创的对话和未保存的代码在切换页面时保留。</p>
+    </div></div>
+  </main>
+</div>
+
+<div class="anno" id="anno"><b>库首页</b>（按技能页的结构）：标题 + 一句介绍 + 一个「添加算法」；「我的算法」一组（自建与 AI 生成，待审核直接标在卡片上）；「内置算法」一组，按类别小标题排列。卡片只有中文名和一句说明，点开进入详情。</div>
+<script>
+const anno = {home: document.getElementById('anno').innerHTML,
+  detail: '<b>算法详情</b>：面包屑可返回；标题区放名称、函数名、说明和常用操作；下面三个页签——运行（左侧设置，右侧结果，不经过 AI）、代码（现在的编辑 / 调试 / 历史）、版本与使用记录。'};
+function show(v){document.querySelectorAll('.view').forEach(e=>e.classList.toggle('on',e.id===v));document.querySelectorAll('.switch button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));document.getElementById('anno').innerHTML=anno[v];document.querySelector('.main').scrollTop=0;}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+document.querySelectorAll('.card').forEach(c=>c.onclick=()=>show('detail'));
+document.querySelector('[data-back]').onclick=(e)=>{e.preventDefault();show('home');};
+</script>
+</body>
+</html>

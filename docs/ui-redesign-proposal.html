@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RLab Cortex 界面改版方案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+body{margin:0;background:#F3F4F6;font-family:'IBM Plex Sans','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;color:#16191D}
+a{color:#2B4C6F}a:hover{color:#213C59}
+button,input,select,textarea{font-family:inherit}
+.topnav{position:sticky;top:0;z-index:10;background:#F3F4F6;border-bottom:1px solid #C6CBD1;display:flex;flex-wrap:wrap;gap:4px 20px;padding:12px 24px;font-size:13px}
+.topnav strong{font-weight:600;margin-right:12px}
+.topnav a{text-decoration:none;color:#363B42}.topnav a:hover{color:#2B4C6F}
+.board{border-bottom:1px solid #C6CBD1;scroll-margin-top:48px}
+.board-title{max-width:1120px;margin:0 auto;padding:32px 24px 0;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#69707A}
+.screen{padding:24px;overflow-x:auto}
+.screen > div{min-width:1200px;max-width:1440px;margin:0 auto;border:1px solid #C6CBD1;border-radius:8px;box-shadow:0 12px 32px rgba(22,25,29,.10)}
+</style>
+</head>
+<body>
+<nav class="topnav"><strong>RLab Cortex 界面改版方案</strong><a href="#Main">01 方案总览</a><a href="#Tokens">02 设计规范</a><a href="#Components">03 组件</a><a href="#Chat">04 对话</a><a href="#Datasets">05 数据集</a><a href="#Algorithms">06 算法库</a><a href="#Plan">07 落地计划</a></nav>
+<section id="Main" class="board"><div class="board-title">01 方案总览</div><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #F3F4F6; padding: 72px 24px 96px; box-sizing: border-box; width: 100%">
+<div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 72px">
+
+<header style="display: flex; flex-direction: column; gap: 20px; border-bottom: 1px solid #C6CBD1; padding-bottom: 40px">
+<div style="display: flex; gap: 12px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">
+<span style="display: inline-flex; width: 28px; height: 28px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; align-items: center; justify-content: center; font-weight: 500">R</span>
+<span>RLab Cortex · 界面改版方案 · v2 草案（工程向）</span>
+</div>
+<h1 style="margin: 0; font-size: 44px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em">计算书式的工程界面</h1>
+<p style="margin: 0; font-size: 18px; line-height: 1.7; color: #525861; max-width: 760px">使用者是工程背景的人，服务的是工程领域。所以界面按工程软件的习惯来做：中性灰底板，内容是一页页白色"计算书"，颜色只表示状态。不靠渐变、光晕和大圆角制造"科技感"，而是靠精确的数字、明确的单位和随处可见的来源标注，让工程师一眼看出：这个结果从哪来、能不能复现、能不能拿去汇报。</p>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2B4C6F">01</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 600">现在为什么"像 AI"</h2>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.7; color: #525861; max-width: 760px">以下数字来自对 web/components 和 web/app 的扫描（改版前代码）。问题不只是配色，而是一整套被大量 AI 产品重复使用的视觉套路。</p>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500">135</div>
+<div style="font-size: 15px; font-weight: 600">处紫色</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">violet / purple / fuchsia 承担了"AI 生成""中间结果""技能"三种语义，加上淡紫靛蓝主色，整体就是典型的 AI 产品色。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500">109</div>
+<div style="font-size: 15px; font-weight: 600">处 12–16px 大圆角</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">rounded-xl 66 处、rounded-2xl 43 处，配合柔和阴影，所有东西都像漂浮的软卡片，缺少工具软件该有的结构感。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500">38</div>
+<div style="font-size: 15px; font-weight: 600">处闪光图标</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">Sparkles 出现在 14 个文件里。"✨ = AI"已经是陈词滥调，而且它不告诉用户任何具体信息。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 15px; font-weight: 600">渐变、光晕、彩色阴影</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">蓝→紫渐变色条（对话、数据集）、首页背景的模糊光斑、反馈按钮的蓝色投影、悬停上浮动效。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 15px; font-weight: 600">通用聊天模板</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">圆形机器人头像 + 左右气泡，和所有 ChatGPT 套壳长得一样。可我们的核心价值是"可验证的分析结果"，不是"在聊天"。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 15px; font-weight: 600">装饰性彩色</div>
+<div style="font-size: 14px; line-height: 1.6; color: #525861">会话列表的 8 色彩虹头像、5 种以上的彩色徽标，颜色多但不携带信息，反而稀释了真正重要的状态色。</div>
+</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-left: 3px solid #2B4C6F; border-radius: 6px; padding: 16px 20px; font-size: 14px; line-height: 1.7; color: #363B42">
+<strong style="font-weight: 600">上一轮尝试为什么不对：</strong>只是换了一组颜色（还把侧栏改成深色），没有统一的结构和规则，所以看起来割裂。v1 方案的暖色纸面又偏米色、肉色，不够冷静。这一版改为中性冷灰，仍然先定规则，再画页面，最后才写代码。
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2B4C6F">02</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 600">设计概念：底板 + 计算书</h2>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+<div style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; font-size: 15px; line-height: 1.7; color: #363B42">
+<p style="margin: 0"><strong style="font-weight: 600; color: #16191D">底板（#F3F4F6）</strong>是唯一的背景色，中性冷灰，不带黄红倾向。布局保持现状（图标栏 + 会话面板 + 主区 + 工作台）。图标栏和会话面板共用底板色，主区为白色，之间只用 1px 细线分隔，所以不会割裂。</p>
+<p style="margin: 0"><strong style="font-weight: 600; color: #16191D">计算书（#FFFFFF）</strong>承载内容：对话结果、数据表、算法编辑器。每个结果像一页计算书，写清输入、方法、结论和单位。计算书之间用 8–12px 的底板间隙隔开，边界是 1px 细线，几乎不用阴影。</p>
+<p style="margin: 0"><strong style="font-weight: 600; color: #16191D">墨蓝（#2B4C6F）</strong>是唯一的主色，只给"主操作"和"当前选中"。其余颜色全部是有含义的状态色。</p>
+<p style="margin: 0"><strong style="font-weight: 600; color: #16191D">颜色 = 状态。</strong>红表示错误或报警，琥珀表示警告，绿表示通过，蓝表示进行中，正常状态不着色（参照工业 HMI 的 ISA-101 思路）。AI 生成的内容不占颜色，用虚线框加"AI"字样标注，避免和警告色混淆。</p>
+</div>
+<div style="flex: 1 1 440px; min-width: 0; background: #E7E9EC; border-radius: 8px; padding: 12px; display: flex; gap: 12px; height: 300px; box-sizing: border-box" aria-label="界面结构示意">
+<div style="width: 148px; display: flex; flex-direction: column; gap: 6px; padding: 8px 4px">
+<div style="height: 22px; width: 22px; border-radius: 4px; background: #2B4C6F"></div>
+<div style="height: 12px"></div>
+<div style="height: 26px; border-radius: 4px; background: #FFFFFF; border: 1px solid #C6CBD1"></div>
+<div style="height: 26px; border-radius: 4px; background: #DADEE3"></div>
+<div style="height: 26px; border-radius: 4px; background: #DADEE3"></div>
+<div style="height: 26px; border-radius: 4px; background: #DADEE3"></div>
+<div style="margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">侧栏 = 底板</div>
+</div>
+<div style="flex: 1; background: #FFFFFF; border: 1px solid #C6CBD1; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="height: 10px; width: 40%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="height: 60px; background: #F3F4F6; border-radius: 4px"></div>
+<div style="height: 10px; width: 70%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="height: 10px; width: 55%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">计算书</div>
+</div>
+<div style="width: 120px; background: #FFFFFF; border: 1px solid #C6CBD1; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px">
+<div style="height: 8px; width: 60%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="height: 8px; width: 80%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="height: 8px; width: 70%; background: #DFE2E6; border-radius: 2px"></div>
+<div style="margin-top: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">工作台</div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2B4C6F">03</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 600">五条设计原则</h2>
+</div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border-top: 1px solid #16191D">
+<div style="padding: 20px 20px 0 0; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">P1</div>
+<div style="font-size: 17px; font-weight: 600">结果优先</div>
+<div style="font-size: 14px; line-height: 1.65; color: #525861">图表、表格、数值放在最显眼处；思考过程和调用步骤默认折叠。</div>
+</div>
+<div style="padding: 20px 20px 0 0; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">P2</div>
+<div style="font-size: 17px; font-weight: 600">来源可见</div>
+<div style="font-size: 14px; line-height: 1.65; color: #525861">每个结果都带一行来源：算法、版本、参数、耗时。内置 / 自定义 / AI 生成用形状和颜色同时区分。</div>
+</div>
+<div style="padding: 20px 20px 0 0; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">P3</div>
+<div style="font-size: 17px; font-weight: 600">颜色有含义</div>
+<div style="font-size: 14px; line-height: 1.65; color: #525861">一个主色、四个状态色。AI 标记靠形状和文字，不占颜色。不出现只为好看的颜色。</div>
+</div>
+<div style="padding: 20px 20px 0 0; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">P4</div>
+<div style="font-size: 17px; font-weight: 600">数字可读</div>
+<div style="font-size: 14px; line-height: 1.65; color: #525861">数值用等宽数字、右对齐，必须带单位；有效位数统一，可切换科学计数法。</div>
+</div>
+<div style="padding: 20px 0 0 0; display: flex; flex-direction: column; gap: 10px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">P5</div>
+<div style="font-size: 17px; font-weight: 600">安静的界面</div>
+<div style="font-size: 14px; line-height: 1.65; color: #525861">层级靠留白与细线，不靠阴影、渐变和动效。动效只用于状态变化，≤150ms。</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2B4C6F">04</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 600">面向工程用户的六条约定</h2>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.7; color: #525861; max-width: 760px">参照工程师日常用的软件（MATLAB、ANSYS、SCADA/HMI、Grafana）：底色中性、信息密度高、数字精确、结果可追溯。</p>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.6; min-width: 760px">
+<tbody>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 22%; font-weight: 600">单位与精度</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; color: #363B42">表头写成"压力 (MPa)"，坐标轴必须标单位；有效位数全局统一、可设置；支持千分位与科学计数法；时间戳到秒并标时区。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 22%; font-weight: 600">信息密度</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; color: #363B42">提供"标准 / 紧凑"两档，表格默认紧凑（行高 24px）。参数面板与结果并排，不用一步一步的向导。常用操作有快捷键。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 22%; font-weight: 600">颜色只表示状态</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; color: #363B42">红 = 错误 / 报警，琥珀 = 警告，绿 = 通过，蓝 = 进行中；正常状态保持灰色。状态色不挪作装饰。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 22%; font-weight: 600">可追溯、可交付</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; color: #363B42">每个结果带编号、版本、输入、参数、方法；一键导出计算书（PDF / Word），附原始数据 CSV 和参数记录。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 22%; font-weight: 600">能打印、能投影</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; color: #363B42">默认浅色主题；图表系列同时用颜色和线型（实线 / 虚线 / 点划）区分，黑白打印和色弱用户都能分辨。</td></tr>
+<tr><td style="padding: 14px 20px; width: 22%; font-weight: 600">陈述式文案</td><td style="padding: 14px 20px; color: #363B42">写"拟合完成：R² = 0.973，n = 1,248"，不写"✨帮你搞定啦"。不用 emoji，不说"智能""魔法"。</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; align-items: baseline; gap: 16px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2B4C6F">05</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 600">改版前后对照</h2>
+</div>
+<div style="overflow-x: auto; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.6; min-width: 760px">
+<thead>
+<tr style="background: #F8F9FA; text-align: left">
+<th style="padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #DFE2E6; width: 18%">维度</th>
+<th style="padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #DFE2E6; width: 41%; color: #69707A">现在</th>
+<th style="padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #DFE2E6; width: 41%">改为</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">底色与结构</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">冷灰白背景，侧栏白色，内容区无明确容器</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">中性冷灰底板贯穿全局，内容放在白色计算书里</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">主色</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">淡紫靛蓝 #5D66AB + 大量紫色</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">墨蓝 #2B4C6F，仅用于主操作和选中</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">AI 内容标识</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">紫色底 + 闪光图标</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">灰色虚线框 + "AI 生成 · 待复核"文字标签，不占颜色</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">圆角</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">8–16px，多数 12px 以上</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">控件 4px，计算书与弹窗 6px，仅状态点用圆形</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">信息密度</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">大卡片、大留白，一屏信息少</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">标准 / 紧凑两档，表格默认紧凑；数值带单位、等宽右对齐</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">布局</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">图标栏 + 会话面板；头像 + 气泡；右侧工作台</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">保持不变。圆形机器人头像改为方形 R 标；气泡改为细线框，内部结果用计算书样式</td></tr>
+<tr><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; font-weight: 500">字体</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1; color: #525861">Inter（实际未加载）+ 系统字体</td><td style="padding: 12px 20px; border-bottom: 1px solid #ECEEF1">IBM Plex Sans / 系统中文黑体，数字与代码用 IBM Plex Mono（自托管）</td></tr>
+<tr><td style="padding: 12px 20px; font-weight: 500">阴影与动效</td><td style="padding: 12px 20px; color: #525861">彩色投影、悬停上浮、模糊光斑</td><td style="padding: 12px 20px">仅浮层与弹窗有阴影；动效只表达状态变化</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+</div>
+</div></section><section id="Tokens" class="board"><div class="board-title">02 设计规范</div><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #F3F4F6; padding: 72px 24px 96px; box-sizing: border-box; width: 100%">
+<div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 64px">
+
+<header style="display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #C6CBD1; padding-bottom: 32px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">02 · 设计规范</div>
+<h1 style="margin: 0; font-size: 36px; font-weight: 600">色彩、字体、尺度</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.7; color: #525861; max-width: 760px">所有值都会写进 tailwind.config.ts，沿用现有的 brand / ink 两组名字，不再设单独的强调色。中性色统一偏冷、饱和度很低，不带黄红倾向。组件代码大部分只需换类名，不用改结构。</p>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">色彩 · 底板与线条</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.7; color: #525861">界面只有两种面：底板和计算书。其余都是它们的浅深变化，层级靠线条区分，不靠阴影。</p>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #F3F4F6; border: 1px solid #C6CBD1"></div><div style="font-size: 14px; font-weight: 500">底板 base</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#F3F4F6 · 应用背景</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #FFFFFF; border: 1px solid #C6CBD1"></div><div style="font-size: 14px; font-weight: 500">计算书 sheet</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#FFFFFF · 内容容器</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #F8F9FA; border: 1px solid #C6CBD1"></div><div style="font-size: 14px; font-weight: 500">凹面 sunken</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#F8F9FA · 表头、代码</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #ECEEF1; border: 1px solid #C6CBD1"></div><div style="font-size: 14px; font-weight: 500">悬停 hover</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#ECEEF1 · 行悬停</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #FFFFFF; border: 1px solid #DFE2E6; display: flex; align-items: center; justify-content: center"><div style="width: 70%; height: 1px; background: #DFE2E6"></div></div><div style="font-size: 14px; font-weight: 500">细线 line</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#DFE2E6 · 分隔</div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><div style="height: 72px; border-radius: 6px; background: #FFFFFF; border: 1px solid #C6CBD1; display: flex; align-items: center; justify-content: center"><div style="width: 70%; height: 1px; background: #C6CBD1"></div></div><div style="font-size: 14px; font-weight: 500">实线 line-strong</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#C6CBD1 · 输入框、边界</div></div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">色彩 · 文字</h2>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 20px; font-weight: 600; color: #16191D">主文字 Aa</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#16191D · 17.6:1</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 20px; font-weight: 600; color: #363B42">正文 Aa</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#363B42 · 11.3:1</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 20px; font-weight: 600; color: #525861">次要 Aa</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#525861 · 7.2:1</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 20px; font-weight: 600; color: #69707A">辅助 Aa</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#69707A · 5.0:1</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="font-size: 20px; font-weight: 600; color: #A0A6AE">禁用 Aa</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">#A0A6AE · 仅禁用态</div></div>
+</div>
+<p style="margin: 0; font-size: 13px; color: #69707A">对比度按白底计算。辅助色在底板上也 ≥ 4.5:1，11–12px 的小字说明可以放心用。</p>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">色彩 · 主色与 AI 标记</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 24px">
+<div style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 16px; font-weight: 600">墨蓝 brand</div><div style="font-size: 13px; color: #525861">主操作、当前选中、链接、焦点</div></div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-radius: 6px; overflow: hidden; border: 1px solid #DFE2E6">
+<div style="height: 64px; background: #EEF2F6"></div><div style="height: 64px; background: #DCE4EC"></div><div style="height: 64px; background: #B9C8D8"></div><div style="height: 64px; background: #5F7E9D"></div><div style="height: 64px; background: #2B4C6F"></div><div style="height: 64px; background: #213C59"></div><div style="height: 64px; background: #1A3047"></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">
+<div>50 EEF2F6</div><div>100 DCE4EC</div><div>200 B9C8D8</div><div>400 5F7E9D</div><div style="color: #16191D; font-weight: 500">600 2B4C6F</div><div>700 213C59</div><div>800 1A3047</div>
+</div>
+</div>
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><div style="font-size: 16px; font-weight: 600">AI 标记 · 不占颜色</div><div style="font-size: 13px; color: #525861">形状 + 文字</div></div>
+<div style="display: flex; gap: 12px; height: 64px">
+<div style="flex: 1; border: 1px dashed #525861; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 0 4px; margin-right: 6px; border: 1px solid #525861; border-radius: 2px">AI</span>待复核 · 虚线</div>
+<div style="flex: 1; border: 1px solid #525861; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 0 4px; margin-right: 6px; border: 1px solid #525861; border-radius: 2px">AI</span>已复核 · 实线</div>
+</div>
+<div style="font-size: 12px; line-height: 1.6; color: #525861">v1 的赭石色已取消。AI 标记用中性灰，和琥珀警告色彻底分开，颜色只留给状态。</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">色彩 · 状态</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="background: #EAF4EE; border: 1px solid #C4DFCD; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><div style="font-size: 15px; font-weight: 600; color: #22603B">成功 · 已验证</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #22603B">文字 #22603B · 标记 #2F7D4F</div></div>
+<div style="background: #FBF4E2; border: 1px solid #EDDCAE; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><div style="font-size: 15px; font-weight: 600; color: #7A5300">警告 · 需注意</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A5300">文字 #7A5300 · 标记 #C8900E</div></div>
+<div style="background: #FAECEA; border: 1px solid #EDC7C2; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><div style="font-size: 15px; font-weight: 600; color: #8F2A23">错误 · 失败</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8F2A23">文字 #8F2A23 · 标记 #B4372F</div></div>
+<div style="background: #EEF2F6; border: 1px solid #DCE4EC; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><div style="font-size: 15px; font-weight: 600; color: #213C59">信息 · 进行中</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #213C59">复用墨蓝 700 / 50</div></div>
+</div>
+<p style="margin: 0; font-size: 13px; color: #69707A">状态色永远搭配图标或文字出现，不单靠颜色传达。这四种颜色只用于状态；正常状态保持灰色，不着色。</p>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">来源编码 · 本产品的核心视觉语言</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.7; color: #525861; max-width: 800px">"可验证"是产品的卖点，所以每个算法、每份数据、每个结果都要能一眼看出来源。用形状 + 颜色 + 文字三重编码，色弱用户和黑白打印也能分辨。</p>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">经过验证的算法库。实心墨蓝。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 2px; border: 1px solid #2B4C6F; color: #2B4C6F">自定义</span>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">用户上传、已过沙箱测试。墨蓝描边。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 2px; border: 1px dashed #525861; color: #363B42; background: #FFFFFF"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>生成 · 待复核</span>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">还没人看过的 AI 代码或结论。灰色虚线 + AI 字样。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 2px; border: 1px solid #525861; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>生成 · 已复核</span>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">人工确认后虚线变实线，保留出身。</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 2px; background: #ECEEF1; color: #363B42; font-family: 'IBM Plex Mono', monospace">↳ 派生</span>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">中间结果数据集，灰底 + 分支符号，点开看血缘。</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">色彩 · 图表系列</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.7; color: #525861">Recharts / Plotly 统一使用这 8 色，顺序固定。前两色是蓝与橙，色弱用户也能区分；系列同时配线型（实线、虚线、点划），黑白打印可辨；网格线 #DFE2E6，坐标轴 #69707A。</p>
+<div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #2E5F8A"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">1 2E5F8A</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #D0702E"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">2 D0702E</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #4C8C5E"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">3 4C8C5E</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #B5474E"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">4 B5474E</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #7462A6"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">5 7462A6</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #3B8F98"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">6 3B8F98</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #B39027"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">7 B39027</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 48px; border-radius: 4px; background: #737A84"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861">8 77736B</div></div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">字体</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><div style="font-size: 28px; font-weight: 600">Plex Sans 界面</div><div style="font-size: 13px; line-height: 1.6; color: #525861">西文界面字体，工程感、字怀紧凑。中文回落到苹方 / 微软雅黑 / 思源黑体。</div></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 500">0.0427 Ah</div><div style="font-size: 13px; line-height: 1.6; color: #525861">IBM Plex Mono：数值、参数、ID、代码、版本号。</div></div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 8px"><div style="font-size: 28px; font-weight: 600">自托管</div><div style="font-size: 13px; line-height: 1.6; color: #525861">字体文件放进 web/public/fonts，不依赖 Google Fonts，国内网络与离线部署都可用。</div></div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; min-width: 720px">
+<tbody>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; width: 160px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">display 32/40 · 600</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 32px; line-height: 40px; font-weight: 600">首页大标题</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">h1 22/30 · 600</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 22px; line-height: 30px; font-weight: 600">页面标题 · 数据集</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">h2 16/24 · 600</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 16px; line-height: 24px; font-weight: 600">计算书标题 · 分析结果</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">body 14/22 · 400</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 22px">正文：对话回答、说明文字、表单。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">dense 13/20 · 400</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 13px; line-height: 20px">紧凑：侧栏、表格、列表项。</td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">caption 12/18 · 400</td><td style="padding: 14px 20px; border-bottom: 1px solid #ECEEF1; font-size: 12px; line-height: 18px; color: #525861">说明：时间戳、提示、单位。</td></tr>
+<tr><td style="padding: 14px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">mono 13/20 · 400</td><td style="padding: 14px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 20px">savgol_filter(window=11, order=3) · 0.82s</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 22px; font-weight: 600">间距、圆角、层级、动效</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 15px; font-weight: 600">间距 · 4px 栅格</div>
+<div style="display: flex; align-items: flex-end; gap: 8px">
+<div style="width: 4px; height: 4px; background: #2B4C6F"></div><div style="width: 8px; height: 8px; background: #2B4C6F"></div><div style="width: 12px; height: 12px; background: #2B4C6F"></div><div style="width: 16px; height: 16px; background: #2B4C6F"></div><div style="width: 24px; height: 24px; background: #2B4C6F"></div><div style="width: 32px; height: 32px; background: #2B4C6F"></div>
+</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">4 8 12 16 24 32 48</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 15px; font-weight: 600">圆角</div>
+<div style="display: flex; gap: 10px; align-items: center">
+<div style="width: 36px; height: 36px; border: 1.5px solid #2B4C6F; border-radius: 2px"></div><div style="width: 36px; height: 36px; border: 1.5px solid #2B4C6F; border-radius: 4px"></div><div style="width: 36px; height: 36px; border: 1.5px solid #2B4C6F; border-radius: 6px"></div><div style="width: 12px; height: 12px; background: #2F7D4F; border-radius: 999px"></div>
+</div>
+<div style="font-size: 12px; line-height: 1.6; color: #525861">2 标签 · 4 控件 · 6 计算书/弹窗 · 圆形仅状态点</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 15px; font-weight: 600">层级 · 3 级</div>
+<div style="display: flex; gap: 12px; align-items: center; padding: 6px 0">
+<div style="width: 44px; height: 32px; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 4px"></div>
+<div style="width: 44px; height: 32px; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 4px; box-shadow: 0 4px 12px rgba(22,25,29,0.08)"></div>
+<div style="width: 44px; height: 32px; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 4px; box-shadow: 0 12px 32px rgba(22,25,29,0.16)"></div>
+</div>
+<div style="font-size: 12px; line-height: 1.6; color: #525861">0 页面内（只用线）· 1 下拉/悬浮卡 · 2 弹窗</div>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 15px; font-weight: 600">动效</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #16191D">120ms ease-out</div>
+<div style="font-size: 12px; line-height: 1.6; color: #525861">只用于颜色、展开收起、浮层出现。不做上浮、缩放、弹跳；尊重 prefers-reduced-motion。</div>
+</div>
+</div>
+</section>
+
+</div>
+</div></section><section id="Components" class="board"><div class="board-title">03 组件</div><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #F3F4F6; padding: 72px 24px 96px; box-sizing: border-box; width: 100%">
+<div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px">
+
+<header style="display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #C6CBD1; padding-bottom: 32px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">03 · 组件</div>
+<h1 style="margin: 0; font-size: 36px; font-weight: 600">基础组件</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.7; color: #525861; max-width: 760px">落地时会抽成 web/components/ui 下的一组共享组件（Button、Input、Tag、Tabs、Sheet、Modal…），替换掉现在散落在 30 多个文件里各写各的 class 串。</p>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">按钮</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+<button type="button" style="height: 32px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500">运行分析</button>
+<button type="button" style="height: 32px; padding: 0 14px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 13px; font-weight: 500">导出 CSV</button>
+<button type="button" style="height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #363B42; font-size: 13px; font-weight: 500">取消</button>
+<button type="button" style="height: 32px; padding: 0 14px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #8F2A23; font-size: 13px; font-weight: 500">删除数据集</button>
+<button type="button" style="height: 32px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500; opacity: 0.4" disabled>运行分析</button>
+<button type="button" aria-label="更多操作" style="width: 32px; height: 32px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #363B42; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg></button>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; font-size: 13px; line-height: 1.6; color: #525861">
+<div><strong style="color: #16191D; font-weight: 600">主按钮</strong><br>墨蓝实心。每个区域最多一个。</div>
+<div><strong style="color: #16191D; font-weight: 600">次按钮</strong><br>白底实线框，最常用。</div>
+<div><strong style="color: #16191D; font-weight: 600">文字按钮</strong><br>取消、收起等弱操作。</div>
+<div><strong style="color: #16191D; font-weight: 600">危险操作</strong><br>只把文字变红，确认弹窗里才用红色实心。</div>
+</div>
+<div style="font-size: 12px; color: #69707A">尺寸：小 28px（表格行内）· 默认 32px · 大 40px（登录、首页 CTA）。悬停只变底色深一档，不上浮、不加阴影。</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">输入</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 24px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="c-win" style="font-size: 13px; font-weight: 500">窗口长度</label>
+<input id="c-win" value="11" style="height: 32px; padding: 0 10px; border: 1px solid #C6CBD1; border-radius: 4px; font-size: 13px; font-family: 'IBM Plex Mono', monospace; background: #FFFFFF; color: #16191D">
+<span style="font-size: 12px; color: #69707A">奇数，≥ 多项式阶数 + 2</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="c-order" style="font-size: 13px; font-weight: 500">多项式阶数</label>
+<input id="c-order" value="12" style="height: 32px; padding: 0 10px; border: 1px solid #B4372F; border-radius: 4px; font-size: 13px; font-family: 'IBM Plex Mono', monospace; background: #FFFFFF; color: #16191D; box-shadow: 0 0 0 3px #FAECEA">
+<span style="font-size: 12px; color: #8F2A23">阶数必须小于窗口长度</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="c-col" style="font-size: 13px; font-weight: 500">目标列</label>
+<input id="c-col" value="voltage_V" style="height: 32px; padding: 0 10px; border: 1px solid #2B4C6F; border-radius: 4px; font-size: 13px; font-family: 'IBM Plex Mono', monospace; background: #FFFFFF; color: #16191D; box-shadow: 0 0 0 3px #DCE4EC">
+<span style="font-size: 12px; color: #69707A">焦点态：墨蓝边框 + 3px 浅墨蓝光圈</span>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">标签与状态</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #22603B"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2F7D4F"></span>已完成</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #213C59"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2B4C6F"></span>运行中</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #7A5300"><span style="width: 7px; height: 7px; border-radius: 999px; background: #C8900E"></span>有警告</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8F2A23"><span style="width: 7px; height: 7px; border-radius: 999px; background: #B4372F"></span>失败</span>
+<span style="width: 1px; height: 18px; background: #DFE2E6"></span>
+<span style="font-size: 12px; padding: 1px 7px; border-radius: 2px; background: #ECEEF1; color: #363B42; font-family: 'IBM Plex Mono', monospace">float64</span>
+<span style="font-size: 12px; padding: 1px 7px; border-radius: 2px; background: #ECEEF1; color: #363B42; font-family: 'IBM Plex Mono', monospace">12,480 × 9</span>
+<span style="font-size: 12px; padding: 1px 7px; border-radius: 2px; border: 1px solid #C6CBD1; color: #363B42">平滑</span>
+</div>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">状态 = 圆点 + 文字，不做彩色胶囊。元数据标签统一灰底等宽字。来源标签见规范页，不再出现 6 种颜色的徽标。</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">导航 · 侧栏与标签页</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 0 0 240px; background: #F3F4F6; border: 1px dashed #C6CBD1; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 2px; font-size: 13px">
+<a href="#" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; background: #FFFFFF; border: 1px solid #DFE2E6; color: #16191D; font-weight: 500; text-decoration: none"><span style="width: 3px; height: 14px; background: #2B4C6F; border-radius: 1px; margin-left: -4px"></span>A12 电芯容量衰减分析</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; color: #363B42; text-decoration: none; border: 1px solid transparent">NVH 台架 3 号通道频谱</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; color: #363B42; text-decoration: none; background: #ECEEF1; border: 1px solid transparent">CFD 网格收敛性检查（悬停）</a>
+<a href="#" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 4px; color: #363B42; text-decoration: none; border: 1px solid transparent">温升曲线插值</a>
+<div style="margin-top: 8px; font-size: 12px; color: #69707A">示意：会话面板与图标栏同为底板色。选中项是一张小白卡；图标栏选中项另加左侧墨蓝短线。</div>
+</div>
+<div style="flex: 1 1 480px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 0 20px 20px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; gap: 24px; border-bottom: 1px solid #DFE2E6; font-size: 13px">
+<a href="#" style="padding: 12px 0; border-bottom: 2px solid #2B4C6F; color: #16191D; font-weight: 500; text-decoration: none; margin-bottom: -1px">数据预览</a>
+<a href="#" style="padding: 12px 0; color: #525861; text-decoration: none">字段</a>
+<a href="#" style="padding: 12px 0; color: #525861; text-decoration: none">图表</a>
+<a href="#" style="padding: 12px 0; color: #525861; text-decoration: none">血缘 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">3</span></a>
+</div>
+<div style="display: inline-flex; align-self: flex-start; border: 1px solid #C6CBD1; border-radius: 4px; overflow: hidden; font-size: 12px">
+<button type="button" style="height: 28px; padding: 0 12px; border: 0; background: #16191D; color: #FFFFFF">表格</button>
+<button type="button" style="height: 28px; padding: 0 12px; border: 0; border-left: 1px solid #C6CBD1; background: #FFFFFF; color: #363B42">折线</button>
+<button type="button" style="height: 28px; padding: 0 12px; border: 0; border-left: 1px solid #C6CBD1; background: #FFFFFF; color: #363B42">散点</button>
+</div>
+<div style="font-size: 12px; color: #69707A">标签页 = 下划线式；视图切换 = 分段按钮（选中为深色实心）。</div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">数据表</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 720px">
+<thead>
+<tr style="background: #F8F9FA">
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #69707A; font-family: 'IBM Plex Mono', monospace; font-size: 11px; width: 48px">#</th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">cycle</div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">int64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">voltage <span style="font-weight: 400; color: #69707A">V</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">capacity <span style="font-weight: 400; color: #69707A">Ah</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">temp <span style="font-weight: 400; color: #69707A">°C</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: left; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">step</div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">category</div></th>
+</tr>
+</thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace">
+<tr><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">1</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">3.4120</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">0.0000</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">25.1</td><td style="padding: 6px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr style="background: #EEF2F6"><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">2</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">3.4387</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">0.0427</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">25.2</td><td style="padding: 6px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">3</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">3.4592</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">0.0851</td><td style="text-align: right; padding: 6px 12px; border-bottom: 1px solid #ECEEF1">25.2</td><td style="padding: 6px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 6px 12px; color: #69707A">4</td><td style="text-align: right; padding: 6px 12px">1</td><td style="text-align: right; padding: 6px 12px; color: #A0A6AE">—</td><td style="text-align: right; padding: 6px 12px">0.1276</td><td style="text-align: right; padding: 6px 12px">25.3</td><td style="padding: 6px 12px; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+</tbody>
+</table>
+</div>
+<div style="font-size: 12px; color: #69707A">示例数据。数值列等宽右对齐、单位放表头；表头第二行是类型；缺失值显示为浅色破折号；选中行用墨蓝 50。</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">密度 · 紧凑表格</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #DFE2E6; font-size: 12px">
+<span style="font-weight: 600; font-size: 13px">NVH 台架 · 3 号工况通道统计</span>
+<span style="color: #69707A">6 / 32 通道</span>
+<div style="margin-left: auto; display: inline-flex; border: 1px solid #C6CBD1; border-radius: 4px; overflow: hidden">
+<button type="button" style="height: 24px; padding: 0 10px; border: 0; background: #FFFFFF; color: #363B42; font-size: 12px">标准</button>
+<button type="button" style="height: 24px; padding: 0 10px; border: 0; border-left: 1px solid #C6CBD1; background: #16191D; color: #FFFFFF; font-size: 12px">紧凑</button>
+</div>
+<span style="font-family: 'IBM Plex Mono', monospace; color: #525861">有效位数 4</span>
+<span style="font-family: 'IBM Plex Mono', monospace; color: #525861">科学计数 开</span>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 12px; line-height: 18px; min-width: 720px">
+<thead><tr style="background: #F8F9FA">
+<th style="text-align: left; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">通道</th><th style="text-align: left; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">测点</th><th style="text-align: right; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">样本数</th><th style="text-align: right; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">RMS (m/s²)</th><th style="text-align: right; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">主频 (Hz)</th><th style="text-align: right; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">峰值因子</th><th style="text-align: left; padding: 5px 10px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #363B42">判定</th>
+</tr></thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace">
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-01</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">前悬 Z</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">1.247E+00</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">31.5</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">0.82</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="color: #69707A">正常</span></td></tr>
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-02</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">前悬 Y</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">9.866E-01</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">31.5</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">0.64</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="color: #69707A">正常</span></td></tr>
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-03</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">副车架 X</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">4.012E+00</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">63.0</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2.37</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="display: inline-flex; align-items: center; gap: 5px; color: #8F2A23"><span style="width: 6px; height: 6px; border-radius: 999px; background: #B4372F"></span>超限</span></td></tr>
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-04</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">座椅导轨 Z</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">6.530E-01</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">31.5</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">0.41</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="color: #69707A">正常</span></td></tr>
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-05</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">方向盘 Y</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2.861E+00</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">125.0</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">1.12</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="display: inline-flex; align-items: center; gap: 5px; color: #7A5300"><span style="width: 6px; height: 6px; border-radius: 999px; background: #C8900E"></span>接近限值</span></td></tr>
+<tr><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">CH-06</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">后悬 Z</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">2,048</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">1.104E+00</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">31.5</td><td style="text-align: right; padding: 3px 10px; border-bottom: 1px solid #ECEEF1">0.77</td><td style="text-align: left; padding: 3px 10px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif"><span style="color: #69707A">正常</span></td></tr>
+</tbody>
+</table>
+</div>
+<div style="padding: 6px 12px; border-top: 1px solid #DFE2E6; background: #F8F9FA; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861; display: flex; flex-wrap: wrap; gap: 4px 16px"><span>限值 RMS ≤ 3.000E+00 m/s²</span><span>采样 2,048 Hz · 1 s</span><span style="margin-left: auto">2026-11-09 09:15:02 +08:00</span></div>
+</div>
+<div style="font-size: 12px; color: #69707A">示例数据。紧凑档行高 24px、字号 12px，一屏能看 30 行以上。单位写在表头括号里；正常行不着色，只有超限（红）和接近限值（琥珀）带状态点。有效位数和科学计数法在表格工具栏里切换，全局生效。</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">结果记录与来源脚注</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #DFE2E6">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">CALC-A12-002 · rev 1</span>
+<div style="font-size: 14px; font-weight: 600">放电曲线平滑与容量衰减</div>
+<span style="font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span>
+<span style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #22603B"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2F7D4F"></span>已完成</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid #DFE2E6; font-size: 12px">
+<div style="padding: 10px 16px; border-right: 1px solid #ECEEF1"><div style="font-weight: 600; color: #525861; margin-bottom: 4px">输入</div><div style="font-family: 'IBM Plex Mono', monospace; line-height: 1.7">cell_A12_cycles.csv<br>12,480 行 × 9 列<br>圈次 1–50</div></div>
+<div style="padding: 10px 16px; border-right: 1px solid #ECEEF1"><div style="font-weight: 600; color: #525861; margin-bottom: 4px">方法</div><div style="font-family: 'IBM Plex Mono', monospace; line-height: 1.7">savgol_filter v1.2<br>window = 11<br>order = 3</div></div>
+<div style="padding: 10px 16px"><div style="font-weight: 600; color: #525861; margin-bottom: 4px">结论</div><div style="line-height: 1.7; color: #363B42">容量衰减 5.2 %，平台电压无明显漂移</div></div>
+</div>
+<table style="width: 100%; border-collapse: collapse; font-size: 12px">
+<thead><tr style="background: #F8F9FA"><th style="text-align: left; padding: 5px 16px; font-weight: 500; color: #525861; border-bottom: 1px solid #ECEEF1">指标</th><th style="text-align: right; padding: 5px 16px; font-weight: 500; color: #525861; border-bottom: 1px solid #ECEEF1">第 1 圈</th><th style="text-align: right; padding: 5px 16px; font-weight: 500; color: #525861; border-bottom: 1px solid #ECEEF1">第 50 圈</th><th style="text-align: right; padding: 5px 16px; font-weight: 500; color: #525861; border-bottom: 1px solid #ECEEF1">变化</th></tr></thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace">
+<tr><td style="padding: 5px 16px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">放电容量 (Ah)</td><td style="text-align: right; padding: 5px 16px; border-bottom: 1px solid #ECEEF1">2.310</td><td style="text-align: right; padding: 5px 16px; border-bottom: 1px solid #ECEEF1">2.190</td><td style="text-align: right; padding: 5px 16px; border-bottom: 1px solid #ECEEF1">−5.2 %</td></tr>
+<tr><td style="padding: 5px 16px; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">平台电压 (V)</td><td style="text-align: right; padding: 5px 16px">3.652</td><td style="text-align: right; padding: 5px 16px">3.648</td><td style="text-align: right; padding: 5px 16px">−4 mV</td></tr>
+</tbody>
+</table>
+<div style="padding: 8px 16px; border-top: 1px solid #DFE2E6; background: #F8F9FA; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861; display: flex; flex-wrap: wrap; gap: 6px 16px">
+<span>2026-11-09 10:42:18 +08:00</span><span>0.82 s</span><a href="#" style="margin-left: auto">复现</a><a href="#">导出计算书 PDF</a>
+</div>
+</div>
+<div style="flex: 1 1 400px; min-width: 0; background: #FFFFFF; border: 1px dashed #525861; border-radius: 6px; overflow: hidden">
+<div style="padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ECEEF1">
+<div style="font-size: 14px; font-weight: 600">dV/dQ 峰值检测</div>
+<span style="font-size: 12px; font-weight: 500; padding: 1px 7px; border-radius: 2px; border: 1px dashed #525861; color: #363B42; background: #FFFFFF"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>生成 · 待复核</span>
+</div>
+<div style="padding: 14px 16px; font-size: 13px; line-height: 1.6; color: #363B42">算法库里没有现成方法，这段代码由 AI 临时编写，已通过沙箱测试，但还没有人审阅。结果仅供参考。</div>
+<div style="padding: 10px 16px; border-top: 1px solid #ECEEF1; display: flex; gap: 8px">
+<button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px">查看代码</button>
+<button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 12px">复核并存入算法库</button>
+</div>
+</div>
+</div>
+<div style="font-size: 12px; color: #69707A">每条结果都是一页计算书：编号 + 标题 + 来源标签 + 状态；正文是输入 / 方法 / 结论三栏，加一张带单位的结论表；底部一行等宽脚注写时间戳、耗时，可复现、可导出。AI 生成的结果整张卡用灰色虚线框并标 AI 字样，复核后变回普通实线卡。</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">图标</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 24px; font-size: 13px; line-height: 1.7; color: #363B42; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+<div>继续用 lucide-react，统一 16px、描边 1.5。图标只做辅助识别，主导航必须有文字标签。</div>
+<div>去掉全部 38 处 Sparkles：AI 相关操作用具体的动词图标（Code2 写代码、Wand 改写、MessageSquare 对话），并配文字"AI 生成"。Bot 机器人头像改为 R 字母标。</div>
+</div>
+</section>
+
+</div>
+</div></section><section id="Chat" class="board"><div class="board-title">04 对话</div><div class="screen"><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #FFFFFF; width: 100%; min-height: 880px; box-sizing: border-box; display: flex; align-items: stretch">
+
+<nav aria-label="主导航" style="flex: 0 0 56px; background: #F3F4F6; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; box-sizing: border-box">
+<span title="RLab Cortex" style="display: inline-flex; width: 32px; height: 32px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; margin-bottom: 4px">R</span>
+<button type="button" aria-label="新建对话" title="新建对话" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<a href="#" aria-label="对话" title="对话" aria-current="page" style="position: relative; width: 36px; height: 36px; border-radius: 4px; background: #FFFFFF; border: 1px solid #DFE2E6; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><span style="position: absolute; left: -11px; top: 9px; width: 3px; height: 16px; border-radius: 1px; background: #2B4C6F"></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></a>
+<a href="#" aria-label="数据集" title="数据集" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></a>
+<a href="#" aria-label="算法库" title="算法库" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"></path><path d="M9 11.2h5.7"></path></svg></a>
+<a href="#" aria-label="流程模板" title="流程模板" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"></rect><rect x="15" y="15" width="6" height="6" rx="1"></rect><path d="M6 9v4a2 2 0 0 0 2 2h7"></path></svg></a>
+<a href="#" aria-label="技能" title="技能" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.4 7.3a2.5 2.5 0 1 0-3.4-3.4L9 11l-1 4 4-1z"></path><path d="M4 20h16"></path></svg></a>
+<a href="#" aria-label="设置" title="设置" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></a>
+<a href="#" aria-label="关于" title="关于" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg></a>
+<div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span style="width: 36px; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #525861; border: 1px solid #C6CBD1; border-radius: 4px; box-sizing: border-box">中</span>
+<a href="#" aria-label="退出登录" title="退出登录" style="width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; color: #69707A"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #A0A6AE">v0.9</span>
+</div>
+</nav>
+<aside aria-label="会话列表" style="flex: 0 0 240px; background: #F3F4F6; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column; box-sizing: border-box">
+<div style="padding: 14px 14px 6px; font-size: 11px; font-weight: 600; color: #69707A; letter-spacing: 0.04em">会话</div>
+<div style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px; font-size: 13px">
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; background: #FFFFFF; border: 1px solid #DFE2E6; color: #16191D; font-weight: 500"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #DCE4EC; color: #213C59; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">A</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">A12 电芯容量衰减分析</span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; border: 1px solid transparent; color: #363B42"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">N</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">NVH 台架 3 号通道频谱</span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; border: 1px solid transparent; color: #363B42"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">C</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">CFD 网格收敛性检查</span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; border: 1px solid transparent; color: #363B42"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">温</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">温升曲线插值</span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; border: 1px solid transparent; color: #363B42"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">夹</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">夹具模态试验对比</span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; text-decoration: none; border: 1px solid transparent; color: #363B42"><span style="flex: 0 0 24px; height: 24px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600">焊</span><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">焊点疲劳寿命估算</span></a>
+</div>
+<div style="margin-top: auto; padding: 10px 14px; border-top: 1px solid #DFE2E6; font-size: 11px; line-height: 1.6; color: #69707A">点图标栏的"对话"可收起此面板</div>
+</aside>
+
+<main style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 20px; border-bottom: 1px solid #DFE2E6; box-sizing: border-box">
+<span style="color: #2B4C6F; display: inline-flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span><h1 style="margin: 0; font-size: 14px; font-weight: 600">对话</h1>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px"><span style="color: #525861">数据集</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid #C6CBD1; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg>cell_A12_cycles.csv<span style="color: #69707A">+1</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span></div>
+</div>
+
+<div style="flex: 1; overflow: auto; padding: 24px 20px; background: #F8F9FA">
+<div style="max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; gap: 12px"><span style="flex: 0 0 28px; height: 28px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">陈</span><div style="flex: 1; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 12px 16px; font-size: 14px; line-height: 1.7"><div style="margin-bottom: 8px"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #213C59; background: #EEF2F6; border: 1px solid #DCE4EC; border-radius: 2px; padding: 0 6px; font-family: 'IBM Plex Mono', monospace"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg>cell_A12_cycles.csv</span></div>电压数据噪声比较大，先平滑一下，再画出前 50 圈的放电曲线。</div></div>
+<div style="display: flex; gap: 12px"><span style="flex: 0 0 28px; height: 28px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500">R</span><div style="flex: 1; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-left: 3px solid #2B4C6F; border-radius: 6px; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.7">
+<button type="button" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 4px; border: 1px solid #DFE2E6; background: #F8F9FA; font-size: 12px; color: #525861"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>过程 · 4 步 · 3.1 s</button>
+<p style="margin: 0; color: #363B42">已用 Savitzky–Golay 滤波平滑 voltage 列（窗口 11、3 阶），曲线拐点保留。前 50 圈放电容量 2.310 → 2.190 Ah（−5.2 %），平台电压漂移 4 mV，可忽略。</p>
+<div style="border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #ECEEF1">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">CALC-A12-002</span><span style="font-size: 13px; font-weight: 600">放电曲线 · 第 1–50 圈</span><span style="font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span>
+<div style="margin-left: auto; display: inline-flex; border: 1px solid #C6CBD1; border-radius: 4px; overflow: hidden; font-size: 12px"><button type="button" style="height: 24px; padding: 0 10px; border: 0; background: #16191D; color: #FFFFFF">图</button><button type="button" style="height: 24px; padding: 0 10px; border: 0; border-left: 1px solid #C6CBD1; background: #FFFFFF; color: #363B42">表</button></div>
+</div>
+<svg viewBox="0 0 720 200" style="display: block; width: 100%; height: auto" role="img" aria-label="示例放电曲线：第 50 圈曲线略向左收缩">
+<g stroke="#ECEEF1" stroke-width="1"><path d="M48 20H700M48 60H700M48 100H700M48 140H700"></path></g>
+<path d="M48 172H700M48 20V172" stroke="#C6CBD1" stroke-width="1" fill="none"></path>
+<path d="M48 30 C 120 48, 200 58, 300 64 S 520 78, 600 104 S 660 150, 690 168" fill="none" stroke="#2E5F8A" stroke-width="2"></path>
+<path d="M48 32 C 118 50, 196 61, 292 67 S 500 82, 572 108 S 630 152, 656 168" fill="none" stroke="#D0702E" stroke-width="2" stroke-dasharray="6 4"></path>
+<g font-family="IBM Plex Mono, monospace" font-size="11" fill="#69707A"><text x="40" y="12" text-anchor="end">(V)</text><text x="40" y="26" text-anchor="end">4.2</text><text x="40" y="104" text-anchor="end">3.6</text><text x="40" y="176" text-anchor="end">3.0</text><text x="48" y="192">0</text><text x="690" y="192" text-anchor="end">2.4  容量 (Ah)</text></g>
+<g font-size="12" font-family="IBM Plex Sans, Noto Sans SC, sans-serif"><path d="M536 23h14" stroke="#2E5F8A" stroke-width="2"></path><text x="556" y="27" fill="#363B42">第 1 圈</text><path d="M612 23h14" stroke="#D0702E" stroke-width="2" stroke-dasharray="4 3"></path><text x="632" y="27" fill="#363B42">第 50 圈</text></g>
+</svg>
+<table style="width: 100%; border-collapse: collapse; font-size: 12px; border-top: 1px solid #ECEEF1">
+<thead><tr style="background: #F8F9FA"><th style="text-align: left; padding: 5px 14px; font-weight: 500; color: #525861">指标</th><th style="text-align: right; padding: 5px 14px; font-weight: 500; color: #525861">第 1 圈</th><th style="text-align: right; padding: 5px 14px; font-weight: 500; color: #525861">第 50 圈</th><th style="text-align: right; padding: 5px 14px; font-weight: 500; color: #525861">变化</th></tr></thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace">
+<tr><td style="padding: 5px 14px; border-top: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif">放电容量 (Ah)</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">2.310</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">2.190</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">−5.2 %</td></tr>
+<tr><td style="padding: 5px 14px; border-top: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif">平台电压 (V)</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">3.652</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">3.648</td><td style="text-align: right; padding: 5px 14px; border-top: 1px solid #ECEEF1">−4 mV</td></tr>
+</tbody>
+</table>
+<div style="padding: 7px 14px; border-top: 1px solid #ECEEF1; background: #F8F9FA; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861; display: flex; flex-wrap: wrap; gap: 4px 16px"><span>savgol_filter v1.2</span><span>window=11 order=3</span><span>→ cell_A12_smoothed</span><span>0.82 s</span><a href="#" style="margin-left: auto">复现</a><a href="#">导出计算书</a></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px"><button type="button" style="height: 28px; padding: 0 10px; border-radius: 4px; border: 1px dashed #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">计算各圈容量保持率</button><button type="button" style="height: 28px; padding: 0 10px; border-radius: 4px; border: 1px dashed #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">拟合容量衰减曲线</button><button type="button" style="height: 28px; padding: 0 10px; border-radius: 4px; border: 1px dashed #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">对比 dV/dQ 峰位</button></div>
+</div></div>
+
+<div style="display: flex; gap: 12px"><span style="flex: 0 0 28px; height: 28px; border-radius: 4px; background: #E7E9EC; color: #525861; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600">陈</span><div style="flex: 1; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 12px 16px; font-size: 14px; line-height: 1.7">找出 dV/dQ 曲线上的峰，看看峰位随循环怎么移动。</div></div>
+<div style="display: flex; gap: 12px"><span style="flex: 0 0 28px; height: 28px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 500">R</span><div style="flex: 1; min-width: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-left: 3px solid #2B4C6F; border-radius: 6px; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.7">
+<button type="button" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 4px; border: 1px solid #DFE2E6; background: #F8F9FA; font-size: 12px; color: #525861"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>过程 · 3 步 · 运行中</button>
+<div style="border: 1px dashed #525861; border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px"><span style="font-size: 13px; font-weight: 600">dV/dQ 峰位追踪</span><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 0 5px; border-radius: 2px; border: 1px dashed #525861; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>生成 · 待复核</span></div>
+<p style="margin: 0; font-size: 13px; line-height: 1.7; color: #363B42">算法库里没有现成的峰位追踪方法。AI 写了一段临时代码（scipy.signal.find_peaks + 逐圈对齐），沙箱测试 3/3 通过。审阅之前，下面的结论只作参考。</p>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px">查看代码</button><button type="button" style="height: 28px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px">复核并存入算法库</button></div>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #213C59"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2B4C6F"></span>正在生成图表… 第 4 步 · 2 s</span>
+</div></div>
+
+</div>
+</div>
+
+<div style="padding: 12px 20px 14px; border-top: 1px solid #DFE2E6; background: #FFFFFF">
+<div style="max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end">
+<button type="button" aria-label="附加图片" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #525861; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 15l-5-5L5 21"></path></svg></button>
+<label for="composer" style="position: absolute; left: -9999px">输入分析问题</label>
+<textarea id="composer" rows="2" placeholder="描述要做的分析，例如：对 voltage 列做 FFT，标出主频" style="flex: 1; box-sizing: border-box; border: 1px solid #C6CBD1; border-radius: 4px; resize: none; padding: 8px 12px; font-size: 14px; line-height: 1.5; color: #16191D; font-family: inherit"></textarea>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px">发送</button>
+</div>
+<div style="max-width: 760px; margin: 6px auto 0; display: flex; gap: 12px; font-size: 11px; color: #69707A"><span>Enter 发送 · Shift+Enter 换行</span><span style="margin-left: auto">技能：电池分析规范</span></div>
+</div>
+</main>
+
+<aside aria-label="工作台" style="flex: 0 0 300px; border-left: 1px solid #DFE2E6; background: #FFFFFF; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; height: 52px; padding: 0 16px; border-bottom: 1px solid #DFE2E6; box-sizing: border-box"><h2 style="margin: 0; font-size: 14px; font-weight: 600">工作台</h2><span style="margin-left: 8px; font-size: 12px; color: #69707A">本轮 4 步</span><button type="button" aria-label="收起工作台" style="margin-left: auto; width: 28px; height: 28px; border: 0; background: transparent; color: #525861; display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M15 3v18"></path></svg></button></div>
+<ol style="list-style: none; margin: 0; padding: 6px 0; font-size: 13px">
+<li style="display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 8px; padding: 9px 16px; align-items: baseline;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">01</span><span style="font-weight: 500">读取数据集</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #22603B">0.12 s</span><span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A; grid-column: 2 / 4">12,480 × 9</span></li>
+<li style="display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 8px; padding: 9px 16px; align-items: baseline;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">02</span><span style="font-weight: 500">计算 dV/dQ</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #22603B">0.40 s</span><span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A; grid-column: 2 / 4">numeric_diff v1.0 · 内置</span></li>
+<li style="display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 8px; padding: 9px 16px; align-items: baseline; background: #F8F9FA; border-left: 2px dashed #525861; padding-left: 14px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">03</span><span style="font-weight: 500">峰位追踪</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #22603B">1.21 s</span><span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #525861; grid-column: 2 / 4">AI 生成 · 待复核 · 测试 3/3</span></li>
+<li style="display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 8px; padding: 9px 16px; align-items: baseline; background: #EEF2F6;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #213C59">04</span><span style="font-weight: 500">生成图表</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #213C59">运行中</span><span></span></li>
+</ol>
+<div style="margin-top: auto; border-top: 1px solid #DFE2E6; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px"><div style="font-size: 12px; font-weight: 600; color: #525861">步骤 03 参数</div><div style="display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px"><span style="color: #69707A">prominence</span><span>0.015 V/Ah</span><span style="color: #69707A">distance</span><span>20 点</span><span style="color: #69707A">align</span><span>by_cycle</span></div></div>
+</aside>
+</div></div></section><section id="Datasets" class="board"><div class="board-title">05 数据集</div><div class="screen"><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #FFFFFF; width: 100%; min-height: 880px; box-sizing: border-box; display: flex; align-items: stretch">
+
+<nav aria-label="主导航" style="flex: 0 0 56px; background: #F3F4F6; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; box-sizing: border-box">
+<span title="RLab Cortex" style="display: inline-flex; width: 32px; height: 32px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; margin-bottom: 4px">R</span>
+<button type="button" aria-label="新建对话" title="新建对话" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<a href="#" aria-label="对话" title="对话" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></a>
+<a href="#" aria-label="数据集" title="数据集" aria-current="page" style="position: relative; width: 36px; height: 36px; border-radius: 4px; background: #FFFFFF; border: 1px solid #DFE2E6; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><span style="position: absolute; left: -11px; top: 9px; width: 3px; height: 16px; border-radius: 1px; background: #2B4C6F"></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></a>
+<a href="#" aria-label="算法库" title="算法库" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"></path><path d="M9 11.2h5.7"></path></svg></a>
+<a href="#" aria-label="流程模板" title="流程模板" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"></rect><rect x="15" y="15" width="6" height="6" rx="1"></rect><path d="M6 9v4a2 2 0 0 0 2 2h7"></path></svg></a>
+<a href="#" aria-label="技能" title="技能" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.4 7.3a2.5 2.5 0 1 0-3.4-3.4L9 11l-1 4 4-1z"></path><path d="M4 20h16"></path></svg></a>
+<a href="#" aria-label="设置" title="设置" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></a>
+<a href="#" aria-label="关于" title="关于" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg></a>
+<div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span style="width: 36px; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #525861; border: 1px solid #C6CBD1; border-radius: 4px; box-sizing: border-box">中</span>
+<a href="#" aria-label="退出登录" title="退出登录" style="width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; color: #69707A"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #A0A6AE">v0.9</span>
+</div>
+</nav>
+<section aria-label="数据集列表" style="flex: 0 0 320px; background: #F8F9FA; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column">
+<div style="padding: 16px; border-bottom: 1px solid #DFE2E6; display: flex; flex-direction: column; gap: 8px"><button type="button" style="height: 34px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; justify-content: center; width: 100%"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M17 8l-5-5-5 5M12 3v12"></path></svg>上传数据</button><div style="font-size: 12px; line-height: 1.6; color: #69707A">CSV / Excel / Parquet / MAT，可一次选多个，或把文件、文件夹拖到这里</div><button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; justify-content: center; width: 100%; color: #363B42"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"></path></svg>清理中间结果（3）</button></div>
+<div style="flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 13px">
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 8px; border-radius: 4px; text-decoration: none; color: #16191D; background: #FFFFFF; border: 1px solid #DFE2E6"><span style="width: 12px; color: #69707A; display: inline-flex"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ; font-weight: 500">cell_A12_cycles.csv</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">12,480 × 9</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 26px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">↳</span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'IBM Plex Mono', monospace; font-size: 12px">cell_A12_smoothed</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">派生 · 平滑 · 12,480 × 9</span></span><span title="已保留" style="margin-left: auto; color: #69707A; display: inline-flex"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 10.8V6h6v4.8l2 3.2H7z"></path></svg></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 44px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">↳</span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'IBM Plex Mono', monospace; font-size: 12px">dvdq_by_cycle</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">派生 · dV/dQ · 50 × 240</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 8px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"></span><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ">nvh_bench3_ch3.parquet</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">480,000 × 4</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 8px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"></span><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ">cfd_mesh_conv.xlsx</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">3 张表</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 8px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"></span><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ">thermal_rise_0915.csv</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">3,600 × 6</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 8px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="width: 12px; color: #69707A; display: inline-flex"></span><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></span><span style="display: flex; flex-direction: column; min-width: 0"><span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ">fixture_modal_0912.mat</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">6 通道 · 8,192 点</span></span></a>
+</div>
+</section>
+
+<main style="flex: 1 1 auto; min-width: 0; overflow: auto; background: #FFFFFF">
+<div style="padding: 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: flex-start; gap: 12px">
+<div style="min-width: 0"><h2 style="margin: 0; font-size: 20px; font-weight: 600">cell_A12_cycles.csv</h2><div style="margin-top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">cell_A12_cycles.csv · csv · 12,480 行 × 9 列 · 上传于 2026-11-06 14:20</div></div>
+<div style="margin-left: auto; display: flex; gap: 8px; flex-shrink: 0"><button type="button" style="height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 13px; display: inline-flex; align-items: center; gap: 6px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>解释</button><button type="button" style="height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 13px; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-6"></path></svg>可视化</button><button type="button" style="height: 32px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px">在对话中分析</button></div>
+</div>
+<div style="border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid #ECEEF1; background: #F8F9FA"><span style="font-size: 13px; font-weight: 600">数据概况</span><span style="font-size: 12px; color: #69707A">自动生成</span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); font-size: 12px">
+<div style="padding: 12px 16px; border-right: 1px solid #ECEEF1"><div style="color: #69707A">时间跨度</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; margin-top: 2px">0 – 124,800 s</div></div>
+<div style="padding: 12px 16px; border-right: 1px solid #ECEEF1"><div style="color: #69707A">循环圈数</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; margin-top: 2px">50</div></div>
+<div style="padding: 12px 16px; border-right: 1px solid #ECEEF1"><div style="color: #69707A">电压范围 (V)</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; margin-top: 2px">2.998 – 4.201</div></div>
+<div style="padding: 12px 16px"><div style="color: #69707A">缺失值</div><div style="margin-top: 2px"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #7A5300"><span style="width: 7px; height: 7px; border-radius: 999px; background: #C8900E"></span>voltage 38 个</span></div></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid #ECEEF1; font-size: 12px"><span style="color: #525861">建议分析</span><button type="button" style="height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">平滑降噪</button><button type="button" style="height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">拟合关系</button><button type="button" style="height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">找异常点</button><button type="button" style="height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">相关性</button><button type="button" style="height: 26px; padding: 0 10px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; font-size: 12px; color: #363B42">清洗数据</button></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861"><span style="color: #69707A; font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif">血缘</span><span style="padding: 1px 7px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">cell_A12_cycles.csv</span><span style="color: #A0A6AE">→ 平滑 →</span><a href="#" style="padding: 0 6px; border-radius: 2px; border: 1px solid #C6CBD1; color: #363B42; text-decoration: none">cell_A12_smoothed</a><span style="color: #A0A6AE">→ dV/dQ →</span><a href="#" style="padding: 0 6px; border-radius: 2px; border: 1px solid #C6CBD1; color: #363B42; text-decoration: none">dvdq_by_cycle</a></div>
+<div style="border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #DFE2E6; font-size: 12px"><span style="font-size: 13px; font-weight: 600">数据预览</span><span style="color: #69707A">前 10 行 / 共 12,480 行</span><span style="margin-left: auto; display: inline-flex; border: 1px solid #C6CBD1; border-radius: 4px; overflow: hidden"><button type="button" style="height: 24px; padding: 0 10px; border: 0; background: #FFFFFF; color: #363B42; font-size: 12px">标准</button><button type="button" style="height: 24px; padding: 0 10px; border: 0; border-left: 1px solid #C6CBD1; background: #16191D; color: #FFFFFF; font-size: 12px">紧凑</button></span></div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 760px">
+<thead style="position: sticky; top: 0">
+<tr style="background: #F8F9FA">
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6; font-weight: 500; color: #69707A; font-family: 'IBM Plex Mono', monospace; font-size: 11px; width: 48px">#</th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">cycle</div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">int64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">time <span style="font-weight: 400; color: #69707A">s</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">voltage <span style="font-weight: 400; color: #69707A">V</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7A5300">float64 · 38 缺失</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">current <span style="font-weight: 400; color: #69707A">A</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">capacity <span style="font-weight: 400; color: #69707A">Ah</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: right; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">temp <span style="font-weight: 400; color: #69707A">°C</span></div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">float64</div></th>
+<th style="text-align: left; padding: 8px 12px; border-bottom: 1px solid #DFE2E6"><div style="font-weight: 600">step</div><div style="font-weight: 400; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #69707A">category</div></th>
+</tr>
+</thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace">
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.4120</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0000</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.1</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">2</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">10.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.4387</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0033</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.2</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">3</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">20.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #A0A6AE">—</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0067</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.2</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr style="background: #EEF2F6"><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">4</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">30.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.4592</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0100</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.3</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">5</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">40.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.4761</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0133</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.3</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">6</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">50.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.4902</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0167</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.4</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">7</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">60.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.5018</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.4</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">8</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">70.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.5121</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0233</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.5</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">9</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">80.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.5207</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0267</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.5</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+<tr><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1; color: #69707A">10</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">90.0</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">3.5284</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">1.200</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">0.0300</td><td style="text-align: right; padding: 3px 12px; border-bottom: 1px solid #ECEEF1">25.6</td><td style="padding: 3px 12px; border-bottom: 1px solid #ECEEF1; font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif">CC 充电</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+</div></div></section><section id="Algorithms" class="board"><div class="board-title">06 算法库</div><div class="screen"><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #FFFFFF; width: 100%; min-height: 880px; box-sizing: border-box; display: flex; align-items: stretch">
+
+<nav aria-label="主导航" style="flex: 0 0 56px; background: #F3F4F6; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; box-sizing: border-box">
+<span title="RLab Cortex" style="display: inline-flex; width: 32px; height: 32px; border-radius: 4px; background: #2B4C6F; color: #FFFFFF; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 500; margin-bottom: 4px">R</span>
+<button type="button" aria-label="新建对话" title="新建对话" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 4px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<a href="#" aria-label="对话" title="对话" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></a>
+<a href="#" aria-label="数据集" title="数据集" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg></a>
+<a href="#" aria-label="算法库" title="算法库" aria-current="page" style="position: relative; width: 36px; height: 36px; border-radius: 4px; background: #FFFFFF; border: 1px solid #DFE2E6; color: #2B4C6F; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><span style="position: absolute; left: -11px; top: 9px; width: 3px; height: 16px; border-radius: 1px; background: #2B4C6F"></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"></path><path d="M9 11.2h5.7"></path></svg></a>
+<a href="#" aria-label="流程模板" title="流程模板" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"></rect><rect x="15" y="15" width="6" height="6" rx="1"></rect><path d="M6 9v4a2 2 0 0 0 2 2h7"></path></svg></a>
+<a href="#" aria-label="技能" title="技能" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.4 7.3a2.5 2.5 0 1 0-3.4-3.4L9 11l-1 4 4-1z"></path><path d="M4 20h16"></path></svg></a>
+<a href="#" aria-label="设置" title="设置" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></a>
+<a href="#" aria-label="关于" title="关于" style="width: 36px; height: 36px; border-radius: 4px; border: 1px solid transparent; color: #69707A; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg></a>
+<div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px">
+<span style="width: 36px; height: 28px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #525861; border: 1px solid #C6CBD1; border-radius: 4px; box-sizing: border-box">中</span>
+<a href="#" aria-label="退出登录" title="退出登录" style="width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; color: #69707A"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5M21 12H9"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #A0A6AE">v0.9</span>
+</div>
+</nav>
+<section aria-label="算法列表" style="flex: 0 0 300px; background: #F8F9FA; border-right: 1px solid #DFE2E6; display: flex; flex-direction: column">
+<div style="padding: 12px; border-bottom: 1px solid #DFE2E6; display: flex; flex-direction: column; gap: 8px">
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+<a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid #C6CBD1; border-radius: 4px; background: #FFFFFF; text-decoration: none; color: #16191D"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500"><span style="color: #2B4C6F; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M17 8l-5-5-5 5M12 3v12"></path></svg></span>上传自由算法</span><span style="font-size: 11px; color: #69707A">贴代码即用</span></a>
+<a href="#" style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px dashed #525861; border-radius: 4px; background: #FFFFFF; text-decoration: none; color: #16191D"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>生成算法</span><span style="font-size: 11px; color: #69707A">描述需求，生成后需复核</span></a>
+</div>
+<div style="position: relative"><span style="position: absolute; left: 9px; top: 8px; color: #69707A; display: inline-flex"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg></span><label for="al-search" style="position: absolute; left: -9999px">搜索算法</label><input id="al-search" placeholder="搜索算法名称或用途" style="width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px 0 30px; border: 1px solid #C6CBD1; border-radius: 4px; font-size: 13px; font-family: inherit"></div>
+</div>
+<div style="flex: 1; overflow: auto; padding: 6px 8px; font-size: 13px; display: flex; flex-direction: column; gap: 1px">
+<div style="display: flex; align-items: center; gap: 4px; padding: 8px 6px 4px; font-size: 12px; font-weight: 600; color: #525861"><span style="display: inline-flex; color: #69707A"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>信号处理<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: #69707A">6</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; background: #FFFFFF; border: 1px solid #DFE2E6; font-weight: 500"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">savgol_filter</span><span style="margin-left: auto"><span style="font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">butterworth_lowpass</span><span style="margin-left: auto"><span style="font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">fft_spectrum</span><span style="margin-left: auto"><span style="font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">dvdq_peak_track</span><span style="margin-left: auto"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 0 5px; border-radius: 2px; border: 1px dashed #525861; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>待复核</span></span></a>
+<div style="display: flex; align-items: center; gap: 4px; padding: 8px 6px 4px; font-size: 12px; font-weight: 600; color: #525861"><span style="display: inline-flex; color: #69707A"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>插值与拟合<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: #69707A">4</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">rbf_interpolate</span><span style="margin-left: auto"><span style="font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">lab_arrhenius_fit</span><span style="margin-left: auto"><span style="font-size: 11px; font-weight: 500; padding: 0 5px; border-radius: 2px; border: 1px solid #2B4C6F; color: #2B4C6F">自定义</span></span></a>
+<a href="#" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 22px; border-radius: 4px; text-decoration: none; color: #16191D; border: 1px solid transparent"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">capacity_fade_model</span><span style="margin-left: auto"><span style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 0 5px; border-radius: 2px; border: 1px solid #525861; color: #363B42"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>已复核</span></span></a>
+<div style="display: flex; align-items: center; gap: 4px; padding: 8px 6px 4px; font-size: 12px; font-weight: 600; color: #525861"><span style="display: inline-flex; color: #69707A"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>统计检验<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: #69707A">5</span></div>
+<div style="display: flex; align-items: center; gap: 4px; padding: 8px 6px 4px; font-size: 12px; font-weight: 600; color: #525861"><span style="display: inline-flex; color: #69707A"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>频域与模态<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: #69707A">3</span></div>
+</div>
+</section>
+
+<main style="flex: 1 1 auto; min-width: 0; overflow: auto; background: #FFFFFF">
+<div style="max-width: 760px; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 10px"><h2 style="margin: 0; font-size: 20px; font-weight: 600; font-family: 'IBM Plex Mono', monospace">savgol_filter</h2><span style="font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 2px; background: #2B4C6F; color: #FFFFFF">内置</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #69707A">v1.2 · 信号处理</span></div>
+<p style="margin: 0; font-size: 14px; line-height: 1.7; color: #363B42">Savitzky–Golay 滤波：在滑动窗口内做多项式最小二乘拟合，平滑噪声的同时保留峰形和拐点。适合电压、温度、应变等采样均匀的时序信号。</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px"><button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"></path></svg>查看源码</button><button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>复制为我的算法（可改）</button><button type="button" style="height: 28px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px">代码 · 编辑 / 调试 / 历史版本</button></div>
+</div>
+
+<div style="border: 1px solid #DFE2E6; border-radius: 6px"><button type="button" style="width: 100%; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 0; background: #F8F9FA; font-size: 12px; color: #363B42; border-radius: 6px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>原始数据预览 · 前 5 行（共 12,480 行 × 9 列）<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #69707A">cell_A12_cycles.csv</span></button></div>
+
+<div style="border: 1px solid #DFE2E6; border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 13px; font-weight: 600">参数</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="al-col" style="font-size: 13px; font-weight: 500">目标列</label><div style="display: flex; align-items: center; border: 1px solid #C6CBD1; border-radius: 4px; height: 32px; overflow: hidden"><input id="al-col" value="voltage" style="flex: 1; min-width: 0; border: 0; height: 30px; padding: 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: left; color: #16191D"><span style="padding: 0 10px; height: 100%; display: inline-flex; align-items: center; border-left: 1px solid #DFE2E6; background: #F8F9FA; font-size: 12px; color: #525861">V</span></div><span style="font-size: 12px; color: #69707A">数值列</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="al-win" style="font-size: 13px; font-weight: 500">窗口长度</label><div style="display: flex; align-items: center; border: 1px solid #C6CBD1; border-radius: 4px; height: 32px; overflow: hidden"><input id="al-win" value="11" style="flex: 1; min-width: 0; border: 0; height: 30px; padding: 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right; color: #16191D"><span style="padding: 0 10px; height: 100%; display: inline-flex; align-items: center; border-left: 1px solid #DFE2E6; background: #F8F9FA; font-size: 12px; color: #525861">点</span></div><span style="font-size: 12px; color: #69707A">奇数，≥ 阶数 + 2</span></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><label for="al-ord" style="font-size: 13px; font-weight: 500">多项式阶数</label><div style="display: flex; align-items: center; border: 1px solid #C6CBD1; border-radius: 4px; height: 32px; overflow: hidden"><input id="al-ord" value="3" style="flex: 1; min-width: 0; border: 0; height: 30px; padding: 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; text-align: right; color: #16191D"><span style="padding: 0 10px; height: 100%; display: inline-flex; align-items: center; border-left: 1px solid #DFE2E6; background: #F8F9FA; font-size: 12px; color: #525861">阶</span></div><span style="font-size: 12px; color: #69707A">通常 2–4</span></div>
+</div>
+<div style="display: flex; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid #ECEEF1">
+<span style="flex: 0 0 auto"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span></span>
+<label for="al-hint" style="position: absolute; left: -9999px">用一句话描述，推荐参数</label>
+<input id="al-hint" placeholder="不会设参数？用一句话说，例如：保留 10 s 以内的波动" style="flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid #C6CBD1; border-radius: 4px; font-size: 13px; font-family: inherit">
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px">推荐参数</button>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 12px"><button type="button" style="height: 34px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l13 8-13 8z"></path></svg>执行</button><span style="font-size: 12px; color: #69707A">Ctrl Enter</span></div>
+
+<div style="border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #ECEEF1"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #22603B"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2F7D4F"></span>执行成功</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">820 ms · 12,480 行</span><div style="margin-left: auto; display: flex; gap: 6px"><button type="button" style="height: 26px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 0 3px; border: 1px solid #525861; border-radius: 2px; line-height: 14px">AI</span>解读结果</button><button type="button" style="height: 26px; padding: 0 12px; border-radius: 4px; border: 1px solid #C6CBD1; background: #FFFFFF; color: #16191D; font-size: 12px; display: inline-flex; align-items: center; gap: 6px">可视化</button><button type="button" style="height: 26px; padding: 0 14px; border-radius: 4px; border: 1px solid #2B4C6F; background: #2B4C6F; color: #FFFFFF; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px">存为派生数据集</button></div></div>
+<table style="width: 100%; border-collapse: collapse; font-size: 12px">
+<thead><tr style="background: #F8F9FA"><th style="text-align: right; padding: 5px 12px; font-weight: 500; color: #69707A; width: 48px">#</th><th style="text-align: right; padding: 5px 12px; font-weight: 500; color: #525861">voltage (V)</th><th style="text-align: right; padding: 5px 12px; font-weight: 500; color: #525861">voltage_smooth (V)</th></tr></thead>
+<tbody style="font-family: 'IBM Plex Mono', monospace"><tr><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #69707A">1</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4120</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4131</td></tr><tr><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #69707A">2</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4387</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4362</td></tr><tr><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #69707A">3</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #A0A6AE">—</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4578</td></tr><tr><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #69707A">4</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4651</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4660</td></tr><tr><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1; color: #69707A">5</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4761</td><td style="text-align: right; padding: 3px 12px; border-top: 1px solid #ECEEF1">3.4772</td></tr></tbody>
+</table>
+<div style="padding: 7px 14px; border-top: 1px solid #ECEEF1; background: #F8F9FA; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861; display: flex; gap: 16px"><span>window=11 order=3</span><span>缺失值按线性插补</span><a href="#" style="margin-left: auto">复现</a></div>
+</div>
+</div>
+</main>
+</div></div></section><section id="Plan" class="board"><div class="board-title">07 落地计划</div><div style="font-family: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #16191D; background: #F3F4F6; padding: 72px 24px 96px; box-sizing: border-box; width: 100%">
+<div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px">
+
+<header style="display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #C6CBD1; padding-bottom: 32px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #69707A">07 · 落地计划</div>
+<h1 style="margin: 0; font-size: 36px; font-weight: 600">先规范，再骨架，最后逐页替换</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.7; color: #525861; max-width: 780px">方案确认后再动代码。每个阶段单独提交、可单独回退。上一轮试改（只换了颜色和侧栏）建议整体撤回，按本方案重新做。工期为粗略预估。</p>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 0; background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; overflow: hidden">
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; gap: 0; padding: 12px 20px; background: #F8F9FA; border-bottom: 1px solid #DFE2E6; font-size: 12px; font-weight: 600; color: #525861">
+<div>阶段</div><div>内容</div><div>涉及文件</div><div style="text-align: right">预估</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P0</div>
+<div><strong style="font-weight: 600">确认方案</strong><br><span style="color: #525861">评审本方案，定下下方"待你决定"的几项。</span></div>
+<div style="color: #525861">—</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">—</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P1</div>
+<div><strong style="font-weight: 600">设计令牌 + 组件库</strong><br><span style="color: #525861">中性冷灰色板、圆角、阴影、字体写入配置；字体自托管；标准 / 紧凑密度令牌；数值格式化工具（单位、有效位数、科学计数）；新建 Button / Input / Select / Tag / SourceTag / StatusDot / Tabs / Segmented / Sheet / Modal / Popover / EmptyState。</span></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">tailwind.config.ts<br>app/globals.css<br>public/fonts/*<br>components/ui/*（新增）</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">1.5 天</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P2</div>
+<div><strong style="font-weight: 600">应用骨架</strong><br><span style="color: #525861">保留图标栏 + 会话面板两层结构和现有页面布局；统一底色与分隔线，去掉彩虹头像，选中态改为白卡 + 墨蓝短线。</span></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">app/app/page.tsx<br>components/Sidebar.tsx<br>components/LanguageToggle.tsx</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">0.5 天</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P3</div>
+<div><strong style="font-weight: 600">逐页替换</strong><br><span style="color: #525861">按使用频率：对话与工作台 → 数据集 → 算法库与编辑器 → 流程画布 → 技能 → 设置 / 关于 / 反馈。每页一个提交。</span></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">ChatView · WorkbenchPanel · DatasetsView · DataTable · AlgorithmsView · AlgoEditor · AlgoStudio · FlowCanvas · SkillsView · SettingsView · 各类 Modal</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">3–4 天</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P4</div>
+<div><strong style="font-weight: 600">外围页面与图表</strong><br><span style="color: #525861">首页、登录注册、错误页；Recharts / Plotly 统一 8 色系列 + 线型、坐标轴单位；计算书导出模板（PDF / Word + CSV + 参数）。</span></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #525861">app/page.tsx · login · signup · error<br>ChartPanel · PlotlyPanel · FlowGraph</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">1 天</div>
+</div>
+<div style="display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1.4fr) 96px; column-gap: 24px; padding: 18px 20px; font-size: 14px; line-height: 1.6">
+<div style="font-family: 'IBM Plex Mono', monospace; color: #2B4C6F">P5</div>
+<div><strong style="font-weight: 600">走查与验收</strong><br><span style="color: #525861">按下方清单逐项检查，每个页面改版前后截图对比。</span></div>
+<div style="color: #525861">—</div>
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; color: #525861">0.5 天</div>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<section style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">验收清单</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-radius: 6px; padding: 8px 20px">
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">01</span><span>代码中 violet / purple / fuchsia、bg-gradient、blur-3xl、Sparkles 的出现次数为 0</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">02</span><span>不再有写死的颜色值，全部来自令牌（图表色板除外，集中在一个文件）</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">03</span><span>所有文字对比度 ≥ 4.5:1（禁用态除外）</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">04</span><span>只用 Tab 键能走完对话、上传数据、运行算法全流程，焦点始终可见</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">05</span><span>每个 AI 生成的算法与结果都带"AI 生成 · 待复核 / 已复核"标签</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">06</span><span>1280px 与 768px 宽度下无横向滚动、无遮挡</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">07</span><span>断网 / 内网部署时字体正常显示（不依赖外部 CDN）</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">08</span><span>所有数值列带单位、等宽右对齐；表格可切换紧凑密度</span></div>
+<div style="display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid #ECEEF1; font-size: 14px; line-height: 1.6"><span style="font-family: 'IBM Plex Mono', monospace; color: #69707A">09</span><span>图表黑白打印时各系列仍可区分；状态色不用于装饰</span></div>
+</div>
+</section>
+
+<section style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font-size: 20px; font-weight: 600">待你决定</h2>
+<div style="background: #FFFFFF; border: 1px solid #DFE2E6; border-left: 3px solid #2B4C6F; border-radius: 6px; padding: 8px 20px">
+<div style="padding: 14px 0; border-bottom: 1px solid #ECEEF1; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 14px; font-weight: 600">1 · 侧栏结构 <span style="font-weight: 500; color: #22603B">· 已定</span></div>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">保留现有"图标栏 + 弹出会话面板"两层结构，只统一底色和选中态。</div>
+</div>
+<div style="padding: 14px 0; border-bottom: 1px solid #ECEEF1; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 14px; font-weight: 600">2 · 对话形式 <span style="font-weight: 500; color: #22603B">· 已定</span></div>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">保留头像 + 气泡布局，只换视觉：方形头像、细线框气泡，结果卡改为计算书样式。</div>
+</div>
+<div style="padding: 14px 0; border-bottom: 1px solid #ECEEF1; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 14px; font-weight: 600">3 · 主色</div>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">墨蓝是建议，和冷灰底板最搭。如果有公司或实验室的品牌色，可以替换，规范其余部分不受影响（避开红、琥珀、绿，它们已留给状态）。</div>
+</div>
+<div style="padding: 14px 0; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 14px; font-weight: 600">4 · 是否需要深色主题</div>
+<div style="font-size: 13px; line-height: 1.6; color: #525861">默认浅色，方便投影和打印。深色主题适合长时间盯屏或现场监控，令牌结构已预留，单独排期。</div>
+</div>
+</div>
+</section>
+</div>
+
+</div>
+</div></section>
+</body>
+</html>

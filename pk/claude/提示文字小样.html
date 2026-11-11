@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>提示文字小样</title>
+<style>
+:root{--ink-900:#16191d;--ink-700:#363b42;--ink-600:#525861;--ink-500:#69707a;--ink-400:#a0a6ae;--ink-200:#dfe2e6;--ink-150:#eceef1;--bg:#f8f9fa;--brand:#2b4c6f;--danger:#8f2a23;
+  --hintA:#5b7089; --hintB:#69707a;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;--mono:"IBM Plex Mono",Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink-900);font-size:14px;padding:32px 16px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:20px;font-weight:600}
+.intro{margin-top:6px;color:var(--ink-600);font-size:13px;line-height:1.7}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-top:22px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+.col{background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--ink-150);padding:18px}
+.col h2{font-size:14px;font-weight:600}
+.col .spec{margin-top:4px;font:12px var(--mono);color:var(--ink-500)}
+.rec{display:inline-block;margin-left:6px;font:500 11px var(--sans);color:#fff;background:var(--brand);border-radius:3px;padding:1px 5px;vertical-align:1px}
+.sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--ink-150)}
+.lab{font-size:11px;color:var(--ink-400);margin-bottom:6px}
+.body{font-size:14px;line-height:1.7;color:var(--ink-700)}
+.btns{display:flex;gap:8px;margin-top:10px}
+.btn{height:32px;padding:0 12px;border-radius:5px;font-size:13px;border:0;background:var(--brand);color:#fff}
+.btn.s{background:#fff;color:var(--ink-900);box-shadow:0 0 0 1px #c6cbd1}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13px;color:var(--ink-900)}
+.field input{height:32px;border:1px solid #c6cbd1;border-radius:4px;padding:0 8px;font:13px var(--sans)}
+.err{font-size:12px;color:var(--danger);display:flex;gap:5px;align-items:flex-start;line-height:1.6}
+.empty{padding:18px;text-align:center;border-radius:6px;background:var(--bg)}
+svg.i{width:13px;height:13px;flex:none;margin-top:3px}
+/* option A — blue-grey, ⓘ on standalone lines */
+.A .hint{font-size:12px;line-height:1.65;color:var(--hintA);display:flex;gap:5px;align-items:flex-start}
+.A .hint.inline{display:inline;margin-left:6px}
+/* option B — neutral grey, no icon (today's look, made consistent) */
+.B .hint{font-size:12px;line-height:1.65;color:var(--hintB)}
+.B .hint.inline{margin-left:6px}
+.B .hint svg{display:none}
+/* option C — blue-grey with a left rule on standalone lines */
+.C .hint{font-size:12px;line-height:1.65;color:var(--hintA);border-left:2px solid #c9d4e0;padding-left:8px}
+.C .hint.inline{border:0;padding:0;margin-left:6px}
+.C .hint svg{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>提示文字小样</h1>
+  <p class="intro">同一组界面片段，用三种提示样式各排一遍。正文、提示、错误三种文字放在一起对比；错误提示三列都保持红色。选定后全站统一替换。</p>
+
+  <div class="cols">
+    <!-- template repeated per option -->
+    <section class="col A">
+      <h2>A · 偏蓝灰，单独成行带 ⓘ<span class="rec">推荐</span></h2>
+      <p class="spec">12px · #5b7089 · 单独成行前加 ⓘ</p>
+      <div class="sec"><div class="lab">按钮下的说明</div>
+        <p class="body">导入天平、传感器或采集系统导出的数据文件，用中文描述要做的处理。</p>
+        <div class="btns"><button class="btn">打开风洞示例数据</button><button class="btn s">导入数据</button></div>
+        <p class="hint" style="margin-top:8px"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span>可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。</span></p>
+      </div>
+      <div class="sec"><div class="lab">表单字段</div>
+        <div class="field"><label>保留期 <span class="hint inline">每份中间结果从产生起</span></label><input value="20"></div>
+        <p class="err" style="margin-top:6px"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>值必须 ≥ 1 天</p>
+      </div>
+      <div class="sec"><div class="lab">空状态</div>
+        <div class="empty"><p class="body">还没有流程</p><p class="hint" style="justify-content:center;margin-top:2px"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg><span>在对话回答末尾点「存为流程」即可保存。</span></p></div>
+      </div>
+    </section>
+
+    <section class="col B">
+      <h2>B · 中性灰，不加图标</h2>
+      <p class="spec">12px · #69707a · 无图标（统一现在的写法）</p>
+      <div class="sec"><div class="lab">按钮下的说明</div>
+        <p class="body">导入天平、传感器或采集系统导出的数据文件，用中文描述要做的处理。</p>
+        <div class="btns"><button class="btn">打开风洞示例数据</button><button class="btn s">导入数据</button></div>
+        <p class="hint" style="margin-top:8px"><svg class="i"></svg>可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。</p>
+      </div>
+      <div class="sec"><div class="lab">表单字段</div>
+        <div class="field"><label>保留期 <span class="hint inline">每份中间结果从产生起</span></label><input value="20"></div>
+        <p class="err" style="margin-top:6px"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>值必须 ≥ 1 天</p>
+      </div>
+      <div class="sec"><div class="lab">空状态</div>
+        <div class="empty"><p class="body">还没有流程</p><p class="hint" style="margin-top:2px">在对话回答末尾点「存为流程」即可保存。</p></div>
+      </div>
+    </section>
+
+    <section class="col C">
+      <h2>C · 偏蓝灰，单独成行加左侧细线</h2>
+      <p class="spec">12px · #5b7089 · 左侧 2px 细线</p>
+      <div class="sec"><div class="lab">按钮下的说明</div>
+        <p class="body">导入天平、传感器或采集系统导出的数据文件，用中文描述要做的处理。</p>
+        <div class="btns"><button class="btn">打开风洞示例数据</button><button class="btn s">导入数据</button></div>
+        <p class="hint" style="margin-top:8px">可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。</p>
+      </div>
+      <div class="sec"><div class="lab">表单字段</div>
+        <div class="field"><label>保留期 <span class="hint inline">每份中间结果从产生起</span></label><input value="20"></div>
+        <p class="err" style="margin-top:6px"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>值必须 ≥ 1 天</p>
+      </div>
+      <div class="sec"><div class="lab">空状态</div>
+        <div class="empty"><p class="body">还没有流程</p><p class="hint" style="margin-top:4px;display:inline-block;text-align:left">在对话回答末尾点「存为流程」即可保存。</p></div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具库统一效果图</title>
+<style>
+:root{
+  --bg:#f8f9fa; --side:#f3f4f6; --ink-100:#f3f4f6; --ink-150:#eceef1; --ink-200:#dfe2e6; --ink-300:#c6cbd1; --ink-400:#a0a6ae;
+  --ink-500:#69707a; --ink-600:#525861; --ink-700:#363b42; --ink-900:#16191d; --hint:#5b7089;
+  --brand:#2b4c6f; --brand-700:#223d5a; --brand-50:#eef3f8; --brand-100:#dbe5ef;
+  --ok:#2f7d4f; --ok-50:#eef7f1; --warn:#7a5300; --warn-50:#fdf6e7;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink-900);background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;text-align:left}
+.app{display:grid;grid-template-columns:220px 290px minmax(0,1fr);height:100vh}
+.side{background:var(--side);border-right:1px solid var(--ink-200);display:flex;flex-direction:column;padding:14px 10px}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+.logo{width:24px;height:24px;border-radius:5px;background:var(--brand);color:#fff;display:grid;place-items:center;font:600 12px var(--mono)}
+.brand b{font-size:14px}.brand span{font:11px var(--mono);color:var(--ink-500)}
+.new{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;margin:0 2px 14px;border-radius:6px;background:#fff;font-size:13px;box-shadow:0 0 0 1px var(--ink-200)}
+.new kbd{margin-left:auto;font:11px var(--mono);color:var(--ink-400)}
+.nav a{display:flex;align-items:center;height:32px;padding:0 10px;border-radius:6px;color:var(--ink-600);font-size:13px;cursor:pointer}
+.nav a.on{background:#fff;color:var(--ink-900);font-weight:500;box-shadow:0 1px 2px rgba(22,25,29,.07)}
+.nav .c{margin-left:auto;font-size:11px;color:var(--ink-400)}
+.grp{margin:16px 10px 4px;font-size:11px;color:var(--ink-400)}
+
+/* left list */
+.list{background:#fff;border-right:1px solid var(--ink-200);display:flex;flex-direction:column;min-height:0}
+.lhead{padding:14px 14px 10px;border-bottom:1px solid var(--ink-150)}
+.lhead b{font-size:15px}
+.search{margin-top:10px;height:32px;display:flex;align-items:center;gap:7px;padding:0 9px;border-radius:6px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--ink-200);color:var(--ink-400);font-size:12.5px}
+.lbody{flex:1;overflow-y:auto;padding:6px 8px 12px}
+.lg{margin:12px 6px 4px;font-size:11px;color:var(--ink-500);display:flex;justify-content:space-between}
+.li{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border-radius:6px;font-size:13px;color:var(--ink-800)}
+.li:hover{background:var(--bg)}
+.li.on{background:var(--brand-50)}
+.li .tg{margin-left:auto;font-size:10.5px;padding:0 5px;border-radius:3px;background:var(--ink-100);color:var(--ink-500)}
+.li .tg.d{background:var(--warn-50);color:var(--warn)}
+.li .tg.a{border:1px solid var(--ink-300);background:#fff;font-family:var(--mono)}
+.li small{display:block;font-size:11px;color:var(--ink-400)}
+
+/* right overview */
+.main{overflow-y:auto}
+.wrap{max-width:900px;margin:0 auto;padding:28px 40px 48px}
+h1{font-size:22px;font-weight:600}
+.lead{margin-top:6px;font-size:13.5px;line-height:1.7;color:var(--ink-600)}
+.entries{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entry{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150)}
+.entry.on{box-shadow:0 0 0 1.5px var(--brand)}
+.entry .ei{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--ink-100);color:var(--ink-700)}
+.entry.on .ei{background:var(--brand);color:#fff}
+.entry b{display:block;font-size:14px;font-weight:500}
+.entry span{display:block;margin-top:2px;font-size:12px;line-height:1.6;color:var(--ink-500)}
+.ai{font:600 10px var(--mono);border:1px solid currentColor;border-radius:3px;padding:0 3px;line-height:14px}
+.aibox{margin-top:10px;padding:14px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--brand-100),0 6px 20px -10px rgba(43,76,111,.35)}
+.aibox .ta{min-height:64px;padding:2px 2px 8px;font-size:14px;color:var(--ink-400);line-height:1.6}
+.aibox .ta.filled{color:var(--ink-900)}
+.aibox .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border-top:1px solid var(--ink-150);padding-top:10px}
+.eg{height:24px;padding:0 9px;border-radius:12px;background:var(--ink-100);color:var(--ink-700);font-size:12px;display:inline-flex;align-items:center}
+.go{margin-left:auto;height:32px;padding:0 14px;border-radius:6px;background:var(--brand);color:#fff;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.hint{margin-top:8px;font-size:12px;line-height:1.65;color:var(--hint);display:flex;gap:6px}
+.hint svg{width:13px;height:13px;flex:none;margin-top:3px}
+.sec{margin-top:26px;display:flex;align-items:baseline;gap:8px}
+.sec h2{font-size:14px;font-weight:600}
+.sec span{font-size:12px;color:var(--ink-500)}
+.rows{margin-top:8px;background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--ink-150)}
+.r{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px}
+.r+.r{border-top:1px solid var(--ink-150)}
+.r .meta{font-size:12px;color:var(--ink-500)}
+.r .btn{margin-left:auto}
+.btn{height:28px;padding:0 11px;border-radius:5px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.p{background:var(--brand);color:#fff}.btn.s{background:#fff;box-shadow:0 0 0 1px var(--ink-300)}
+.tg2{font-size:11px;padding:1px 6px;border-radius:3px;background:var(--warn-50);color:var(--warn)}
+.cats{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+.cat{padding:8px 12px;border-radius:6px;background:#fff;box-shadow:0 0 0 1px var(--ink-150);font-size:12.5px;color:var(--ink-700)}
+.cat em{font-style:normal;color:var(--ink-400);margin-left:6px;font-family:var(--mono)}
+/* AI result state */
+.res{margin-top:12px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150);overflow:hidden}
+.res .rh{padding:10px 14px;font-size:12.5px;color:var(--ink-600);background:var(--bg);display:flex;gap:8px;align-items:center}
+.res .rb{padding:14px}
+.step{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.6}
+.step+.step{margin-top:10px}
+.step .n{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:11px var(--mono);background:var(--ink-100);color:var(--ink-600)}
+.step .n.ok{background:var(--ok-50);color:var(--ok)}
+.match{margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mc{padding:10px 12px;border-radius:6px;box-shadow:0 0 0 1px var(--ink-200);font-size:12.5px}
+.mc b{font-weight:500;font-size:13px}
+.mc p{margin-top:2px;color:var(--ink-500);font-size:12px}
+.code{margin-top:6px;padding:10px 12px;border-radius:6px;background:#16191d;color:#d7dce2;font:12px/1.7 var(--mono);white-space:pre;overflow:auto}
+.chain{margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.node{padding:6px 10px;border-radius:6px;box-shadow:0 0 0 1px var(--ink-200);background:#fff;font-size:12.5px}
+.node small{display:block;font:10.5px var(--mono);color:var(--ink-400)}
+.node.miss{box-shadow:0 0 0 1px #e0c58a;background:var(--warn-50)}
+.arrow{color:var(--ink-300)}
+.ract{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+/* switches (mockup only) */
+.sw{position:fixed;right:16px;bottom:14px;z-index:9;display:flex;gap:8px}
+.sw div{display:flex;gap:2px;padding:2px;border-radius:7px;background:#16191d}
+.sw button{height:26px;padding:0 10px;border-radius:5px;font-size:12px;color:#c6cbd1}
+.sw button.on{background:#fff;color:#16191d}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">R</div><div><b>RLab Cortex</b><br><span>v1.0.1</span></div></div>
+    <div class="new">＋ 新建分析<kbd>Ctrl K</kbd></div>
+    <nav class="nav"><a>数据<span class="c">8</span></a><a data-lib="flow">流程<span class="c">6</span></a></nav>
+    <div class="grp">工具库</div>
+    <nav class="nav"><a data-lib="algo">算法</a><a data-lib="skill">技能</a></nav>
+  </aside>
+  <section class="list" id="list"></section>
+  <main class="main"><div class="wrap" id="right"></div></main>
+</div>
+<div class="sw">
+  <div id="swLib"><button data-v="algo">算法</button><button data-v="skill">技能</button><button data-v="flow">流程</button></div>
+  <div id="swState"><button data-v="home">概览</button><button data-v="ai">提交描述后</button></div>
+</div>
+
+<script>
+const I = {
+  ai: '<span class="ai">AI</span>',
+  up: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  search: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+};
+const LIB = {
+  algo: {
+    name: '算法', lead: '对话里 AI 调用的就是这里的算法。选中左侧一个算法，可以不经过 AI 直接选数据运行；需要的算法没有，可以导入自己的代码，或让 AI 写一个。',
+    mine: [['攻角扫描气动系数汇总', 'd', '待审核'], ['两端点变化汇总', 'd', '待审核'], ['离群点汇总', 'a', 'AI']],
+    groups: [['平滑 · 去噪', ['Savitzky-Golay 平滑', '巴特沃斯滤波', '移动平均', '中值滤波', '高斯滤波', '极值标注']], ['找特征 · 找异常', ['FFT 频谱分析', '峰值检测', '异常值检测']], ['拟合 · 建模', ['线性回归', '多项式回归', '非线性曲线拟合']]],
+    entries: [['AI 生成算法', '描述要做的计算，AI 写好代码并在沙箱自测，通过后待你审核', 'ai', true], ['上传自由算法', '贴入 Python 代码即用', 'up', false]],
+    ph: '描述你想要的算法，例如：按 α ≤ 10° 取线性段，拟合升力线斜率并给出截距和 R²',
+    eg: ['把通道里的漂移去掉', '按转速计算阶次谱', '按 ISO 方法算 RMS'],
+    note: 'AI 写好的算法先在沙箱里用合成数据自测；确认保存后才能用于流程。对话里 AI 新写的算法也会出现在「待审核」。',
+    pending: [['攻角扫描气动系数汇总', '来自对话「取 α ≤ 10°…」· 沙箱自测 3/3 通过'], ['两端点变化汇总', '来自对话「第 1 圈到第 50 圈…」· 沙箱自测 3/3 通过']],
+    cats: [['准备 · 清洗', 3], ['平滑 · 去噪', 6], ['找特征 · 找异常', 3], ['拟合 · 建模', 3], ['降维 · 看结构', 4], ['结构操作', 5], ['我的', 3]],
+    filled: '按 α ≤ 10° 取线性段，拟合升力线斜率并给出截距和 R²',
+    result: () => `
+      <div class="step"><span class="n ok">1</span><div><b style="font-weight:500">AI 写好了代码</b>：攻角扫描气动系数汇总（参数：alpha_col, cl_col, cd_col, alpha_limit）</div></div>
+      <div class="step"><span class="n ok">2</span><div><b style="font-weight:500">沙箱自测 3/3 通过</b>（用合成数据跑了 3 个测试用例）</div></div>
+      <div class="step"><span class="n">3</span><div>已存为草稿，出现在左侧「我的」和下方「待审核」。确认保存后才能用于流程。</div></div>
+      <div class="ract"><button class="btn p">查看并审核</button><button class="btn s">丢弃</button></div>`,
+  },
+  skill: {
+    name: '技能', lead: '技能是写给对话里 AI 的分析规范（检测流程、判定标准、报告格式）。在对话输入框上方的「Skills」里勾选后，AI 按它来分析。',
+    mine: [],
+    groups: [['平台默认 · 所有用户可用', ['数据质量体检', '分析结论报告']]],
+    entries: [['导入技能', '上传 .zip 或 SKILL.md，AI 会整理成配置卡供你核对', 'up', true], ['平台默认技能', '2 个，所有用户可用，可停用', 'list', false]],
+    noAI: true,
+    special: ['怎么用', '<div class="r"><span class="meta" style="color:var(--ink-700)">1. 在这里导入或启用技能　2. 在对话输入框上方的「Skills」里勾选　3. AI 按技能里的流程和标准来分析；不勾选时按通用方法处理</span></div>'],
+    cats: [['我的', 0], ['平台默认', 2]],
+  },
+  flow: {
+    name: '流程', lead: '流程是保存下来的处理步骤，可以用在新的数据上一键重跑，不经过 AI。选中左侧一个流程，可以运行或在画布里编辑。',
+    mine: [['平滑后看频谱', '', '2 步'], ['锁定版本', '', '1 步']],
+    groups: [['示例', ['【示例】质量清洗 + 相关分析', '【示例】DOE 设计参数敏感性', '【示例】标准去噪流水线']]],
+    entries: [['新建流程', '打开空白画布，从算法库拖入步骤；画布里可以让 AI 帮你填参数', 'plus', true], ['从对话保存', '在对话回答末尾点「存为流程」，这次分析的步骤和参数就存成流程', 'chat', false]],
+    noAI: true,
+    special: ['示例流程', ['【示例】质量清洗 + 相关分析|数据清洗 → 异常值检测 → 相关性矩阵', '【示例】DOE 设计参数敏感性|敏感性分析', '【示例】标准去噪流水线|中值滤波 → Savitzky-Golay 平滑 → 移动平均'].map((x) => { const [n, m] = x.split('|'); return `<div class="r"><b style="font-weight:500">${n}</b><span class="meta">${m}</span><button class="btn s">打开</button></div>`; }).join('')],
+    cats: [['我的', 2], ['示例', 3]],
+  },
+};
+let lib = 'algo', state = 'home';
+function render() {
+  const L = LIB[lib];
+  document.getElementById('list').innerHTML = `
+    <div class="lhead"><b>${L.name}</b><div class="search">${I.search}搜索${L.name}</div></div>
+    <div class="lbody">
+      <div class="lg"><span>我的</span><span>${L.mine.length}</span></div>
+      ${L.mine.length ? '' : '<div style="padding:6px 8px;font-size:12px;color:var(--ink-400)">还没有</div>'}${L.mine.map(([n, k, t]) => `<button class="li">${n}<span class="tg ${k}">${t}</span></button>`).join('')}
+      ${L.groups.map(([g, items]) => `<div class="lg"><span>${g}</span><span>${items.length}</span></div>` + items.map((n) => `<button class="li">${n}</button>`).join('')).join('')}
+    </div>`;
+  const pend = (L.pending||[]).length ? `<div class="sec"><h2>待审核</h2><span>${L.pending.length} 个 · AI 生成、还没确认保存</span></div>
+      <div class="rows">${L.pending.map(([n, m]) => `<div class="r"><span class="tg2">待审核</span><b style="font-weight:500">${n}</b><span class="meta">${m}</span><button class="btn s">审核</button></div>`).join('')}</div>` : '';
+  const ai = state === 'ai' && !L.noAI;
+  const icon = { ai: I.ai, up: I.up, plus: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 5v14M5 12h14"/></svg>', chat: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 5h16v11H9l-5 4z"/></svg>', list: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>' };
+  document.getElementById('right').innerHTML = `
+    <h1>${L.name}</h1>
+    <p class="lead">${L.lead}</p>
+    <div class="entries">${L.entries.map(([t, d, ic, on]) => `<div class="entry ${on ? 'on' : ''}"><span class="ei">${icon[ic]}</span><div><b>${t}</b><span>${d}</span></div></div>`).join('')}</div>
+    ${L.noAI ? '' : `<div class="aibox">
+      <div class="ta ${ai ? 'filled' : ''}">${ai ? L.filled : L.ph}</div>
+      <div class="row">${ai ? '<span class="meta" style="font-size:12px;color:var(--ink-500)">已提交 · 用时 40 s</span>' : L.eg.map((e) => `<span class="eg">${e}</span>`).join('')}<button class="go">${I.ai} 生成</button></div>
+    </div>`}
+    ${ai ? `<div class="res"><div class="rh">${I.ai} AI 的处理结果</div><div class="rb">${L.result()}</div></div>` : (L.note ? `<p class="hint">${I.info}<span>${L.note}</span></p>` : '')}
+    ${ai ? '' : pend}
+    ${!ai && L.special ? `<div class="sec"><h2>${L.special[0]}</h2></div><div class="rows">${L.special[1]}</div>` : ''}
+    ${ai ? '' : `<div class="sec"><h2>库里有什么</h2></div>
+    <div class="cats">${L.cats.map(([n, c]) => `<span class="cat">${n}<em>${c}</em></span>`).join('')}</div>`}`;
+  document.querySelectorAll('#swLib button').forEach((b) => b.classList.toggle('on', b.dataset.v === lib));
+  document.querySelectorAll('#swState button').forEach((b) => b.classList.toggle('on', b.dataset.v === state));
+  document.querySelectorAll('.nav a[data-lib]').forEach((a) => a.classList.toggle('on', a.dataset.lib === lib));
+}
+document.querySelectorAll('#swLib button').forEach((b) => (b.onclick = () => { lib = b.dataset.v; render(); }));
+document.querySelectorAll('#swState button').forEach((b) => (b.onclick = () => { state = b.dataset.v; render(); }));
+document.querySelectorAll('.nav a[data-lib]').forEach((a) => (a.onclick = () => { lib = a.dataset.lib; render(); }));
+window.show = (l, s) => { lib = l; state = s; render(); };
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据页效果图</title>
+<style>
+:root{
+  --bg:#f8f9fa; --side:#f3f4f6; --ink-100:#f3f4f6; --ink-150:#eceef1; --ink-200:#dfe2e6; --ink-300:#c6cbd1; --ink-400:#a0a6ae;
+  --ink-500:#69707a; --ink-600:#525861; --ink-700:#363b42; --ink-800:#25292e; --ink-900:#16191d; --hint:#5b7089;
+  --brand:#2b4c6f; --brand-50:#eef3f8; --brand-100:#dbe5ef;
+  --ok:#2f7d4f; --ok-50:#eef7f1; --warn:#7a5300; --warn-50:#fbf6e8; --warn-200:#eedc9f;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink-900);background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;text-align:left}
+.app{display:grid;grid-template-columns:220px 300px minmax(0,1fr);height:100vh}
+.side{background:var(--side);border-right:1px solid var(--ink-200);display:flex;flex-direction:column;padding:14px 10px}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+.logo{width:24px;height:24px;border-radius:5px;background:var(--brand);color:#fff;display:grid;place-items:center;font:600 12px var(--mono)}
+.brand b{font-size:14px}.brand span{font:11px var(--mono);color:var(--ink-500)}
+.new{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;margin:0 2px 14px;border-radius:6px;background:#fff;font-size:13px;box-shadow:0 0 0 1px var(--ink-200)}
+.new kbd{margin-left:auto;font:11px var(--mono);color:var(--ink-400)}
+.nav a{display:flex;align-items:center;height:32px;padding:0 10px;border-radius:6px;color:var(--ink-600);font-size:13px}
+.nav a.on{background:#fff;color:var(--ink-900);font-weight:500;box-shadow:0 1px 2px rgba(22,25,29,.07)}
+.nav .c{margin-left:auto;font-size:11px;color:var(--ink-400)}
+.grp{margin:16px 10px 4px;font-size:11px;color:var(--ink-400)}
+
+/* left list */
+.list{background:#fff;border-right:1px solid var(--ink-200);display:flex;flex-direction:column;min-height:0}
+.lhead{padding:14px 14px 10px;border-bottom:1px solid var(--ink-150)}
+.lt{display:flex;align-items:center;height:28px}.lt b{font-size:15px}
+.lt .btn{margin-left:auto}
+.search{margin-top:10px;height:32px;display:flex;align-items:center;gap:7px;padding:0 9px;border-radius:6px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--ink-200);color:var(--ink-400);font-size:12px}
+.seg{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;padding:2px;border-radius:6px;background:var(--ink-100)}
+.seg button{height:28px;border-radius:5px;font-size:12.5px;color:var(--ink-600);text-align:center}
+.seg button.on{background:#fff;color:var(--ink-900);font-weight:500;box-shadow:0 1px 2px rgba(22,25,29,.08)}
+.seg em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink-400);margin-left:4px}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+.chip{height:22px;padding:0 8px;border-radius:11px;font-size:11.5px;color:var(--ink-600);box-shadow:inset 0 0 0 1px var(--ink-200)}
+.chip.on{background:var(--ink-900);color:#fff;box-shadow:none}
+.lbody{flex:1;overflow-y:auto;padding:4px 8px 12px}
+.lg{margin:12px 6px 4px;font-size:11px;color:var(--ink-500);display:flex;gap:6px}
+.lg span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg span:last-child{margin-left:auto;font-family:var(--mono)}
+.li{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border-radius:6px;font-size:13px;color:var(--ink-800)}
+.li:hover{background:var(--bg)}
+.li.on{background:var(--brand-50)}
+.li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .rc{font:11px var(--mono);color:var(--ink-500)}
+.li .cd{font:11px var(--mono);color:var(--ink-400);width:52px;flex:none}
+.li.gone{color:var(--ink-400)}
+.tg{font-size:10.5px;padding:0 5px;border-radius:3px;line-height:16px;flex:none}
+.tg.w{background:var(--warn-50);color:var(--warn)}
+.tg.k{background:var(--ok-50);color:var(--ok)}
+.tg.g{background:var(--ink-100);color:var(--ink-500)}
+.ico{width:14px;height:14px;flex:none;color:var(--ink-500)}
+
+/* right */
+.main{overflow-y:auto;display:flex;flex-direction:column}
+.back{flex:none;height:36px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#fff;border-bottom:1px solid var(--ink-200);font-size:13px}
+.back a{color:var(--brand);cursor:pointer}
+.back span{font-size:12px;color:var(--ink-500)}
+.wrap{max-width:960px;width:100%;margin:0 auto;padding:28px 40px 48px}
+h1{font-size:22px;font-weight:600}
+.lead{margin-top:6px;font-size:13.5px;line-height:1.7;color:var(--ink-600)}
+.entries{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.entry{display:flex;gap:12px;align-items:flex-start;padding:14px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150)}
+.entry.p{box-shadow:0 0 0 1px var(--brand-100)}
+.entry .ei{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;flex:none;background:var(--ink-100);color:var(--ink-700)}
+.entry.p .ei{background:var(--brand);color:#fff}
+.entry b{display:block;font-size:14px;font-weight:500}
+.entry span{display:block;margin-top:2px;font-size:12px;line-height:1.6;color:var(--ink-500)}
+.hint{margin-top:8px;font-size:12px;line-height:1.65;color:var(--hint);display:flex;gap:6px}
+.hint svg{width:13px;height:13px;flex:none;margin-top:3px}
+.hint.in{display:inline;margin:0 0 0 8px}
+.warnbar{margin-top:18px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:var(--warn-50);box-shadow:0 0 0 1px var(--warn-200);font-size:13px;color:var(--warn)}
+.warnbar .btn{margin-left:auto}
+.sec{margin-top:26px;display:flex;align-items:baseline;gap:8px}
+.sec h2{font-size:14px;font-weight:600}
+.sec span{font-size:12px;color:var(--ink-500)}
+.sec .btn{margin-left:auto;align-self:center}
+.rows{margin-top:8px;background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--ink-150)}
+.r{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px}
+.r+.r{border-top:1px solid var(--ink-150)}
+.r .meta{font-size:12px;color:var(--ink-500)}
+.r .mono{font:12px var(--mono);color:var(--ink-500)}
+.r .end{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{height:28px;padding:0 11px;border-radius:5px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.p{background:var(--brand);color:#fff}.btn.s{background:#fff;box-shadow:0 0 0 1px var(--ink-300)}
+.btn.l{padding:0 4px;color:var(--brand)}
+.cats{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+.cat{padding:8px 12px;border-radius:6px;background:#fff;box-shadow:0 0 0 1px var(--ink-150);font-size:12.5px;color:var(--ink-700)}
+.cat em{font-style:normal;color:var(--ink-400);margin-left:6px;font-family:var(--mono)}
+.rule{margin-top:8px;padding:12px 14px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150);font-size:13px;line-height:1.8;color:var(--ink-700)}
+
+/* detail */
+.dh{display:flex;align-items:flex-start;gap:12px}
+.dh h1{font-size:20px}
+.dh .acts{margin-left:auto;display:flex;gap:8px;flex:none}
+.dmeta{margin-top:4px;font-size:12px;color:var(--ink-500);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.dmeta .mono{font-family:var(--mono)}
+.kind{font-size:11px;padding:1px 6px;border-radius:3px;background:var(--ink-100);color:var(--ink-600)}
+.tabs{margin-top:18px;display:flex;gap:20px;border-bottom:1px solid var(--ink-200)}
+.tabs button{padding:8px 0;font-size:13px;color:var(--ink-500);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--ink-900);font-weight:500;border-color:var(--brand)}
+.tabs em{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--ink-400);margin-left:4px}
+.card{margin-top:16px;padding:14px 16px;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--ink-150)}
+.card h3{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.card h3 small{font-weight:400;font-size:12px;color:var(--ink-500)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font:12px var(--mono);padding:3px 8px;border-radius:4px;box-shadow:0 0 0 1px var(--ink-200);color:var(--ink-700)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:500;color:var(--ink-500);font-size:12px;padding:6px 8px;background:var(--bg);border-bottom:1px solid var(--ink-200)}
+td{padding:6px 8px;border-bottom:1px solid var(--ink-150);font-family:var(--mono);color:var(--ink-800)}
+td.n{text-align:right}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:6px 12px;font-size:13px}
+.kv dt{color:var(--ink-500)}
+.kv dd .mono{font-family:var(--mono);font-size:12px}
+.chain{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.node{padding:5px 9px;border-radius:5px;box-shadow:0 0 0 1px var(--ink-200);background:#fff;font-size:12.5px}
+.node small{display:block;font:10.5px var(--mono);color:var(--ink-400)}
+.node.cur{box-shadow:0 0 0 1.5px var(--brand);background:var(--brand-50)}
+.arrow{color:var(--ink-300)}
+.ract{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* switches (mockup only) */
+.sw{position:fixed;right:16px;bottom:14px;z-index:9;display:flex;gap:2px;padding:2px;border-radius:7px;background:#16191d}
+.sw button{height:26px;padding:0 10px;border-radius:5px;font-size:12px;color:#c6cbd1}
+.sw button.on{background:#fff;color:#16191d}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">R</div><div><b>RLab Cortex</b><br><span>v1.0.1</span></div></div>
+    <div class="new">＋ 新建分析<kbd>Ctrl K</kbd></div>
+    <nav class="nav"><a class="on">数据<span class="c">8</span></a><a>流程<span class="c">6</span></a></nav>
+    <div class="grp">工具库</div>
+    <nav class="nav"><a>算法</a><a>技能</a></nav>
+  </aside>
+  <section class="list" id="list"></section>
+  <main class="main" id="right"></main>
+</div>
+<div class="sw" id="sw">
+  <button data-v="home">概览 · 源数据</button>
+  <button data-v="derived">概览 · 中间结果</button>
+  <button data-v="src">源数据详情</button>
+  <button data-v="der">中间结果详情</button>
+</div>
+
+<script>
+const I = {
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  search: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+  db: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>',
+  up: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>',
+  play: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M7 5l12 7-12 7z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+};
+const SRC = [
+  ['示例·脉动压力', '8,000×2', 4, '11-10'], ['示例·风洞攻角扫描', '25×4', 3, '11-09'], ['示例·风洞重复吹风', '25×4', 0, '11-09'],
+  ['示例·分组数据', '120×3', 0, '11-08'], ['示例·散点曲线', '40×2', 0, '11-08'], ['示例·质量过程数据', '120×3', 0, '11-08'],
+  ['示例·参数优化DOE', '60×7', 0, '11-08'], ['示例·周期信号', '400×2', 9, '11-07'],
+];
+const DER = [
+  ['脉动压力的主频和斯特劳哈尔数', '示例·脉动压力', [
+    ['R-0018.1', 'FFT 频谱分析', '4,000×2', 'w', '3 天后清理'], ['R-0018.2', '峰值检测', '8×4', 'w', '3 天后清理'],
+    ['R-0018.3', '派生列', '8×5', 'k', '已保留'], ['R-0018.4', '派生列', '8×5', '', '19 天后'],
+  ]],
+  ['攻角扫描：升力线斜率、失速攻角', '示例·风洞攻角扫描', [
+    ['R-0016.1', '派生列', '25×5', '', '18 天后'], ['R-0015.1', '派生列', '25×6', '', '18 天后'], ['R-0015.2', '线性回归', '1×6', 'k', '已保留'],
+  ]],
+  ['（已删除的对话）', '示例·周期信号', [
+    ['R-0009.1', '移动平均', '400×2', 'g', '已清理'], ['R-0009.2', 'FFT 频谱分析', '200×2', 'g', '已清理'],
+  ]],
+];
+let view = 'home';
+const src = () => view === 'home' || view === 'src';
+
+function list() {
+  const head = `<div class="lhead">
+    <div class="lt"><b>数据</b><button class="btn s">${I.up.replace('16','14').replace('16','14')} 导入</button></div>
+    <div class="search">${I.search}搜索名称、列名、运行编号</div>
+    <div class="seg"><button class="${src() ? 'on' : ''}">源数据<em>8</em></button><button class="${src() ? '' : 'on'}">中间结果<em>24</em></button></div>
+    ${src() ? '' : '<div class="chips"><span class="chip on">全部</span><span class="chip">即将清理 2</span><span class="chip">已保留 2</span><span class="chip">已清理 2</span></div>'}
+  </div>`;
+  const body = src()
+    ? SRC.map(([n, rc, k], i) => `<button class="li ${view === 'src' && i === 0 ? 'on' : ''}">${I.db}<span class="nm">${n}</span><span class="rc">${rc}</span>${k ? `<span class="tg g">${k} 份结果</span>` : ''}</button>`).join('')
+    : DER.map(([t, from, items]) => `<div class="lg"><span>${t}</span><span>${items.length}</span></div>` +
+        items.map(([c, a, rc, k, e], i) => `<button class="li ${k === 'g' ? 'gone' : ''} ${view === 'der' && c === 'R-0018.4' ? 'on' : ''}"><span class="cd">${c.slice(2)}</span><span class="nm">${a}</span><span class="rc">${rc}</span>${k ? `<span class="tg ${k}">${e.replace(' 天后清理', '天')}</span>` : ''}</button>`).join('')).join('');
+  document.getElementById('list').innerHTML = head + `<div class="lbody">${body}</div>`;
+}
+
+function overview() {
+  return `<div class="wrap">
+    <h1>数据</h1>
+    <p class="lead">源数据是你导入的文件，长期保存；中间结果是分析中每一步的输出，带运行编号，默认保留 20 天。左侧切换两类，选中一份查看内容、字段和来源。</p>
+    <div class="entries">
+      <div class="entry p"><span class="ei">${I.up}</span><div><b>导入数据</b><span>表格文件、Tecplot 导出、CGNS / VTK 仿真结果和表格截图都能直接导入；可以一次选多个，或把文件夹拖进来</span></div></div>
+      <div class="entry"><span class="ei">${I.play}</span><div><b>打开风洞示例数据</b><span>一份攻角扫描数据，可以直接拿来提问试用</span></div></div>
+    </div>
+    <p class="hint">${I.info}<span>其他格式会先生成读取程序，确认后保存，之后同类文件直接使用。</span></p>
+    ${view === 'derived' ? `
+    <div class="warnbar">${I.clock}<span>有 2 份中间结果将在 3 天内清理。需要的点「保留」，其余到期后删除数据，运行记录保留。</span><button class="btn s">只看即将清理</button></div>
+    <div class="sec"><h2>按分析看</h2><span>中间结果按产生它的对话分组</span></div>
+    <div class="rows">${DER.map(([t, from, items]) => `<div class="r"><b style="font-weight:500">${t}</b><span class="meta">来自 ${from} · ${items.length} 份</span><span class="end">${t.startsWith('（') ? '<span class="meta">对话已删除</span>' : '<button class="btn l">回到对话</button>'}</span></div>`).join('')}</div>
+    <div class="sec"><h2>保留规则</h2><button class="btn s">清理中间结果（24）</button></div>
+    <div class="rule">中间结果从产生起保留 20 天；点过「保留」或「升为正式数据集」的不会清理。清理只删数据文件，运行编号、算法和参数都留着，需要时可以重跑。<span class="hint in">管理员可在设置里改保留天数</span></div>`
+    : `
+    <div class="sec"><h2>最近导入</h2></div>
+    <div class="rows">${SRC.slice(0, 4).map(([n, rc, k, d]) => `<div class="r"><b style="font-weight:500">${n}</b><span class="mono">${rc}</span><span class="end"><span class="meta">${d} 导入${k ? ` · ${k} 份中间结果` : ''}</span><button class="btn s">在对话中分析</button></span></div>`).join('')}</div>`}
+    <div class="sec"><h2>库里有什么</h2></div>
+    <div class="cats"><span class="cat">源数据<em>8</em></span><span class="cat">中间结果<em>24</em></span><span class="cat">即将清理<em>2</em></span><span class="cat">已保留<em>2</em></span><span class="cat">已清理<em>2</em></span></div>
+  </div>`;
+}
+
+function detailSrc() {
+  return `<div class="back"><a>← 概览</a><span>源数据 / 示例·脉动压力</span></div>
+  <div class="wrap">
+    <div class="dh"><div><h1>示例·脉动压力</h1>
+      <div class="dmeta"><span class="kind">源数据</span><span class="mono">8,000 行 × 2 列</span>·<span>11-10 导入</span>·<span class="mono">pulse_pressure.csv</span></div></div>
+      <div class="acts"><button class="btn s">导出</button><button class="btn p">在对话中分析</button></div></div>
+    <div class="tabs"><button class="on">预览</button><button>字段<em>2</em></button><button>来源</button><button>用在哪些分析<em>1</em></button></div>
+    <div class="card"><h3>数据概况 <small>自动生成</small></h3>
+      <p style="font-size:13px;color:var(--ink-700);margin-bottom:8px">时间序列，8000 个点，采样间隔 0.0005 s（2000 Hz），没有缺失值。</p>
+      <div class="pills"><span class="pill">time_s ∈ 0 ~ 3.9995</span><span class="pill">p_Pa ∈ −11.8 ~ 12.1</span><span class="pill">没有缺失值</span></div>
+      <div style="margin-top:12px;font-size:12px;color:var(--ink-500)">可以这样做</div>
+      <div class="ract" style="margin-top:6px"><button class="btn s">看频谱</button><button class="btn s">找峰值</button><button class="btn s">画曲线</button><button class="btn s">AI 解释</button></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table><thead><tr><th>time_s</th><th>p_Pa</th></tr></thead><tbody>
+      ${[['0','-0.2819'],['0.0005','-0.5734'],['0.0010','0.7092'],['0.0015','1.8127'],['0.0020','1.5704'],['0.0025','6.4616'],['0.0030','5.7507']].map(([a,b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}
+      </tbody></table>
+      <div style="padding:8px 12px;font-size:12px;color:var(--hint)">显示前 50 行，共 8,000 行</div>
+    </div>
+    <div class="sec"><h2>其他页签里有什么</h2></div>
+    <div class="rule" style="font-size:12.5px">
+      <b style="font-weight:500">字段</b>：列名、类型、去重数、缺失数（现在的字段结构表）。<br>
+      <b style="font-weight:500">来源</b>：源数据显示文件名、格式、大小、导入时间，以及用了哪个读取程序。<br>
+      <b style="font-weight:500">用在哪些分析</b>：用这份数据产生过中间结果的对话，例如「脉动压力的主频和斯特劳哈尔数」· 4 份结果，点了回到对话。
+    </div>
+  </div>`;
+}
+
+function detailDer() {
+  return `<div class="back"><a>← 概览</a><span>中间结果 / R-0018.4 派生列</span></div>
+  <div class="wrap">
+    <div class="dh"><div><h1>派生列 · 斯特劳哈尔数</h1>
+      <div class="dmeta"><span class="kind">中间结果</span><span class="mono">R-0018.4</span>·<span class="mono">8 行 × 5 列</span>·<span>11-10 09:40 产生</span>·<span class="tg" style="background:var(--ink-100);color:var(--ink-600)">19 天后清理</span></div></div>
+      <div class="acts"><button class="btn s">保留</button><button class="btn s">导出</button><button class="btn p">升为正式数据集</button></div></div>
+    <div class="tabs"><button>预览</button><button>字段<em>5</em></button><button class="on">来源与血缘</button><button>用在哪些分析<em>1</em></button></div>
+    <div class="card"><h3>产生于</h3>
+      <dl class="kv">
+        <dt>分析</dt><dd>对话「脉动压力的主频和斯特劳哈尔数」第 4 步 <button class="btn l">回到对话</button></dd>
+        <dt>算法</dt><dd>派生列 <span class="mono" style="color:var(--ink-400)">derived_column · 软件 1.0.1</span></dd>
+        <dt>参数</dt><dd><span class="mono">name=strouhal  expression=frequency_hz * 0.1 / 30.0</span></dd>
+        <dt>输入</dt><dd>R-0018.3 派生列</dd>
+      </dl>
+      <div class="ract"><button class="btn s">重跑</button><button class="btn s">复现</button><span class="hint in" style="margin:0">重跑：用同样的算法和参数再算一次；复现：用当时的算法版本再算一次并对比</span></div>
+    </div>
+    <div class="card"><h3>血缘 <small>从源数据到这一份</small></h3>
+      <div class="chain">
+        <span class="node">示例·脉动压力<small>源数据</small></span><span class="arrow">→</span>
+        <span class="node">FFT 频谱分析<small>R-0018.1</small></span><span class="arrow">→</span>
+        <span class="node">峰值检测<small>R-0018.2</small></span><span class="arrow">→</span>
+        <span class="node">派生列<small>R-0018.3</small></span><span class="arrow">→</span>
+        <span class="node cur">派生列<small>R-0018.4</small></span>
+      </div>
+      <p class="hint">${I.info}<span>点任一节点打开那一份数据。</span></p>
+    </div>
+    <div class="card"><h3>保留</h3>
+      <p style="font-size:13px;color:var(--ink-700);line-height:1.7">从产生起保留 20 天，11-30 到期。点「保留」后不再清理；「升为正式数据集」会把它放进源数据，长期保存。</p>
+    </div>
+  </div>`;
+}
+
+function render() {
+  list();
+  document.getElementById('right').innerHTML = view === 'src' ? detailSrc() : view === 'der' ? detailDer() : overview();
+  document.querySelectorAll('#sw button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
+}
+document.querySelectorAll('#sw button').forEach((b) => (b.onclick = () => { view = b.dataset.v; render(); }));
+window.show = (v) => { view = v; render(); };
+render();
+</script>
+</body>
+</html>

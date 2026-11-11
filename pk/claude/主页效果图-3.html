@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主页效果图 3</title>
+<style>
+:root{
+  --bg:#f7f8f9; --side:#f1f3f5;
+  --ink-100:#f3f4f6; --ink-150:#eceef1; --ink-200:#dfe2e6; --ink-300:#c6cbd1; --ink-400:#9aa1aa;
+  --ink-500:#69707a; --ink-600:#525861; --ink-700:#363b42; --ink-900:#16191d;
+  --brand:#2b4c6f; --brand-700:#223d5a; --brand-50:#eef3f8; --brand-100:#dbe5ef;
+  --sans:"IBM Plex Sans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);color:var(--ink-900);background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;text-align:left}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr);height:100vh}
+
+/* sidebar */
+.side{background:var(--side);display:flex;flex-direction:column;padding:14px 10px;min-height:0}
+.brand{display:flex;align-items:center;gap:9px;padding:2px 8px 14px}
+.logo{width:24px;height:24px;border-radius:5px;background:var(--brand);color:#fff;display:grid;place-items:center;font:600 12px var(--mono)}
+.brand b{font-size:14px;font-weight:600}
+.brand span{font-size:11px;color:var(--ink-500);font-family:var(--mono)}
+.new{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;margin:0 2px 14px;border-radius:6px;background:#fff;font-size:13px;box-shadow:0 0 0 1px var(--ink-200),0 1px 2px rgba(22,25,29,.05)}
+.new kbd{margin-left:auto;font:11px var(--mono);color:var(--ink-400)}
+.nav a{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:6px;color:var(--ink-600);text-decoration:none;font-size:13px}
+.nav a:hover{background:rgba(22,25,29,.05);color:var(--ink-900)}
+.nav a.on{color:var(--ink-900);font-weight:500;background:#fff;box-shadow:0 1px 2px rgba(22,25,29,.06)}
+.nav a.on svg{color:var(--brand)}
+.nav svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;flex:none}
+.nav .count{margin-left:auto;font-size:11px;color:var(--ink-400)}
+.grp{margin:18px 10px 6px;font-size:11px;color:var(--ink-400)}
+.recent{overflow-y:auto;flex:1;min-height:0}
+.recent a{display:block;padding:6px 10px;border-radius:6px;text-decoration:none;color:var(--ink-700);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent a:hover{background:rgba(22,25,29,.05)}
+.recent a i{font-style:normal;color:var(--ink-400);font-size:11px;margin-right:6px}
+.foot{padding:10px 0 0 8px;display:flex;align-items:center;gap:9px}
+.ava{width:26px;height:26px;border-radius:50%;background:var(--ink-200);display:grid;place-items:center;font-size:11px;color:var(--ink-700)}
+.foot .who{font-size:12.5px}.foot .who small{display:block;font-size:11px;color:var(--ink-500)}
+.foot .ic{margin-left:auto;display:flex;gap:2px}
+.foot .ic button{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;color:var(--ink-500)}
+.foot svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5}
+
+/* main: one continuous surface */
+.main{position:relative;display:flex;flex-direction:column;min-height:0;background:var(--bg);border-left:1px solid var(--ink-150)}
+.main::before{content:"";position:absolute;inset:0 0 auto 0;height:560px;pointer-events:none;
+  background:linear-gradient(var(--ink-150) 1px,transparent 1px) 0 0/24px 24px,linear-gradient(90deg,var(--ink-150) 1px,transparent 1px) 0 0/24px 24px;
+  -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.7),transparent);mask-image:linear-gradient(to bottom,rgba(0,0,0,.7),transparent)}
+.scroll{position:relative;flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.scroll>.stage{margin-top:auto;margin-bottom:auto;width:100%}
+.wrap{max-width:1280px;margin:0 auto;padding:0 40px}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);gap:44px;padding-top:44px;padding-bottom:24px;align-items:start}
+
+h1{font-size:30px;line-height:1.3;font-weight:600;letter-spacing:-.01em}
+.lead{margin-top:12px;font-size:14.5px;line-height:1.75;color:var(--ink-600)}
+.cta{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap}
+.btn{height:38px;padding:0 16px;border-radius:6px;font-size:14px;display:inline-flex;align-items:center;gap:8px}
+.btn.p{background:var(--brand);color:#fff;box-shadow:0 1px 2px rgba(22,25,29,.15)}
+.btn.p:hover{background:var(--brand-700)}
+.btn.s{background:#fff;color:var(--ink-900);box-shadow:0 0 0 1px var(--ink-300)}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75}
+.meta{margin-top:12px;font-size:12px;line-height:1.6;color:var(--ink-500)}
+
+/* questions, directly under the intro */
+.qzone{margin-top:36px}
+.qhead{display:flex;align-items:center;gap:4px;margin-bottom:8px}
+.qhead .lbl{font-size:13px;font-weight:600;margin-right:10px}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:7px;background:rgba(22,25,29,.05)}
+.seg button{height:26px;padding:0 10px;border-radius:5px;font-size:12.5px;color:var(--ink-600)}
+.seg button.on{background:#fff;color:var(--ink-900);box-shadow:0 1px 2px rgba(22,25,29,.1)}
+.qs{display:flex;flex-direction:column;gap:2px}
+.q{position:relative;display:flex;align-items:center;gap:12px;padding:12px 12px;border-radius:6px;width:100%;transition:background .15s}
+.q:hover{background:rgba(22,25,29,.04)}
+.q .t{flex:1;min-width:0}
+.q .t b{display:block;font-weight:400;font-size:14px;line-height:1.45}
+.q .t span{display:block;margin-top:2px;font-size:12px;color:var(--ink-500)}
+.q .go{color:var(--ink-300);transition:color .15s,transform .15s}
+.q.on{background:#fff;box-shadow:0 1px 2px rgba(22,25,29,.06),0 0 0 1px var(--ink-150)}
+.q.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;border-radius:1px;background:var(--brand)}
+.q.on .go{color:var(--brand);transform:translateX(3px)}
+.q.on .t b{font-weight:500}
+.qfoot{margin-top:10px;padding-left:12px;font-size:12px;color:var(--ink-500)}
+.qfoot button{color:var(--brand)}
+
+/* the answer card */
+.sheet{position:sticky;top:20px;background:#fff;border-radius:8px;box-shadow:0 0 0 1px rgba(22,25,29,.05),0 1px 2px rgba(22,25,29,.05),0 12px 32px -8px rgba(22,25,29,.14);overflow:hidden}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:12px 16px 10px;font-size:13px}
+.sheet-h .code{font:12px var(--mono);color:var(--ink-400)}
+.sheet-h b{font-weight:600}
+.sheet-h .tag{margin-left:auto;font-size:11px;color:var(--ink-500);background:var(--ink-100);border-radius:4px;padding:2px 6px}
+.ask{margin:0 16px;padding:8px 12px;background:var(--bg);border-radius:6px;font-size:13px;color:var(--ink-700);line-height:1.55}
+.body{transition:opacity .18s}
+.body.fade{opacity:0}
+.chart{padding:4px 10px 0}
+.chart svg{display:block;width:100%;height:auto}
+.kpis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin:4px 16px 0;border-top:1px solid var(--ink-150)}
+.kpi{padding:10px 0 12px}
+.kpi+.kpi{padding-left:16px}
+.kpi small{display:block;font-size:11.5px;color:var(--ink-500)}
+.kpi strong{display:block;margin-top:2px;font:500 19px var(--mono);letter-spacing:-.02em}
+.kpi strong u{text-decoration:none;font-size:12px;color:var(--ink-500);margin-left:2px}
+.kpi span{font-size:11.5px;color:var(--ink-500)}
+.concl{margin:0 16px;padding:10px 0 12px;border-top:1px solid var(--ink-150);font-size:13px;line-height:1.65;color:var(--ink-700)}
+.prov{background:var(--bg);padding:9px 16px;font-size:11.5px;color:var(--ink-500);display:flex;flex-wrap:wrap;gap:4px 0;align-items:center}
+.prov span{font-family:var(--mono)}
+.prov span+span::before{content:"›";color:var(--ink-300);margin:0 8px;font-family:var(--sans)}
+.prov em{margin-left:auto;font-style:normal;color:var(--brand)}
+
+/* composer floats on the same surface */
+.dock{position:relative;padding:6px 0 18px;background:linear-gradient(to bottom,rgba(247,248,249,0),var(--bg) 22px)}
+.ctx{display:flex;align-items:center;gap:6px;margin:0 0 8px 2px;font-size:12px;color:var(--ink-500);flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:12px;background:#fff;color:var(--ink-700);font-size:12px;box-shadow:0 0 0 1px var(--ink-200)}
+.chip.on{background:var(--brand-50);color:var(--brand-700);box-shadow:0 0 0 1px var(--brand-100)}
+.chip em{font-style:normal;font-size:11px;color:var(--ink-500)}
+.box{display:flex;align-items:flex-end;gap:8px;border-radius:10px;padding:10px 10px 10px 16px;background:#fff;box-shadow:0 0 0 1px var(--ink-200),0 4px 16px -6px rgba(22,25,29,.12)}
+.box:focus-within{box-shadow:0 0 0 1px var(--brand),0 0 0 4px var(--brand-50)}
+.box textarea{flex:1;border:0;outline:0;resize:none;font:14px/1.6 var(--sans);height:46px;color:var(--ink-900);background:transparent}
+.box textarea::placeholder{color:var(--ink-400)}
+.box .send{height:32px;padding:0 14px;border-radius:6px;background:var(--brand);color:#fff;font-size:13px}
+.box .att{width:32px;height:32px;border-radius:6px;color:var(--ink-500);display:grid;place-items:center}
+.box .att svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.5}
+
+@media (max-width:1180px){.stage{grid-template-columns:1fr}.sheet{position:static}}
+@media (max-width:760px){.app{grid-template-columns:1fr}.side{display:none}.wrap{padding:0 16px}h1{font-size:24px}.kpis{grid-auto-flow:row;grid-template-columns:1fr 1fr}.kpi+.kpi{padding-left:0}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">R</div><div><b>RLab Cortex</b><br><span>v1.0.1</span></div></div>
+    <button class="new"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 5v14M5 12h14"/></svg>新建分析<kbd>Ctrl K</kbd></button>
+    <nav class="nav">
+      <a class="on" href="#"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>分析</a>
+      <a href="#"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>数据<span class="count">12</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.5 6H12a3 3 0 0 1 3 3v.5M8.5 18H12a3 3 0 0 0 3-3v-.5"/></svg>流程<span class="count">5</span></a>
+    </nav>
+    <div class="grp">工具库</div>
+    <nav class="nav">
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M8 4c-2 0-3 1-3 3v2c0 1.5-1 3-2 3 1 0 2 1.5 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1.5 1 3 2 3-1 0-2 1.5-2 3v2c0 2-1 3-3 3"/></svg>算法</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>技能</a>
+    </nav>
+    <div class="grp">最近</div>
+    <div class="recent">
+      <a href="#"><i>今天</i>NACA 翼型攻角扫描 · 失速点</a>
+      <a href="#"><i>今天</i>两次吹风重复性对比</a>
+      <a href="#"><i>昨天</i>天平信号平滑后重算系数</a>
+      <a href="#"><i>11-07</i>电芯 A12 容量衰减</a>
+      <a href="#"><i>11-06</i>DOE 参数敏感性</a>
+      <a href="#"><i>11-05</i>振动频谱主峰</a>
+    </div>
+    <div class="foot">
+      <div class="ava">t</div>
+      <div class="who">ttaw<small>工程部</small></div>
+      <div class="ic">
+        <button title="中/EN"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg></button>
+        <button title="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="scroll">
+      <div class="wrap stage">
+        <div>
+          <h1>试验数据处理与分析</h1>
+          <p class="lead">导入天平、传感器或采集系统导出的数据文件，用中文描述要做的处理，例如平滑、坐标转换、系数计算、频谱分析、曲线拟合。系统从算法库中选择方法执行，并在结果中记录输入文件、算法版本和参数。</p>
+          <div class="cta">
+            <button class="btn p"><svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>打开风洞示例数据</button>
+            <button class="btn s" title="表格文件、Tecplot、CGNS / VTK、表格截图；其他格式可生成读取程序"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>导入数据</button>
+          </div>
+
+          <div class="qzone">
+            <div class="qhead">
+              <span class="lbl">示例问题</span>
+              <div class="seg" id="seg"></div>
+            </div>
+            <div class="qs" id="qs"></div>
+          </div>
+        </div>
+
+        <div class="sheet">
+          <div class="sheet-h"><span class="code" id="code"></span><b id="ttl"></b><span class="tag">示例结果</span></div>
+          <div class="body" id="body"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dock">
+      <div class="wrap">
+        <div class="ctx">当前数据
+          <span class="chip on">NACA0012_α扫描_Re3e5.csv <em>25×8</em></span>
+          <span class="chip">重复吹风_02.csv <em>25×8</em></span>
+          <span class="chip">+ 选择</span>
+        </div>
+        <div class="box">
+          <textarea placeholder="输入要做的分析，例如：计算这组攻角扫描的失速攻角和最大升阻比"></textarea>
+          <button class="att" title="附加文件或截图"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7L14 4.5a3.3 3.3 0 0 1 4.7 4.7L10.2 17.7a1.7 1.7 0 0 1-2.4-2.4L15.5 7.6"/></svg></button>
+          <button class="send">发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const C1='#2e5f8a',C2='#d0702e',C3='#4c8c5e',C4='#b5474e',MU='#a0a6ae';
+const W=520,H=250,L=50,R=500,T=26,B=218;
+function axes(xr,yr,xt,yt,xl,yl){
+  const X=v=>L+(v-xr[0])/(xr[1]-xr[0])*(R-L), Y=v=>B-(v-yr[0])/(yr[1]-yr[0])*(B-T);
+  let g=`<g stroke="#eef0f2">${yt.map(v=>`<path d="M${L} ${Y(v)}H${R}"/>`).join('')}</g>`;
+  g+=`<path d="M${L} ${B}H${R}M${L} ${T-6}V${B}" stroke="#c6cbd1" fill="none"/>`;
+  g+=`<g font-size="10.5" fill="#69707a" font-family="IBM Plex Mono,monospace">`+
+    yt.map(v=>`<text x="${L-6}" y="${Y(v)+4}" text-anchor="end">${v}</text>`).join('')+
+    xt.map(v=>`<text x="${X(v)}" y="${B+15}" text-anchor="middle">${v}</text>`).join('')+
+    `<text x="${L+4}" y="${T-10}">${yl}</text><text x="${R}" y="${B-6}" text-anchor="end">${xl}</text></g>`;
+  return {X,Y,g};
+}
+const svg=(inner,legend='')=>`<svg viewBox="0 0 ${W} ${H}" role="img">${inner}${legend}</svg>`;
+const poly=(A,xs,ys,c,o={})=>`<polyline fill="none" stroke="${c}" stroke-width="${o.w||2}" ${o.dash?`stroke-dasharray="${o.dash}"`:''} stroke-linejoin="round" points="${xs.map((x,i)=>A.X(x)+','+A.Y(ys[i])).join(' ')}"/>`;
+const dots=(A,xs,ys,c,hollow)=>xs.map((x,i)=>hollow?`<circle cx="${A.X(x)}" cy="${A.Y(ys[i])}" r="3" fill="#fff" stroke="${c}" stroke-width="1.4"/>`:`<circle cx="${A.X(x)}" cy="${A.Y(ys[i])}" r="2.6" fill="${c}"/>`).join('');
+const vmark=(A,x,c,label)=>`<path d="M${A.X(x)} ${T-6}V${B}" stroke="${c}" stroke-dasharray="3 3"/><text x="${A.X(x)+6}" y="${T+8}" font-size="11" fill="${c}" font-family="IBM Plex Mono,monospace">${label}</text>`;
+const leg=items=>`<g font-size="11" fill="#363b42">${items.map(([c,t,k],i)=>{const x=R-items.length*104+i*104+18;return (k==='o'?`<circle cx="${x}" cy="${T-12}" r="3" fill="#fff" stroke="${c}" stroke-width="1.4"/>`:k==='d'?`<path d="M${x-7} ${T-12}h14" stroke="${c}" stroke-dasharray="4 3" stroke-width="1.6"/>`:`<path d="M${x-7} ${T-12}h14" stroke="${c}" stroke-width="2"/>`)+`<text x="${x+11}" y="${T-8}">${t}</text>`}).join('')}</g>`;
+
+const A_=[-4,-2,0,2,4,6,8,10,12,13,14,15,16,18,20];
+const CL1=[-.19,0,.19,.38,.57,.76,.95,1.14,1.31,1.36,1.38,1.30,1.12,.98,.93];
+const CL2=[-.2,-.013,.182,.385,.56,.765,.94,1.13,1.30,1.347,1.367,1.25,1.06,.96,.915];
+function clAxes(){return axes([-4,20],[-.4,1.6],[-4,0,4,8,12,16,20],[-.4,.1,.6,1.1,1.6],'α (°)','CL')}
+function curve(f,a,b,n){const xs=[],ys=[];for(let i=0;i<=n;i++){const x=a+(b-a)*i/n;xs.push(x);ys.push(f(x))}return [xs,ys]}
+
+const charts={
+  cl(){const A=clAxes();return svg(A.g+`<path d="M${A.X(-4)} ${A.Y(-.19)}L${A.X(12)} ${A.Y(1.33)}" stroke="${C1}" stroke-dasharray="5 4" opacity=".5"/>`+vmark(A,14.2,C4,'失速 14.2°')+poly(A,A_,CL1,C1,{w:2.2})+dots(A,A_,CL1,C1),leg([[C1,'CL'],[C1,'线性段拟合','d']]))},
+  rep(){const A=clAxes();const band=`<rect x="${A.X(14)}" y="${T-6}" width="${A.X(20)-A.X(14)}" height="${B-T+6}" fill="#fbf1f1"/>`;return svg(band+A.g+poly(A,A_,CL1,C1,{w:2})+dots(A,A_,CL1,C1)+dots(A,A_,CL2,C2,true)+`<text x="${A.X(15)}" y="${B-10}" font-size="11" fill="${C4}">偏差集中在 14°–18°</text>`,leg([[C1,'第 1 次'],[C2,'第 2 次','o']]))},
+  smooth(){const A=axes([0,10],[180,260],[0,2,4,6,8,10],[180,200,220,240,260],'t (s)','Fz (N)');
+    const [xs,ys]=curve(x=>220+18*Math.sin(x*.9)+9*Math.sin(x*13.7)+6*Math.sin(x*29.3+1),0,10,260);
+    const [xs2,ys2]=curve(x=>220+18*Math.sin(x*.9),0,10,80);
+    return svg(A.g+poly(A,xs,ys,MU,{w:1})+poly(A,xs2,ys2,C1,{w:2.4}),leg([[MU,'原始'],[C1,'平滑后']]))},
+  re(){const A=clAxes();const mk=(s,st,mx)=>A_.map(a=>a<=st?Math.min(.095*(a+2)*s,mx):mx-(a-st)*.06);
+    const r1=mk(.94,12.5,1.24),r2=CL1,r3=mk(1.03,15.6,1.49);
+    return svg(A.g+poly(A,A_,r1,C3)+poly(A,A_,r2,C1)+poly(A,A_,r3,C2),leg([[C3,'Re 2×10⁵'],[C1,'Re 3×10⁵'],[C2,'Re 5×10⁵']]))},
+  psd(){const A=axes([0,200],[-60,0],[0,50,100,150,200],[-60,-40,-20,0],'f (Hz)','dB');
+    const [xs,ys]=curve(f=>-46+(2*Math.sin(f*.7)+1.6*Math.sin(f*2.3+1)+1.2*Math.sin(f*5.1+2)+.8*Math.sin(f*11.7))+30*Math.exp(-(((f-62.4)/3.2)**2))+11*Math.exp(-(((f-124.8)/3.5)**2))-f*.03,0,200,400);
+    return svg(A.g+poly(A,xs,ys,C1,{w:1.6})+vmark(A,62.4,C4,'62.4 Hz  St=0.21'),'')},
+  ch(){const A=axes([0,13],[0,6],[],[0,2,4,6],'测点','RMS 偏差 (%)');
+    const v=[1.1,.9,1.3,1.0,5.2,1.2,.8,1.4,1.0,4.6,1.1,.9];
+    let s=v.map((y,i)=>`<rect x="${A.X(i+1)-11}" y="${A.Y(y)}" width="22" height="${B-A.Y(y)}" fill="${y>3?C4:C1}" opacity="${y>3?1:.75}" rx="1"/><text x="${A.X(i+1)}" y="${B+15}" text-anchor="middle" font-size="10" fill="#69707a" font-family="IBM Plex Mono,monospace">P${String(i+1).padStart(2,'0')}</text>`).join('');
+    return svg(A.g+`<path d="M${L} ${A.Y(3)}H${R}" stroke="${C4}" stroke-dasharray="4 3" opacity=".6"/>`+s,'')},
+  cap(){const A=axes([0,50],[2.1,2.35],[0,10,20,30,40,50],[2.1,2.2,2.3],'循环','容量 (Ah)');
+    const [xs,ys]=curve(c=>2.31-.0024*c+.004*Math.sin(c*1.3),0,50,50);
+    return svg(A.g+dots(A,xs,ys,C1)+poly(A,[0,50],[2.31,2.19],C2,{dash:'6 4'}),leg([[C1,'实测'],[C2,'线性趋势','d']]))},
+  temp(){const A=axes([0,50],[0,12],[0,10,20,30,40,50],[0,4,8,12],'循环','温升 (K)');
+    const ys=Array.from({length:51},(_,c)=>[17,33,41].includes(c)?9+c%3:4+1.2*Math.sin(c*2.1)+.02*c);const xs=ys.map((_,i)=>i);
+    return svg(A.g+xs.map((x,i)=>`<circle cx="${A.X(x)}" cy="${A.Y(ys[i])}" r="${ys[i]>8?4:2.6}" fill="${ys[i]>8?C4:C1}" opacity="${ys[i]>8?1:.7}"/>`).join(''),'')},
+  vib(){const A=axes([0,500],[-70,0],[0,100,200,300,400,500],[-60,-40,-20,0],'f (Hz)','dB');
+    const [xs,ys]=curve(f=>-55+(2*Math.sin(f*.7)+1.6*Math.sin(f*2.3+1)+1.2*Math.sin(f*5.1+2)+.8*Math.sin(f*11.7))+28*Math.exp(-(((f-98)/4)**2))+18*Math.exp(-(((f-196)/4)**2))+10*Math.exp(-(((f-294)/4)**2)),0,500,500);
+    return svg(A.g+poly(A,xs,ys,C1,{w:1.5})+vmark(A,98,C4,'1 阶 98 Hz'),'')},
+  notch(){const A=axes([0,200],[-70,0],[0,50,100,150,200],[-60,-40,-20,0],'f (Hz)','dB');
+    const base=f=>-55+(2*Math.sin(f*.7)+1.6*Math.sin(f*2.3+1)+1.2*Math.sin(f*5.1+2)+.8*Math.sin(f*11.7))+20*Math.exp(-(((f-98)/4)**2));
+    const [xs,ys]=curve(f=>base(f)+40*Math.exp(-(((f-50)/1.2)**2))+20*Math.exp(-(((f-150)/1.2)**2)),0,200,400);
+    const [xs2,ys2]=curve(base,0,200,400);
+    return svg(A.g+poly(A,xs,ys,MU,{w:1})+poly(A,xs2,ys2,C1,{w:1.6}),leg([[MU,'滤波前'],[C1,'滤波后']]))},
+  rank(){const A=axes([0,1],[0,6],[],[],'','');const names=['温度','压力','保压时间','转速','湿度'],v=[.42,.27,.16,.09,.06];
+    return svg(names.map((n,i)=>`<text x="${L+40}" y="${T+18+i*38}" text-anchor="end" font-size="12" fill="#363b42">${n}</text><rect x="${L+50}" y="${T+6+i*38}" width="${v[i]/.42*360}" height="18" rx="2" fill="${C1}" opacity="${1-i*.15}"/><text x="${L+58+v[i]/.42*360}" y="${T+19+i*38}" font-size="11" fill="#525861" font-family="IBM Plex Mono,monospace">${v[i].toFixed(2)}</text>`).join(''),'')},
+  rsm(){const A=axes([160,220],[80,100],[160,180,200,220],[80,90,100],'温度 (°C)','良率 (%)');
+    const [xs,ys]=curve(t=>97.4-.012*(t-192)**2,160,220,60);
+    return svg(A.g+poly(A,xs,ys,C1,{w:2.2})+vmark(A,192,C3,'最优 192 °C'),'')},
+};
+
+const DATA={
+  '风洞试验':[
+    {q:'升力线斜率、失速攻角、最大升阻比分别是多少？',m:'线性段拟合 · 拐点检测',code:'R-0021.3',ttl:'翼型攻角扫描 · 升力特性',chart:'cl',
+     k:[['升力线斜率','0.095','/°','R²=0.999'],['失速攻角','14.2','°','CLmax=1.38'],['最大升阻比','18.6','','α=5.0°']],
+     p:['天平六分量','体轴→风轴','洞壁修正 v2','线性拟合','拐点检测 v1.3']},
+    {q:'两次吹风的结果一致吗？偏差集中在哪个攻角段？',m:'重复性分析 · 逐点差值',code:'R-0022.1',ttl:'重复吹风对比',chart:'rep',
+     k:[['线性段偏差','0.8','%','α ≤ 12°'],['最大偏差','0.06','','α=16°'],['失速攻角差','0.2','°','14.2° / 14.0°']],
+     p:['两组数据按 α 对齐','逐点差值','相对偏差 v1.0']},
+    {q:'对天平信号做平滑后重新计算气动系数',m:'Savitzky-Golay · 系数换算',code:'R-0023.2',ttl:'天平 Fz 信号平滑',chart:'smooth',
+     k:[['噪声 RMS','9.8 → 1.1','N',''],['窗口 / 阶数','11 / 3','',''],['峰值保留','99.2','%','']],
+     p:['天平 Fz','savgol w=11 p=3','系数换算 q∞=612 Pa']},
+    {q:'把不同雷诺数下的升力曲线叠在一起比较',m:'多数据集对齐 · 叠加图',code:'R-0024.1',ttl:'雷诺数影响',chart:'re',
+     k:[['CLmax','1.24 / 1.38 / 1.49','',''],['失速攻角','12.5 / 14.2 / 15.6','°','']],
+     p:['3 组数据','按 α 插值对齐','叠加绘图']},
+    {q:'脉动压力信号的主频是多少？对应的 Strouhal 数是多少？',m:'FFT 频谱 · Strouhal 数',code:'R-0025.1',ttl:'脉动压力频谱',chart:'psd',
+     k:[['主频','62.4','Hz','2 倍频 124.8 Hz'],['Strouhal 数','0.21','','D=0.1 m, U=30 m/s'],['峰值高于底噪','18','dB','']],
+     p:['测点 P05','去均值','FFT 汉宁窗 n=4096','峰值检测']},
+    {q:'检查各测点通道，列出数据异常的测点',m:'异常检测 · 通道一致性',code:'R-0026.1',ttl:'测点通道检查',chart:'ch',
+     k:[['异常测点','P05, P10','',''],['判据','RMS 偏差 > 3','%',''],['其余测点','≤ 1.4','%','']],
+     p:['12 个测点','相邻通道对比','阈值判定 v1.1']},
+  ],
+  '电池充放电':[
+    {q:'第 1 圈到第 50 圈的容量衰减和内阻变化',m:'平滑 · 容量积分 · 线性趋势',code:'R-0031.1',ttl:'电芯 A12 循环衰减',chart:'cap',
+     k:[['容量衰减','5.2','%','2.310 → 2.190 Ah'],['内阻变化','+14','%','18.4 → 21.0 mΩ']],p:['充放电记录','按循环分组','容量积分','线性拟合']},
+    {q:'列出温升异常的循环',m:'异常检测',code:'R-0032.1',ttl:'温升检查',chart:'temp',
+     k:[['异常循环','17, 33, 41','',''],['判据','温升 > 8','K','']],p:['温度通道','按循环取最大值','阈值判定']},
+  ],
+  '振动 / NVH':[
+    {q:'振动信号的主峰频率及其与转速的关系',m:'FFT · 阶次分析',code:'R-0041.1',ttl:'振动频谱',chart:'vib',
+     k:[['主峰','98','Hz','1 阶，转速 5880 rpm'],['谐波','196 / 294','Hz','2、3 阶']],p:['加速度 ch1','汉宁窗','FFT n=8192','阶次标注']},
+    {q:'滤除 50 Hz 工频干扰后重新计算频谱',m:'陷波滤波 · 频谱',code:'R-0042.1',ttl:'工频滤波',chart:'notch',
+     k:[['50 Hz 衰减','40','dB',''],['150 Hz 衰减','20','dB','']],p:['陷波 50/150 Hz Q=30','FFT']},
+  ],
+  '工艺参数 / DOE':[
+    {q:'各工艺参数对良率的影响排序',m:'主因分析 · 敏感性',code:'R-0051.1',ttl:'参数敏感性',chart:'rank',
+     k:[['最主要因素','温度','','贡献 0.42'],['次要因素','压力','','贡献 0.27']],p:['DOE 60 组','随机森林重要性','排序']},
+    {q:'拟合响应面并给出最优参数组合',m:'多项式回归 · 优化',code:'R-0052.1',ttl:'响应面',chart:'rsm',
+     k:[['最优温度','192','°C',''],['预测良率','97.4','%','R²=0.93']],p:['二次多项式回归','网格寻优']},
+  ],
+};
+
+let tab='风洞试验',sel=0;
+const $=id=>document.getElementById(id);
+function renderTabs(){$('seg').innerHTML=Object.keys(DATA).map(t=>`<button class="${t===tab?'on':''}" data-t="${t}">${t}</button>`).join('');
+  $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;sel=0;renderTabs();renderQs();renderCard()})}
+function renderQs(){$('qs').innerHTML=DATA[tab].map((d,i)=>`<button class="q ${i===sel?'on':''}" data-i="${i}"><span class="t"><b>${d.q}</b></span><span class="go">›</span></button>`).join('');
+  $('qs').querySelectorAll('.q').forEach(b=>b.onclick=()=>{sel=+b.dataset.i;renderQs();renderCard()})}
+function renderCard(){const d=DATA[tab][sel];$('code').textContent=d.code;$('ttl').textContent=d.ttl;
+  const body=$('body');body.classList.add('fade');
+  setTimeout(()=>{body.innerHTML=`<div class="chart">${charts[d.chart]()}</div><div class="kpis">${d.k.map(([a,b,u,s])=>`<div class="kpi"><small>${a}</small><strong>${b}${u?`<u>${u}</u>`:''}</strong><span>${s||'&nbsp;'}</span></div>`).join('')}</div><div class="prov">${d.p.map(x=>`<span>${x}</span>`).join('')}<em>查看运行记录</em></div>`;body.classList.remove('fade')},120)}
+renderTabs();renderQs();renderCard();
+</script>
+</body>
+</html>
