@@ -10,7 +10,7 @@ import AnalysisIcon from '@/components/AnalysisIcon';
 import { BUILTIN_RESULTS, DEFAULT_EXAMPLES, SAMPLES, normalizeExamples, snapshotChart, type ExampleKpi, type ExampleQuestion, type ExamplesConfig } from '@/lib/homeExamples';
 import type { FocusAlgo } from '@/components/AlgorithmsView';
 import { runStepsOf, flowFromSteps, type RunStep } from '@/lib/flowSteps';
-import { api, streamChat, type ChatMessage, type TemplateStep, type FlowTemplate, type Conversation, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
+import { api, streamChat, attachTurn, stopTurn, type ChatMessage, type TemplateStep, type FlowTemplate, type Conversation, type Dataset, type DatasetProfile, type UploadResp, type Skill } from '@/lib/api';
 import { useT, useLangStore } from '@/lib/i18n';
 import { useAlgoNames, useAlgoLookup } from '@/lib/useAlgoNames';
 import { STARTERS, type Starter } from '@/lib/recipes';
@@ -174,12 +174,19 @@ export default function ChatView({
   // whose assistant turn is still streaming doesn't get its in-flight bubble
   // wiped by a DB read that hasn't seen the persisted assistant row yet.
   const loadedConvRef = useRef<number | null>(null);
-  // Aborts the in-flight streaming turn (the 停止 button / terminating a session).
+  // Closes the connection we are WATCHING a turn through. The turn itself runs on
+  // the server and keeps going (a switch only stops watching); 停止 also tells the
+  // server to end it.
   const abortRef = useRef<AbortController | null>(null);
+  // Which conversation's turn the open stream belongs to. Events for any other
+  // conversation are dropped, so a turn left behind never writes into the one on screen.
+  const streamConvRef = useRef<number | null>(null);
   // Last pendingAsk nonce we've already fired, so re-renders don't resend it.
   const lastAskRef = useRef<number | null>(null);
 
   function stop() {
+    const cid = streamConvRef.current;
+    if (cid) stopTurn(cid);
     abortRef.current?.abort();
   }
 
@@ -268,6 +275,9 @@ export default function ChatView({
     // The `!== loadedConvRef.current` guard skips the conversation we just
     // created locally in send() (whose stream we must NOT abort).
     if (conversationId !== loadedConvRef.current) {
+      // Stop WATCHING the previous conversation's turn. It keeps running on the
+      // server and saves its answer; coming back re-attaches (resumeTurn).
+      streamConvRef.current = null;
       abortRef.current?.abort();
       abortRef.current = null;
       setBusy(false);
@@ -275,6 +285,9 @@ export default function ChatView({
       setError('');
     }
     if (!conversationId) {
+      // The screen no longer holds any conversation — forget which one was loaded,
+      // or returning to it would skip the reload and show an empty page.
+      loadedConvRef.current = null;
       setMessages([]);
       setLiveEvents([]);
       setTurnStartedAt(undefined);
@@ -328,8 +341,96 @@ export default function ChatView({
       }
       setLiveEvents(tl);
       setTurnStartedAt(undefined);
+      // Last message is the user's → its answer may still be generating on the server.
+      if (mapped.length && mapped[mapped.length - 1].role === 'user') resumeTurn(conversationId);
     }));
   }, [conversationId]);
+
+  /** DB rows → display messages. */
+  const toDisplay = (msgs: ChatMessage[]): DisplayMsg[] => msgs.map((m) => ({
+    id: `m_${m.id}`,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+    events: (m.meta?.events as Event[] | undefined) ?? undefined,
+    rerunOf: typeof m.meta?.rerun_of === 'number' ? (m.meta.rerun_of as number) : undefined,
+  }));
+
+  /** Event handler for one turn's stream; ignores events once we stopped watching it. */
+  function turnHandler(convId: number) {
+    return (ev: Event) => {
+      if (streamConvRef.current !== convId) return;
+      // Streaming reasoning: update the transient live-thought, don't persist
+      // it as an event chip (the final parsed `thought` event does that).
+      if (ev.kind === 'thought_delta') {
+        setLiveThought(String(ev.payload.text ?? ''));
+        return;
+      }
+      if (ev.kind === 'answer_delta') {
+        // Stream the final answer into the bubble token-by-token.
+        const text = String(ev.payload.text ?? '');
+        setLiveThought('');
+        setMessages((m) => {
+          const last = m[m.length - 1];
+          if (!last || last.role !== 'assistant') return m;
+          return [...m.slice(0, -1), { ...last, content: text }];
+        });
+        return;
+      }
+      if (ev.kind === 'thought' || ev.kind === 'tool_call' || ev.kind === 'final') {
+        setLiveThought('');
+      }
+      // Mirror every event into the workbench trace first — it's the user's only
+      // signal that the system is alive before the bubble gets content.
+      setLiveEvents((es) => [...es, ev as WbEvent]);
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (!last || last.role !== 'assistant') return m;
+        const next = [...m];
+        const updated: DisplayMsg = { ...last, events: [...(last.events ?? []), ev] };
+        if (ev.kind === 'final') {
+          updated.content = String(ev.payload.text ?? '');
+          updated.pending = false;
+        }
+        next[next.length - 1] = updated;
+        return next;
+      });
+    };
+  }
+
+  /** Re-attach to a turn that is still generating on the server (the user left
+   *  and came back, or reloaded the page): replay it into a pending bubble. */
+  async function resumeTurn(convId: number) {
+    const ac = new AbortController();
+    abortRef.current = ac;
+    streamConvRef.current = convId;
+    const handle = turnHandler(convId);
+    let started = false;
+    try {
+      const live = await attachTurn(convId, (ev) => {
+        if (streamConvRef.current !== convId) return;
+        if (!started) {
+          started = true;
+          setBusy(true);
+          setTurnStartedAt(performance.now());
+          setMessages((m) => [...m, { id: `a_${Date.now()}`, role: 'assistant', content: '', events: [], pending: true }]);
+        }
+        handle(ev as Event);
+      }, ac.signal);
+      // Swap the replayed bubble for the saved row (ids, final content).
+      if (live && streamConvRef.current === convId) {
+        const msgs = await api.listMessages(convId);
+        if (streamConvRef.current === convId) setMessages(toDisplay(msgs));
+        refreshPipeline(convId);
+      }
+    } catch { /* detached, or nothing to attach to */ }
+    finally {
+      if (streamConvRef.current === convId) {
+        streamConvRef.current = null;
+        abortRef.current = null;
+        setBusy(false);
+      }
+    }
+  }
 
   useEffect(() => {
     // The home page reads top-down; only a conversation follows its tail.
@@ -576,53 +677,21 @@ export default function ChatView({
 
     const ac = new AbortController();
     abortRef.current = ac;
+    streamConvRef.current = convId;
+    const handle = turnHandler(convId);
     try {
-      await streamChat(convId, userText, dsIds[0] ?? null, (ev) => {
-        // Streaming reasoning: update the transient live-thought, don't persist
-        // it as an event chip (the final parsed `thought` event does that).
-        if (ev.kind === 'thought_delta') {
-          setLiveThought(String(ev.payload.text ?? ''));
-          return;
-        }
-        if (ev.kind === 'answer_delta') {
-          // Stream the final answer into the bubble token-by-token (Claude-Code style).
-          const text = String(ev.payload.text ?? '');
-          setLiveThought('');
-          setMessages((m) => {
-            const last = m[m.length - 1];
-            if (!last || last.role !== 'assistant') return m;
-            return [...m.slice(0, -1), { ...last, content: text }];
-          });
-          return;
-        }
-        if (ev.kind === 'thought' || ev.kind === 'tool_call' || ev.kind === 'final') {
-          setLiveThought('');
-        }
-        // Mirror every event into the workbench trace immediately. The
-        // workbench is the user's only signal that the system is alive
-        // before the first chat-bubble content lands, so this MUST happen
-        // before the (heavier) message-state update below.
-        setLiveEvents((es) => [...es, ev]);
-        setMessages((m) => {
-          const last = m[m.length - 1];
-          if (!last || last.role !== 'assistant') return m;
-          const next = [...m];
-          const updated: DisplayMsg = { ...last, events: [...(last.events ?? []), ev] };
-          if (ev.kind === 'final') {
-            updated.content = String(ev.payload.text ?? '');
-            updated.pending = false;
-          }
-          next[next.length - 1] = updated;
-          return next;
-        });
-      }, dsIds, ac.signal, imgRef, activeSkills.filter((id) => skills.some((x) => x.id === id)));
+      await streamChat(convId, userText, dsIds[0] ?? null, (ev) => { handle(ev as Event); }, dsIds, ac.signal, imgRef,
+        activeSkills.filter((id) => skills.some((x) => x.id === id)));
       // The turn may have advanced the cross-turn pipeline head — refresh the chip.
       refreshPipeline(convId);
       // Digitizing an image can create a new dataset — refresh so it appears.
       if (imgRef) refreshDatasets();
     } catch (e) {
-      // User-initiated stop (终止会话): finalize the pending bubble as "已停止"
-      // rather than an error. The backend persists the partial trace on disconnect.
+      // We switched away from this conversation: nothing to show here — the turn
+      // keeps running on the server and is picked up again when the user returns.
+      if (streamConvRef.current !== convId) return;
+      // User-initiated stop: finalize the pending bubble as "已停止" rather than an
+      // error. The server saves the partial answer.
       if ((e as Error).name === 'AbortError') {
         setLiveEvents((es) => [...es, { kind: 'final', payload: { text: '已停止生成', cancelled: true } }]);
         setMessages((m) => {
@@ -635,7 +704,8 @@ export default function ChatView({
         });
         refreshPipeline(convId);
       } else {
-        const errMsg = (e as Error).message;
+        const raw = (e as Error).message;
+        const errMsg = raw.includes('HTTP 409') ? '上一条回答还在生成，等它完成或先停止再发送。' : raw;
         setError(errMsg);
         // Mirror the failure into the workbench so it's visible there too,
         // even when the chat bubble itself ends up empty.
@@ -655,8 +725,11 @@ export default function ChatView({
         });
       }
     } finally {
-      abortRef.current = null;
-      setBusy(false);
+      if (streamConvRef.current === convId) {
+        streamConvRef.current = null;
+        abortRef.current = null;
+        setBusy(false);
+      }
     }
   }
 

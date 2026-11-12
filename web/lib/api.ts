@@ -790,6 +790,49 @@ export async function streamChat(
   }
 }
 
+/** Re-attach to a conversation's turn that is still generating (it runs on the
+ *  server independent of the browser): replays its events so far, then follows.
+ *  Resolves false when nothing is running. */
+export async function attachTurn(
+  convId: number,
+  onEvent: (e: { kind: string; payload: Record<string, unknown> }) => void,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const token = getToken();
+  const base = (typeof window !== 'undefined' && window.location.port === '3000')
+    ? `${window.location.protocol}//${window.location.hostname}:8077` : '';
+  const r = await fetch(`${base}/api/chat/conversations/${convId}/live`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}, signal,
+  });
+  if (r.status === 204 || !r.body) return false;
+  if (!r.ok) throw new Error(`live HTTP ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 2);
+      if (block.startsWith('data:')) { try { onEvent(JSON.parse(block.slice(5).trim())); } catch { /* ignore */ } }
+    }
+  }
+  return true;
+}
+
+/** The 停止 button: end the conversation's running turn on the server (its partial answer is saved). */
+export async function stopTurn(convId: number): Promise<void> {
+  const token = getToken();
+  const base = (typeof window !== 'undefined' && window.location.port === '3000')
+    ? `${window.location.protocol}//${window.location.hostname}:8077` : '';
+  await fetch(`${base}/api/chat/conversations/${convId}/stop`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => {});
+}
+
 /** One turn of the 算法共创 studio (AI writes / adjusts an algorithm by chat).
  *  Events: plan | progress (codegen stage) | ask | answer | result | error. */
 export type StudioEvent =

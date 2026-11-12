@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.models import Conversation, Dataset, Message, User
 from ..services.storage import scrub, scrub_text
 from ..services.chat_agent import run_turn
+from ..services import chat_turns
 from ..services.datasets import save_temp_upload
 from ..services.image_parser import IMAGE_EXTS
 from .deps import current_user, get_db, llm_for
@@ -290,6 +291,8 @@ async def send_message(
     )).scalar_one_or_none()
     if conv is None:
         raise HTTPException(404, "conversation not found")
+    if chat_turns.running(conv.id, user.id) is not None:
+        raise HTTPException(409, "上一条回答还在生成，等它完成或先停止再发送。")
 
     # Resolve the active dataset set: explicit dataset_ids (primary first) win,
     # then dataset_id, then the conversation's stored dataset. Dedupe, keep order.
@@ -375,126 +378,123 @@ async def send_message(
     if not llm.is_configured:
         raise HTTPException(400, "no LLM key configured. Set a DeepSeek key in Settings.")
 
-    # Cross-turn pipeline state: seed from what prior turns produced, let
-    # run_turn mutate it as new stages materialize, then persist it back so the
-    # NEXT message keeps composing on this turn's result.
-    pipeline_state: Dict[str, Any] = dict(conv.pipeline_state or {})
+    # Everything the turn needs, as plain values: it runs in its OWN task and DB
+    # session (see services/chat_turns), outliving this request if the client leaves.
+    turn = chat_turns.start(conv.id, user.id)
+    turn.task = asyncio.create_task(_run_turn_task(
+        turn, owner_id=user.id, llm=llm, dataset_ids=[d.id for d in datasets], history=history,
+        message=body.message, image_ref=image_ref, image_fresh=image_fresh, skill_ids=body.skill_ids,
+    ))
+    return StreamingResponse(turn.follow(0), media_type="text/event-stream", headers=SSE_HEADERS)
 
+
+async def _run_turn_task(turn: "chat_turns.Turn", *, owner_id: int, llm: Any, dataset_ids: List[int],
+                         history: List[Dict[str, str]], message: str, image_ref: Optional[str],
+                         image_fresh: bool, skill_ids: Optional[List[int]]) -> None:
+    """One chat turn, start to finish, independent of any HTTP connection.
+    Always ends by saving the assistant message: a finished answer, an error, or
+    (after an explicit stop) what was produced so far."""
+    from ..db.base import SessionLocal
     from .skills import load_for_chat
-    skills_selected, skills_catalog = await load_for_chat(session, user.id, body.skill_ids)
 
+    conv_id = turn.conv_id
+    final_text = ""
+    got_final = False
+    cancelled = False
     turn_ctx: Dict[str, Any] = {}     # filled by run_turn: this turn's run group (改进清单-3 · D1a)
+    pipeline_state: Dict[str, Any] = {}
 
-    def _with_group(meta: Dict[str, Any]) -> Dict[str, Any]:
-        g = turn_ctx.get("group")
-        if g is not None:
-            from ..services.runs import finish_group
-            sts = list(turn_ctx.get("statuses") or [])
-            finish_group(g, sts + (["cancelled"] if meta.get("cancelled") else []))
-            meta["run_group_id"] = g.id
-            meta["run_group_code"] = f"R-{g.seq_no:04d}"
-        return meta
-
-    async def event_stream():
-        events: List[Dict[str, Any]] = []
-        final_text = ""
-        got_final = False
-        cancelled = False
-
-        # Prime the connection: an SSE comment line flushed before any slow work
-        # forces the proxy to open the pipe to the client immediately, so the
-        # first real token isn't held back behind a buffering threshold. The
-        # frontend parser ignores any block that doesn't start with "data:".
-        yield ": numetrix-stream-open\n\n"
-
-        async def _yield(event: Dict[str, Any]):
-            # Yielding can itself fail if the client has already disconnected.
-            # We still want the event recorded in `events` so the DB row carries
-            # the full trace — so callers append BEFORE awaiting this.
-            try:
-                return f"data: {json.dumps(event, default=str)}\n\n"
-            except Exception:  # pragma: no cover — json failure is essentially never
-                logger.exception("failed to serialize SSE event")
-                return f"data: {{\"kind\":\"final\",\"payload\":{{\"text\":\"(serialization failed)\",\"error\":true}}}}\n\n"
-
+    async with SessionLocal() as session:
         try:
             try:
+                conv = await session.get(Conversation, conv_id)
+                pipeline_state = dict((conv.pipeline_state if conv else None) or {})
+                datasets: List[Dataset] = []
+                for did in dataset_ids:
+                    ds = await session.get(Dataset, did)
+                    if ds is not None:
+                        datasets.append(ds)
+                skills_selected, skills_catalog = await load_for_chat(session, owner_id, skill_ids)
                 async for step in run_turn(
-                    session=session, llm=llm, owner_id=user.id, datasets=datasets,
-                    history=history, user_message=body.message, max_steps=8,
+                    session=session, llm=llm, owner_id=owner_id, datasets=datasets,
+                    history=history, user_message=message, max_steps=8,
                     pipeline_state=pipeline_state, image_ref=image_ref, image_fresh=image_fresh,
                     skills=skills_selected, skill_catalog=skills_catalog,
-                    turn_ctx=turn_ctx, conversation_id=conv.id,
+                    turn_ctx=turn_ctx, conversation_id=conv_id,
                 ):
                     # No server paths in what the client sees or what gets stored.
-                    event = scrub({"kind": step.kind, "payload": step.payload})
-                    events.append(event)
-                    yield await _yield(event)
+                    await turn.push(scrub({"kind": step.kind, "payload": step.payload}))
                     if step.kind == "final":
                         final_text = step.payload.get("text", "")
                         got_final = True
             except asyncio.CancelledError:
-                # Client disconnected mid-stream. We can't send anything more,
-                # but the finally block below still persists what we collected.
+                # Explicit stop (POST .../stop). Keep what was produced; saved below.
                 cancelled = True
-                event = {"kind": "final", "payload": {
-                    "text": "(client disconnected before the agent finished)",
-                    "cancelled": True,
-                }}
-                events.append(event)
-                final_text = event["payload"]["text"]
-                got_final = True
-                raise
+                event = {"kind": "final", "payload": {"text": "（已停止生成）", "cancelled": True}}
+                turn.events.append(event)
+                final_text, got_final = event["payload"]["text"], True
             except Exception as e:
                 # LLM timeout / network / parser crash / sandbox crash. Surface
                 # as a final event the UI can render, plus a diagnostic hint.
                 hint = _diagnostic_hint(e)
                 err_text = scrub_text(f"**Agent error:** {type(e).__name__}: {e}")
                 if hint:
-                    err_text += f"\n\n💡 {hint}"
-                event = {"kind": "final", "payload": {
-                    "text": err_text, "error": True, "exc_type": type(e).__name__,
-                }}
-                events.append(event)
-                final_text = err_text
-                got_final = True
-                logger.exception("agent crash in conv=%s msg=%r", conv.id, body.message[:80])
-                yield await _yield(event)
+                    err_text += "\n\n" + hint
+                event = {"kind": "final", "payload": {"text": err_text, "error": True, "exc_type": type(e).__name__}}
+                await turn.push(event)
+                final_text, got_final = err_text, True
+                logger.exception("agent crash in conv=%s msg=%r", conv_id, message[:80])
 
             if not got_final:
                 fallback = {"kind": "final", "payload": {"text": "(agent stopped without a final answer)"}}
-                events.append(fallback)
+                await turn.push(fallback)
                 final_text = fallback["payload"]["text"]
-                yield await _yield(fallback)
         finally:
-            # ALWAYS persist whatever we collected. Without this, a mid-stream
-            # cancel (user navigates away, network blip, second send racing the
-            # first) leaves the user with no assistant row in history at all —
-            # the symptom that prompted this whole rework.
-            try:
-                assistant_msg = Message(
-                    conversation_id=conv.id, role="assistant",
-                    content=final_text or "(no output)",
-                    meta=_with_group({"events": events, "cancelled": cancelled} if cancelled else {"events": events}),
-                )
-                session.add(assistant_msg)
-                # Persist the advanced pipeline head so the next turn continues
-                # the chain. Use an explicit UPDATE rather than ORM attribute
-                # assignment: across the streaming generator's mid-turn commits
-                # the `conv` instance's dirty-state on a JSON column wasn't being
-                # flushed, so the head silently never persisted.
-                await session.execute(
-                    update(Conversation)
-                    .where(Conversation.id == conv.id)
-                    .values(pipeline_state=dict(pipeline_state))
-                )
+            # ALWAYS persist. Shielded so a stop arriving during the save can't
+            # cancel the write itself (the bug that lost whole answers before).
+            async def _persist() -> None:
+                meta: Dict[str, Any] = {"events": list(turn.events)}
+                if cancelled:
+                    meta["cancelled"] = True
+                g = turn_ctx.get("group")
+                if g is not None:
+                    from ..services.runs import finish_group
+                    finish_group(g, list(turn_ctx.get("statuses") or []) + (["cancelled"] if cancelled else []))
+                    meta["run_group_id"] = g.id
+                    meta["run_group_code"] = f"R-{g.seq_no:04d}"
+                session.add(Message(conversation_id=conv_id, role="assistant",
+                                    content=final_text or "(no output)", meta=meta))
+                # Explicit UPDATE: the conv instance's JSON dirty-state isn't reliably
+                # flushed across run_turn's mid-turn commits.
+                await session.execute(update(Conversation).where(Conversation.id == conv_id)
+                                      .values(pipeline_state=dict(pipeline_state)))
                 await session.commit()
+            try:
+                await asyncio.shield(_persist())
             except Exception:
-                logger.exception("failed to persist assistant message for conv=%s", conv.id)
-            # 改进清单-3 · R0: no more 2-hour auto-clean after every turn — the
-            # retention rules (20 days, reminder, backstop) run as a daily job.
+                logger.exception("failed to persist assistant message for conv=%s", conv_id)
+            await turn.finish()
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+
+@router.get("/conversations/{conv_id}/live")
+async def live_turn(conv_id: int, user: User = Depends(current_user)):
+    """Re-attach to the conversation's turn if it is still generating (or just
+    finished): replays its events so far, then follows. 204 when there is none."""
+    from fastapi import Response
+    t = chat_turns.latest(conv_id, user.id)
+    if t is None:
+        return Response(status_code=204)
+    return StreamingResponse(t.follow(0), media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+@router.post("/conversations/{conv_id}/stop")
+async def stop_turn(conv_id: int, user: User = Depends(current_user)):
+    """The stop button: end the running turn. Its partial answer is saved."""
+    t = chat_turns.running(conv_id, user.id)
+    if t is None or t.task is None:
+        return {"ok": True, "stopped": False}
+    t.task.cancel()
+    return {"ok": True, "stopped": True}
 
 
 def _diagnostic_hint(exc: Exception) -> str:
