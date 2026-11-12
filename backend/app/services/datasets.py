@@ -294,57 +294,139 @@ async def ingest_image_upload(
     return [ds]
 
 
-# Mesh / field formats read via VTK (pyvista) → points+fields tables. CGNS may
-# be ADF or HDF5; VTK handles both (meshio/h5py only read HDF5-CGNS, hence the
-# garbage when the generic AI-parser tried to struct-unpack the binary).
+# Mesh / field formats read via VTK → points+fields tables. CGNS may be ADF or
+# HDF5; VTK handles both (meshio/h5py only read HDF5-CGNS, hence the garbage when
+# the generic AI-parser tried to struct-unpack the binary).
+#
+# We use the plain `vtk` package (module `vtkmodules`), NOT pyvista: pyvista is
+# only a convenience wrapper around it, and the VTK builds our users already run
+# (pip `vtk`, the company conda build) ship without pyvista — depending on it made
+# every .vtk/.cgns upload fail with "No module named 'pyvista'".
 MESH_EXTS = {".cgns", ".vtk", ".vtu", ".vtp", ".vtm", ".stl", ".ply", ".obj"}
+
+
+def mesh_reader_available() -> bool:
+    import importlib.util
+    try:
+        return importlib.util.find_spec("vtkmodules") is not None
+    except Exception:
+        return False
+
+
+def _vtk_reader_for(ext: str) -> Any:
+    ext = ext.lower()
+    if ext == ".vtk":
+        from vtkmodules.vtkIOLegacy import vtkGenericDataObjectReader
+        return vtkGenericDataObjectReader()
+    if ext == ".vtu":
+        from vtkmodules.vtkIOXML import vtkXMLUnstructuredGridReader
+        return vtkXMLUnstructuredGridReader()
+    if ext == ".vtp":
+        from vtkmodules.vtkIOXML import vtkXMLPolyDataReader
+        return vtkXMLPolyDataReader()
+    if ext == ".vtm":
+        from vtkmodules.vtkIOXML import vtkXMLMultiBlockDataReader
+        return vtkXMLMultiBlockDataReader()
+    if ext == ".stl":
+        from vtkmodules.vtkIOGeometry import vtkSTLReader
+        return vtkSTLReader()
+    if ext == ".obj":
+        from vtkmodules.vtkIOGeometry import vtkOBJReader
+        return vtkOBJReader()
+    if ext == ".ply":
+        from vtkmodules.vtkIOPLY import vtkPLYReader
+        return vtkPLYReader()
+    if ext == ".cgns":
+        from vtkmodules.vtkIOCGNSReader import vtkCGNSReader
+        return vtkCGNSReader()
+    raise ValueError(f"不支持的网格格式:{ext}")
 
 
 def _mesh_to_frames(src_path: Path) -> List[Tuple[str, pd.DataFrame]]:
     """Read a mesh/field file and project each zone to a POINTS+FIELDS table:
     one row per mesh point, columns = X,Y,Z + every point field (vector fields
-    expanded to _x/_y/_z). Multi-zone files yield one frame per zone.
+    expanded to _x/_y/_z). Multi-zone files yield one frame per zone. A zone that
+    only carries CELL fields (common for cell-centred CFD solutions) has them
+    interpolated to the points so the solution isn't silently dropped.
 
-    pyvista/VTK is imported LAZILY so it never enters the backend's startup
-    import path (VTK is heavy)."""
+    VTK is imported LAZILY so it never enters the backend's startup import path
+    (VTK is heavy)."""
     import numpy as np
-    import pyvista as pv  # noqa: lazy heavy import
+    from vtkmodules.util.numpy_support import vtk_to_numpy
+    from vtkmodules.vtkCommonDataModel import vtkCompositeDataSet, vtkDataSet
+    from vtkmodules.vtkFiltersCore import vtkCellDataToPointData
 
-    data = pv.read(str(src_path))
+    reader = _vtk_reader_for(src_path.suffix)
+    reader.SetFileName(str(src_path))
+    if src_path.suffix.lower() == ".cgns":
+        reader.UpdateInformation()
+        for m in ("EnableAllBases", "EnableAllPointArrays", "EnableAllCellArrays"):
+            if hasattr(reader, m):
+                getattr(reader, m)()
+    reader.Update()
+    data = reader.GetOutputDataObject(0)
+    if data is None:
+        raise ValueError("VTK 没有从这个文件里读出任何数据(格式不对或文件已损坏)")
+
     blocks: List[Tuple[str, Any]] = []
 
-    def collect(m: Any, name: str) -> None:
-        if hasattr(m, "n_blocks"):  # MultiBlock (CGNS base/zone tree)
-            for i in range(m.n_blocks):
+    def collect(obj: Any, name: str) -> None:
+        if obj is None:
+            return
+        if isinstance(obj, vtkDataSet):
+            if obj.GetNumberOfPoints() > 0:
+                blocks.append((name, obj))
+            return
+        n_blocks = getattr(obj, "GetNumberOfBlocks", None)
+        if n_blocks is not None:  # MultiBlock (CGNS base/zone tree, .vtm)
+            for i in range(n_blocks()):
+                nm = f"{name}/{i}"
                 try:
-                    nm = m.get_block_name(i) or f"{name}/{i}"
+                    md = obj.GetMetaData(i)
+                    if md is not None and md.Has(vtkCompositeDataSet.NAME()):
+                        nm = md.Get(vtkCompositeDataSet.NAME()) or nm
                 except Exception:
-                    nm = f"{name}/{i}"
-                b = m[i]
-                if b is not None:
-                    collect(b, nm)
-        elif int(getattr(m, "n_points", 0) or 0) > 0:
-            blocks.append((name, m))
+                    pass
+                collect(obj.GetBlock(i), nm)
+            return
+        n_parts = getattr(obj, "GetNumberOfPartitions", None)
+        if n_parts is not None:  # PartitionedDataSet
+            for i in range(n_parts()):
+                collect(obj.GetPartition(i), f"{name}/{i}")
 
     collect(data, src_path.stem)
 
+    def add_array(cols: Dict[str, Any], name: str, arr: Any) -> None:
+        if arr.ndim == 1:
+            cols[name] = arr
+        elif arr.ndim == 2:
+            n = arr.shape[1]
+            suff = ["x", "y", "z"] if n == 3 else [str(j) for j in range(n)]
+            for j in range(min(n, 9)):
+                cols[f"{name}_{suff[j]}"] = arr[:, j]
+
     frames: List[Tuple[str, pd.DataFrame]] = []
     for zname, m in blocks:
+        pd_ = m.GetPointData()
+        if pd_.GetNumberOfArrays() == 0 and m.GetCellData().GetNumberOfArrays() > 0:
+            c2p = vtkCellDataToPointData()
+            c2p.SetInputData(m)
+            c2p.Update()
+            m = c2p.GetOutput()
+            pd_ = m.GetPointData()
         cols: Dict[str, Any] = {}
-        pts = np.asarray(m.points)
-        if pts.ndim == 2 and pts.shape[1] >= 3:
-            cols["X"], cols["Y"], cols["Z"] = pts[:, 0], pts[:, 1], pts[:, 2]
-        for k in list(m.point_data.keys()):
-            arr = np.asarray(m.point_data[k])
-            if arr.ndim == 1:
-                cols[k] = arr
-            elif arr.ndim == 2:
-                n = arr.shape[1]
-                suff = ["x", "y", "z"] if n == 3 else [str(j) for j in range(n)]
-                for j in range(min(n, 9)):
-                    cols[f"{k}_{suff[j]}"] = arr[:, j]
+        pts = m.GetPoints()
+        if pts is not None:
+            xyz = vtk_to_numpy(pts.GetData())
+            if xyz.ndim == 2 and xyz.shape[1] >= 3:
+                cols["X"], cols["Y"], cols["Z"] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+        for i in range(pd_.GetNumberOfArrays()):
+            a = pd_.GetArray(i)  # None for non-numeric (string) arrays
+            if a is None:
+                continue
+            add_array(cols, a.GetName() or f"field{i}", np.asarray(vtk_to_numpy(a)))
         if cols:
-            frames.append((zname.split("/")[-1], pd.DataFrame(cols)))
+            frames.append((str(zname).split("/")[-1], pd.DataFrame(cols)))
     return frames
 
 

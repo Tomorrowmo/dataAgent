@@ -305,7 +305,11 @@ class LLMClient:
     async def _stream_once(self, messages, temperature, max_tokens, state: Dict[str, Any], *, thinking_off: bool) -> AsyncIterator[str]:
         payload = self._payload(messages, temperature, max_tokens, stream=True, thinking_off=thinking_off)
         state["finish"] = None
-        async with httpx.AsyncClient(timeout=None) as client:
+        # No overall cap (a long answer may legitimately stream for minutes), but the
+        # read timeout is per-chunk: if the provider goes silent for 180 s the turn
+        # fails with a clear error instead of hanging forever. timeout=None used to
+        # leave a stalled stream spinning until the user hit 停止.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=180.0, write=60.0, pool=30.0)) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}/chat/completions",

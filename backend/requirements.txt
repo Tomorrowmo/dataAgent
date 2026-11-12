@@ -16,6 +16,9 @@ pyarrow==18.1.0
 openpyxl==3.1.5
 xlrd==2.0.1
 PyYAML==6.0.2
+# Mesh / field files (.vtk .vtu .vtp .vtm .cgns .stl .ply .obj). Only IO modules are
+# imported (no rendering), so no libGL is needed on a headless server.
+vtk==9.7.2
 
 # LLM
 httpx==0.28.1

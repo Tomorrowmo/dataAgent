@@ -1,5 +1,6 @@
 'use client';
 
+import { defaultFlowInput, rememberFlowInput } from '@/lib/flowSteps';
 import ErrorNote, { NEXT } from '@/components/ErrorNote';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -293,7 +294,7 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
   // Input is multi-select: the flow batch-runs on EACH chosen dataset; the first
   // is the PRIMARY (its columns drive the param pickers). `activeIdx` is which
   // batch result is currently shown.
-  const [datasetIds, setDatasetIds] = useState<number[]>(datasets[0] ? [datasets[0].id] : []);
+  const [datasetIds, setDatasetIds] = useState<number[]>(() => { const d = defaultFlowInput(tpl.id, datasets); return d != null ? [d] : []; });
   const [activeIdx, setActiveIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [multiRes, setMultiRes] = useState<{ dsId: number; name: string; res: TemplateRunResult }[]>([]);
@@ -353,7 +354,8 @@ function Canvas({ tpl, datasets, algos, onChanged, onDeleted }: {
   // whose column params reference columns not in their actual input.
   const [outCols, setOutCols] = useState<Map<number, string[]>>(new Map());
 
-  useEffect(() => { if (datasetIds.length === 0 && datasets[0]) setDatasetIds([datasets[0].id]); }, [datasets, datasetIds]);
+  useEffect(() => { if (datasetIds.length === 0 && datasets.length) { const d = defaultFlowInput(tpl.id, datasets); if (d != null) setDatasetIds([d]); } }, [datasets, datasetIds, tpl.id]);
+  useEffect(() => { rememberFlowInput(tpl.id, datasetIds[0] ?? null); }, [tpl.id, datasetIds]);
   // Reset everything when switching to a different template.
   useEffect(() => {
     setNodes(init.nodes); setEdges(init.edges); setName(tpl.name);

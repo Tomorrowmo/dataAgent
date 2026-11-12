@@ -51,7 +51,7 @@ Action contracts:
 - answer         : args = { "text": "<markdown answer to the user>", "next": ["<short follow-up the user can send as-is>", ...] }
 - list_tools     : args = { "category": "<optional filter>" }
 - describe_tool  : args = { "slug": "<algorithm slug>" }
-- run_tool       : args = { "slug": "<algorithm slug>", "params": { ... }, "dataset": "<dataset name, optional — defaults to PRIMARY>" }
+- run_tool       : args = { "slug": "<algorithm slug>", "params": { ... }, "dataset": "<dataset name, optional — defaults to PRIMARY>", "input": "<optional: \"source\" = run on the SOURCE data instead of the previous step's output>" }
 - generate_tool  : args = { "description": "<plain-language spec for a new algorithm>" }
 - visualize      : args = { "chart_type": "line | scatter | bar", "x": "<column>", "y": ["<column>", ...], "title": "<short title>", "dataset": "<name, optional — defaults to PRIMARY>", "datasets": ["<name>", "<name>"] (optional — overlay the SAME column(s) from 2+ datasets on ONE chart for comparison) }
 - visualize_batch: args = { "chart_type": "line|scatter|bar", "x": "<column>", "y": ["<column>", ...], "per": "dataset | column", "datasets": ["<name>", ...] (optional — defaults to ALL loaded), "title": "<prefix>" }
@@ -91,6 +91,7 @@ Guidance:
   Length follows content: a one-number lookup stays short; a multi-step analysis earns several sentences or a small table. Never pad, never restate the steps you took (the 工作台 already shows those), and never claim more certainty than the numbers support.
 - After `run_tool`, you'll receive a tool-result message. ALWAYS interpret the result for the user with a final `answer` action — never leave them hanging on raw numbers.
 - ALWAYS SUGGEST NEXT STEPS. Every final `answer` should carry `args.next`: 2-3 follow-up questions the user could send verbatim, in the user's language, each under 30 characters. They must be GROUNDED in this turn — name the real columns/datasets/results just produced, and propose the natural next move (dig into an anomaly you found, plot what you just computed, apply the same analysis to another column/dataset, save a good pipeline as a template). Never generic filler like "还需要什么帮助吗"; never something the data can't support. Example after finding outlier counts per sensor: {"next": ["画出 CH07.12 的时程曲线", "剔除异常后重新统计", "看看异常集中在哪个时间段"]}.
+- CHAINED INPUT — KNOW WHICH TABLE YOU ARE ON. Within a turn each run_tool reads the PREVIOUS step's output by default (that is how 去噪→归一化 composes). When a result carries `input_note`, read it: it says the step ran on an earlier step's result and how many rows that had vs. the source. A filter you applied for ONE quantity (e.g. α≤10° for the lift-curve slope) must not leak into quantities that need the whole data (stall angle / CLmax / peaks / spectra / overall stats): run those with `"input": "source"`, or pass the range as a tool parameter instead of filtering the table. Never run a column-level tool (FFT, fit, stats) on a one-row summary — use `"input": "source"`. If `input_note.reduced` is true and your step needs all rows, rerun it with `"input": "source"` before answering, and in the answer say which data each number came from.
 - ORDER THE PIPELINE BEFORE YOU START. Row-level work comes FIRST, table-level summaries LAST: 筛选/取子集 → 派生新列 → 分组汇总 → 排序/取前N. Aggregating first is the classic mistake — `group_aggregate` COLLAPSES the table, so the raw columns your filter needs (`q_direct`, `Alpha`, …) no longer exist, and filtering the summary with a row-level condition is either a no-op or an error. If you catch yourself calling group_aggregate and then filtering on an original column, your order is wrong: redo it as filter-then-group. Re-running the same tool with the same params CANNOT produce a different answer — if a step changed nothing, change the PLAN, not the retry count.
 - PIPELINES compose automatically: when a tool outputs a transformed table (filter/normalize/fill_missing/etc. that adds or changes columns), the NEXT `run_tool` in this same turn operates on that transformed result — NOT the original. So for a multi-step request (e.g. 去噪→检测异常→插值→归一化) just call the tools in order; the new columns from step N (e.g. `voltage_v_gauss`) ARE available to step N+1. Read each tool-result's summary for the exact new column names.
 - Each transforming step is auto-saved as an inspectable DERIVED dataset (the tool-result includes `derived_dataset`). In your final answer you MAY tell the user that each stage (去噪后/检测后/…) is viewable in 数据集 → 中间结果.
@@ -364,6 +365,54 @@ def _read_frame_for_tool(
     return head, None  # nothing better available — let the tool's own error speak
 
 
+_SOURCE_INPUT_WORDS = {"source", "original", "raw", "源数据", "原始数据"}
+
+
+def _input_note(ds: Optional[Dataset], df: Any, working: Dict[int, Any],
+                frames: Dict[int, List[Any]], lineage_state: Dict[Any, Any],
+                frame_note: Optional[str], want_source: bool, *, failed: bool) -> Optional[Dict[str, Any]]:
+    """Describe what a run_tool step actually read, when that is NOT simply the
+    source dataset.
+
+    Chaining (each step reads the previous step's output) stays the default — it
+    is what makes 去噪→归一化 compose. What bit users was that it was INVISIBLE:
+    after a filter to α≤10° (15 of 31 rows) an AI-written summary tool computed
+    the stall angle on the 15 rows and reported 10° instead of 14°; after a 1-row
+    summary an FFT failed with "column not found". Both steps were silently fed a
+    shrunken table. So: say which table was used, and when it has fewer rows than
+    the source (or the step failed on it), tell the agent it can rerun on the
+    source with input:"source"."""
+    if ds is None or df is None:
+        return None
+    try:
+        rows = int(len(df))
+    except Exception:
+        return None
+    src_rows = int(getattr(ds, "rows", 0) or 0) or None
+    if want_source:
+        return {"source": True, "rows": rows, "dataset": ds.name,
+                "text": f"本步按要求改用源数据「{ds.name}」({rows} 行)运行。"}
+    if frame_note and "原始数据" in frame_note:
+        return None  # un-shadowed back to the source; ran_on already says so
+    head = working.get(ds.id)
+    if head is None:
+        return None  # never transformed this turn → it IS the source
+    if df is head:
+        prev = (lineage_state.get(ds.id) or (None, "上一步的结果"))[1]
+    else:
+        prev = next((lbl for lbl, f in reversed(frames.get(ds.id, [])) if f is df), None)
+        if prev is None:
+            return None
+    reduced = bool(src_rows and rows < src_rows)
+    src_txt = f",源数据「{ds.name}」有 {src_rows} 行" if src_rows else ""
+    text = f"本步的输入是上一步的结果「{prev}」({rows} 行){src_txt}。"
+    if reduced or failed:
+        text += ("如果这一步应当基于全部数据(例如求最大值、失速点、频谱、整体统计),"
+                 "请在 run_tool 里加 \"input\": \"source\" 用源数据重跑这一步。")
+    return {"source": False, "from": prev, "rows": rows, "source_rows": src_rows,
+            "dataset": ds.name, "reduced": reduced, "text": text}
+
+
 def _read_frame_for_viz(
     ds: Dataset,
     datasets: List[Dataset],
@@ -567,9 +616,14 @@ async def _execute_action(
         slug = args.get("slug")
         params = args.get("params", {}) or {}
         ds = _resolve_dataset(datasets, args)   # 选数据集:args.dataset 名/id,默认第一个
-        # 优先取本轮已变换副本 → 流水线自动接力;但上一步若把表重塑掉(如 group_aggregate
-        # 把 120 行压成 3 行),本步要的原始列会被遮蔽 → 回退到磁盘原始数据,见函数注释
-        df, frame_note = _read_frame_for_tool(ds, working, frames, params)
+        # args.input = "source" → 明确改用源数据(不接上一步)。默认仍是链式接力。
+        want_source = str(args.get("input") or "").strip().lower() in _SOURCE_INPUT_WORDS
+        if want_source and ds is not None:
+            df, frame_note = load_dataset_df(ds), None
+        else:
+            # 优先取本轮已变换副本 → 流水线自动接力;但上一步若把表重塑掉(如 group_aggregate
+            # 把 120 行压成 3 行),本步要的原始列会被遮蔽 → 回退到磁盘原始数据,见函数注释
+            df, frame_note = _read_frame_for_tool(ds, working, frames, params)
         # No dataset → a builtin doing `df.columns` raises a raw AttributeError
         # that leaks to the user. Fail cleanly and tell the agent what to do
         # instead (this is the tail of the "plot a formula with no data" flow:
@@ -591,6 +645,11 @@ async def _execute_action(
         input_ref = dict(hit[1]) if hit is not None and hit[0] is df else {"kind": "dataset", "dataset_id": ds.id}
         algo_info: Dict[str, Any] = {"slug": slug}
 
+        # Bound up front: every branch below (built-in, user/AI algorithm, and any
+        # other tool source merged in later, e.g. skill-pack tools) reaches
+        # _record_chat_run, which reads `row`. Leaving it unset on one branch made a
+        # correct skill-tool result surface as "UnboundLocalError: row".
+        row = None
         spec = registry.get_builtin(slug)
         if spec:
             from .dataset_params import resolve_dataset_params
@@ -615,6 +674,13 @@ async def _execute_action(
         # 换了数据源就必须说出来 —— 静默替换数据是最坏的失败模式
         if frame_note and result.get("status") == "ok":
             result.setdefault("summary", {})["ran_on"] = frame_note
+        # 链式输入要"看得见":只要本步用的不是源数据,就写明用的是哪一步的结果、
+        # 几行、源数据几行;行数变少时提示 AI 可用 input:"source" 换回源数据。
+        # Put first so the 8000-char cap on the LLM's copy can never cut it off.
+        note = _input_note(ds, df, working, frames, lineage_state, frame_note, want_source,
+                           failed=result.get("status") != "ok")
+        if note:
+            result = {"input_note": note, **result}
         result["provenance"] = {
             "step": step_no, "input": input_ref, "dataset_id": ds.id,
             "algorithm": algo_info, "label": label, "params": params, "output_role": None,

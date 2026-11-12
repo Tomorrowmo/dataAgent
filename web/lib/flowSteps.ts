@@ -61,3 +61,20 @@ export function flowFromSteps(steps: RunStep[]): { steps?: TemplateStep[]; reaso
   };
 }
 
+
+
+/** Default input for a flow: the dataset this flow last ran on (remembered per
+ *  flow), else the newest SOURCE dataset — never an intermediate result just
+ *  because it happens to be the newest row. */
+export function defaultFlowInput(tplId: number, datasets: { id: number; kind?: string }[]): number | null {
+  try {
+    const saved = Number(localStorage.getItem(`numetrix.flow.input.${tplId}`));
+    if (saved && datasets.some((d) => d.id === saved)) return saved;
+  } catch { /* storage blocked */ }
+  return (datasets.find((d) => d.kind !== 'derived') ?? datasets[0])?.id ?? null;
+}
+
+export function rememberFlowInput(tplId: number, datasetId: number | null): void {
+  if (datasetId == null) return;
+  try { localStorage.setItem(`numetrix.flow.input.${tplId}`, String(datasetId)); } catch { /* storage blocked */ }
+}

@@ -23,10 +23,8 @@ AI 功能（解析未知格式 / AI 解释 / 对话分析）：
        Caddy 会自动申请并续期 HTTPS 证书。浏览器开 https://你的域名。
   若本机在内网/NAT 后无公网IP：需做 80/443 端口映射，或用内网穿透(Cloudflare Tunnel / frp)。
 
-网格/CFD 文件（可选，未打包）：
-  - 上传 .cgns/.vtk/.stl 这类 3D 网格需要 pyvista(含VTK，很大)，本包未含。
-  - 需要时联网执行：  runtime\python\python.exe -m pip install pyvista
-  - 只用 CSV/Excel/Parquet/Tecplot(.dat) 不需要它。
+网格/CFD 文件：
+  - .cgns/.vtk/.vtu/.vtp/.vtm/.stl/.ply/.obj 由 VTK 读取，本包已内置。
 
 首次启动很慢？
   - 多半是 Windows Defender 在扫 runtime\python。管理员 PowerShell 跑一次即可永久解决：

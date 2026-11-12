@@ -1,5 +1,6 @@
 'use client';
 
+import { defaultFlowInput, rememberFlowInput } from '@/lib/flowSteps';
 import { explainErrorText } from '@/lib/errorHints';
 import { NEXT } from '@/components/ErrorNote';
 import { useEffect, useMemo, useState } from 'react';
@@ -22,7 +23,7 @@ export default function RunApp({ tpl, datasets, algos, onBack }: {
   const bySlug = useMemo(() => new Map(algos.map((a) => [a.slug, a])), [algos]);
   const runtime = useMemo(() => (tpl.graph?.runtime ?? []).filter((r) => typeof r.stepIndex === 'number' && r.stepIndex >= 0), [tpl]);
 
-  const [datasetId, setDatasetId] = useState<number | null>(datasets[0]?.id ?? null);
+  const [datasetId, setDatasetId] = useState<number | null>(() => defaultFlowInput(tpl.id, datasets));
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<TemplateRunResult | null>(null);
@@ -37,7 +38,8 @@ export default function RunApp({ tpl, datasets, algos, onBack }: {
     catch { setStage(null); }
   }
 
-  useEffect(() => { if (datasetId == null && datasets[0]) setDatasetId(datasets[0].id); }, [datasets, datasetId]);
+  useEffect(() => { if (datasetId == null && datasets.length) setDatasetId(defaultFlowInput(tpl.id, datasets)); }, [datasets, datasetId, tpl.id]);
+  useEffect(() => { rememberFlowInput(tpl.id, datasetId); }, [tpl.id, datasetId]);
   // Seed the form with each runtime param's saved default.
   useEffect(() => {
     const init: Record<string, string> = {};

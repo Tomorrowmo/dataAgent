@@ -2134,8 +2134,9 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
     if (result.tools) {
       return <div className="text-xs text-ink-500 mb-2">{t('chat.found')} {(result.tools as unknown[]).length} {t('chat.tools')}</div>;
     }
+    const inputNote = <StepInputNote note={(result as { input_note?: StepInput }).input_note} ranOn={result.summary?.ran_on as string | undefined} />;
     if (result.error) {
-      return <div className="mb-2"><ErrorNote compact error={String(result.error)} next={active ? NEXT.aiRunning : NEXT.aiDone} /></div>;
+      return <div className="mb-2">{inputNote}<ErrorNote compact error={String(result.error)} next={active ? NEXT.aiRunning : NEXT.aiDone} /></div>;
     }
     if (result.meta) {
       const toolName = String((result.meta as Record<string, unknown>).name ?? '');
@@ -2149,6 +2150,7 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
       const summary = result.summary as { rows?: number; type?: string; value?: unknown } | undefined;
       return (
         <div className="text-xs text-ink-500 mb-2">
+          {inputNote}
           ✓ {t('chat.executed')} — {summary?.type === 'dataframe' ? `${summary.rows} ${t('side.rows')}` : summary?.type ?? t('chat.done')}.
           {result.derived_dataset && (
             <span className="text-violet-600"> → 已存为「{result.derived_dataset.name}」(数据集→中间结果可看)</span>
@@ -2159,6 +2161,24 @@ function EventChip({ ev, active = true, t }: { ev: Event; active?: boolean; t: (
     return null;
   }
   return null;
+}
+
+
+type StepInput = { source?: boolean; from?: string; rows?: number; source_rows?: number | null; dataset?: string; reduced?: boolean };
+
+/** Which table a run_tool step actually read. Chaining onto the previous step is
+ *  the default; this makes it visible, and flags it when that table has fewer
+ *  rows than the source (the case that silently produced wrong stall angles). */
+function StepInputNote({ note, ranOn }: { note?: StepInput; ranOn?: string }) {
+  if (ranOn) return <div className="text-[11px] text-amber-700 mb-0.5">输入:{ranOn}</div>;
+  if (!note) return null;
+  if (note.source) return <div className="text-[11px] text-ink-500 mb-0.5">输入:源数据「{note.dataset}」({note.rows} 行)</div>;
+  return (
+    <div className={`text-[11px] mb-0.5 ${note.reduced ? 'text-amber-700' : 'text-ink-500'}`}>
+      输入:上一步的结果「{note.from}」({note.rows} 行{note.source_rows ? `,源数据 ${note.source_rows} 行` : ''})
+      {note.reduced ? ' —— 不是全部数据' : ''}
+    </div>
+  );
 }
 
 

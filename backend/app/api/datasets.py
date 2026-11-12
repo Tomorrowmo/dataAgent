@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import get_settings
 from ..db.models import Dataset, FormatAdapter, User
-from ..services.datasets import MESH_EXTS, _persist_dataset, build_profile, delete_dataset_tree, gc_derived_datasets, ingest_image_upload, ingest_mesh_upload, ingest_tecplot_upload, ingest_upload, load_dataset_df, looks_like_tecplot, save_temp_upload
+from ..services.datasets import MESH_EXTS, mesh_reader_available, _persist_dataset, build_profile, delete_dataset_tree, gc_derived_datasets, ingest_image_upload, ingest_mesh_upload, ingest_tecplot_upload, ingest_upload, load_dataset_df, looks_like_tecplot, save_temp_upload
 from ..services.image_parser import IMAGE_EXTS
 from ..services.format_adapter import (
     generate_cleaner_stream, generate_parser_stream, save_adapter, stage_upload, try_saved_adapter,
@@ -136,7 +136,17 @@ async def upload(
     # Path 0 — a mesh / field file (CGNS / VTK / STL …). Read it via VTK into one
     # points+fields table per zone. Bypasses the AI-parser, which can't parse the
     # binary mesh format (it produced garbage zeros before).
+    # VTK is in requirements.txt, but an older/slim install may lack it. Without it
+    # a TEXT mesh file (legacy ASCII .vtk, ascii .ply/.obj …) falls through to the
+    # paths below and, failing those, to an AI-written reader; a binary one (CGNS,
+    # binary VTK) can't be read without VTK, so say exactly that.
+    mesh_reader_missing = False
     if extension in MESH_EXTS:
+        mesh_reader_missing = not mesh_reader_available()
+        if mesh_reader_missing and b"\x00" in data[:4096]:
+            raise HTTPException(400, f"这是二进制的 {extension} 网格文件，读取它需要服务器安装 VTK（pip install vtk）。"
+                                     "请联系管理员安装，或先导出成 CSV / Tecplot ASCII 再导入。")
+    if extension in MESH_EXTS and not mesh_reader_missing:
         tmp = save_temp_upload(data, file.filename)
         try:
             dss = await ingest_mesh_upload(

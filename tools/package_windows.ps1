@@ -169,10 +169,8 @@ RLab Cortex 便携包（Windows）
     - 如果机器在内网/NAT 后面、没有公网 IP，证书申请会失败——需要先做端口映射(80/443)，
       或改用内网穿透(Cloudflare Tunnel / frp 等)把域名引到本机。
 
-网格/CFD 文件支持（可选）：
-  - 上传 .cgns / .vtk / .vtu / .stl 这类 3D 网格文件需要额外的 pyvista(含 VTK，较大)。
-  - 需要时在 backend 目录跑：  .venv\Scripts\python -m pip install pyvista
-  - 只用 CSV / Excel / Parquet / Tecplot(.dat) 的话不需要它。
+网格/CFD 文件支持：
+  - .cgns / .vtk / .vtu / .vtp / .vtm / .stl / .ply / .obj 由 VTK 读取，setup 时已随依赖装好。
 
 注意：
   - 如果第一次启动后端卡很久（几分钟没 HEALTHY），通常是 Windows Defender 在扫 venv。
