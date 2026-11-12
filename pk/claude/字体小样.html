@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字体小样</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f8f9fa;--side:#f3f4f6;--line:#dfe2e6;--brand:#2b4c6f;--hint:#5b7089}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font:inherit;border:0;background:none;color:inherit;cursor:pointer}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+.side{background:var(--side);border-right:1px solid #c6cbd1;padding:14px 10px}
+.main{padding:40px 48px 60px}
+.grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:44px;align-items:center}
+.brand{display:flex;gap:9px;align-items:center;padding:2px 8px 14px}
+.logo{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#1d4ed8,#38bdf8);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.new{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;margin:0 2px 14px;border-radius:6px;background:#fff;box-shadow:0 0 0 1px var(--line)}
+.new kbd{margin-left:auto}
+.nav a{display:flex;align-items:center;height:32px;padding:0 10px;border-radius:6px}
+.nav a.on{background:#fff;box-shadow:0 1px 2px rgba(22,25,29,.07)}
+.nav .c{margin-left:auto}
+.grp{margin:16px 10px 4px}
+.btns{display:flex;gap:8px;margin-top:22px}
+.btn{height:38px;padding:0 16px;border-radius:6px;display:inline-flex;align-items:center;gap:8px}
+.btn.p{background:var(--brand);color:#fff}.btn.s{background:#fff;box-shadow:0 0 0 1px #c6cbd1}
+.hint{display:flex;gap:6px;margin-top:10px;color:var(--hint)}
+.tabsrow{display:flex;align-items:center;gap:10px;margin-top:34px}
+.tabs{display:flex;gap:2px;padding:3px;border-radius:7px;background:#eceef1}
+.tabs button{height:28px;padding:0 11px;border-radius:5px}
+.tabs button.on{background:#fff;box-shadow:0 1px 2px rgba(22,25,29,.1)}
+.list{margin-top:10px}
+.q{display:flex;align-items:center;padding:12px 14px;border-radius:6px}
+.q.on{background:#fff;box-shadow:0 0 0 1px #eceef1,0 1px 2px rgba(0,0,0,.04);border-left:2px solid var(--brand);flex-direction:column;align-items:flex-start;gap:6px}
+.q .ar{margin-left:auto;color:#c6cbd1}
+.q .acts{display:flex;gap:8px;margin-top:4px}
+.q .acts .btn{height:30px;padding:0 12px}
+.card{background:#fff;border-radius:8px;box-shadow:0 0 0 1px rgba(22,25,29,.05),0 12px 32px -8px rgba(22,25,29,.14);overflow:hidden}
+.ch{display:flex;align-items:center;padding:14px 18px 6px}
+.tag{margin-left:auto;padding:2px 7px;border-radius:4px;background:#f3f4f6}
+svg{display:block;width:100%;height:auto}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);margin:0 18px;border-top:1px solid #eceef1}
+.kpi{padding:12px 0 14px}
+.kpi+.kpi{padding-left:16px}
+.chain{background:#f8f9fa;padding:9px 18px}
+.chain i{font-style:normal;margin:0 8px;color:#c6cbd1}
+.sw{position:fixed;right:16px;bottom:14px;display:flex;gap:2px;padding:3px;border-radius:8px;background:#16191d;z-index:9;font:12px system-ui}
+.sw button{height:28px;padding:0 12px;border-radius:5px;color:#c6cbd1}
+.sw button.on{background:#fff;color:#16191d}
+.note{position:fixed;left:236px;bottom:14px;max-width:560px;padding:8px 12px;border-radius:6px;background:#16191d;color:#e5e7eb;font:12px/1.6 system-ui;z-index:9}
+
+/* ============ 现在 ============ */
+.v-now{font-family:"IBM Plex Sans","PingFang SC","Microsoft YaHei",sans-serif;color:#16191d}
+.v-now .mono,.v-now kbd,.v-now .ver,.v-now .kv,.v-now .axis,.v-now .chain,.v-now .code{font-family:"IBM Plex Mono",Consolas,"Microsoft YaHei",monospace}
+.v-now .brand b{font-size:14px;font-weight:600}.v-now .ver{font-size:11px;color:#69707a}
+.v-now .new{font-size:13px}.v-now kbd{font-size:11px;color:#a0a6ae}
+.v-now .nav a{font-size:13px;color:#525861}.v-now .nav a.on{color:#16191d;font-weight:500}.v-now .nav .c{font-size:11px;color:#a0a6ae}
+.v-now .grp{font-size:11px;color:#a0a6ae}
+.v-now h1{font-size:30px;font-weight:600;letter-spacing:-.01em}
+.v-now .lead{margin-top:12px;font-size:14.5px;line-height:1.75;color:#525861}
+.v-now .btn{font-size:13px}
+.v-now .hint{font-size:12px}
+.v-now .tabsrow b{font-size:13px;font-weight:600}.v-now .tabs button{font-size:12.5px;color:#525861}.v-now .tabs button.on{color:#16191d}
+.v-now .q{font-size:13.5px;color:#25292e}.v-now .q .need{font-size:12px;color:#69707a}
+.v-now .ch b{font-size:13px;font-weight:600}.v-now .tag{font-size:11px;color:#69707a}
+.v-now .axis{font-size:10px;fill:#69707a}
+.v-now .kl{font-size:11.5px;color:#69707a}.v-now .kv{font-size:19px;font-weight:500;margin-top:2px}.v-now .ku{font-size:12px;color:#69707a}.v-now .kn{font-size:11.5px;color:#69707a}
+.v-now .chain{font-size:11.5px;color:#69707a}
+
+/* ============ 方案 A：Inter + 系统中文黑体，数字不用等宽，层级拉开 ============ */
+.v-a{font-family:Inter,"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif;color:#111418;font-feature-settings:"cv11","ss01"}
+.v-a .num{font-variant-numeric:tabular-nums}
+.v-a .code{font-family:"IBM Plex Mono",Consolas,monospace;font-size:.92em;color:#69707a}
+.v-a .brand b{font-size:14.5px;font-weight:600;letter-spacing:-.01em}.v-a .ver{font-size:11.5px;color:#8a919a}
+.v-a .new{font-size:13.5px;font-weight:500}.v-a kbd{font-size:11px;color:#8a919a;font-family:inherit;padding:1px 5px;border-radius:4px;box-shadow:0 0 0 1px #e3e6ea}
+.v-a .nav a{font-size:13.5px;color:#41474f}.v-a .nav a.on{color:#111418;font-weight:600}.v-a .nav .c{font-size:12px;color:#8a919a}
+.v-a .grp{font-size:11.5px;font-weight:500;color:#8a919a;letter-spacing:.04em}
+.v-a h1{font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.v-a .lead{margin-top:14px;font-size:15px;line-height:1.8;color:#4a5059}
+.v-a .btn{font-size:14px;font-weight:500}
+.v-a .hint{font-size:12.5px;line-height:1.7}
+.v-a .tabsrow b{font-size:15px;font-weight:600}.v-a .tabs button{font-size:13px;color:#5a616b}.v-a .tabs button.on{color:#111418;font-weight:600}
+.v-a .q{font-size:14.5px;color:#22272e}.v-a .q.on>span:first-child{font-weight:600;color:#111418}.v-a .q .need{font-size:12.5px;color:#7a818b}
+.v-a .ch b{font-size:14.5px;font-weight:600}.v-a .tag{font-size:11.5px;color:#7a818b}
+.v-a .axis{font-size:10.5px;fill:#8a919a;font-family:Inter,sans-serif}
+.v-a .kl{font-size:12px;color:#7a818b;font-weight:500}.v-a .kv{font-size:26px;font-weight:600;letter-spacing:-.02em;margin-top:2px}.v-a .ku{font-size:13px;color:#7a818b;font-weight:500}.v-a .kn{font-size:12px;color:#8a919a}
+.v-a .chain{font-size:12px;color:#7a818b}
+
+/* ============ 方案 B：全部用系统字体（Segoe UI / 微软雅黑 UI），零下载 ============ */
+.v-b{font-family:"Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;color:#111418}
+.v-b .num{font-variant-numeric:tabular-nums}
+.v-b .code{font-family:Consolas,"Cascadia Mono",monospace;font-size:.92em;color:#69707a}
+.v-b .brand b{font-size:14.5px;font-weight:600}.v-b .ver{font-size:11.5px;color:#8a919a}
+.v-b .new{font-size:13.5px;font-weight:600}.v-b kbd{font-size:11px;color:#8a919a;font-family:inherit;padding:1px 5px;border-radius:4px;box-shadow:0 0 0 1px #e3e6ea}
+.v-b .nav a{font-size:13.5px;color:#41474f}.v-b .nav a.on{color:#111418;font-weight:600}.v-b .nav .c{font-size:12px;color:#8a919a}
+.v-b .grp{font-size:11.5px;font-weight:600;color:#8a919a}
+.v-b h1{font-size:32px;font-weight:700;line-height:1.2}
+.v-b .lead{margin-top:14px;font-size:15px;line-height:1.8;color:#4a5059}
+.v-b .btn{font-size:14px;font-weight:600}
+.v-b .hint{font-size:12.5px;line-height:1.7}
+.v-b .tabsrow b{font-size:15px;font-weight:700}.v-b .tabs button{font-size:13px;color:#5a616b}.v-b .tabs button.on{color:#111418;font-weight:600}
+.v-b .q{font-size:14.5px;color:#22272e}.v-b .q.on>span:first-child{font-weight:600;color:#111418}.v-b .q .need{font-size:12.5px;color:#7a818b}
+.v-b .ch b{font-size:14.5px;font-weight:700}.v-b .tag{font-size:11.5px;color:#7a818b}
+.v-b .axis{font-size:10.5px;fill:#8a919a;font-family:"Segoe UI",sans-serif}
+.v-b .kl{font-size:12px;color:#7a818b;font-weight:600}.v-b .kv{font-size:26px;font-weight:600;margin-top:2px}.v-b .ku{font-size:13px;color:#7a818b}.v-b .kn{font-size:12px;color:#8a919a}
+.v-b .chain{font-size:12px;color:#7a818b}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="note" id="note"></div>
+<div class="sw" id="sw"><button data-v="now">现在</button><button data-v="a">方案 A</button><button data-v="b">方案 B</button></div>
+<script>
+const NOTES = {
+  now: '现在：英文 IBM Plex Sans + 中文微软雅黑拼在一起；版本号、快捷键、坐标、关键数值、处理链都用等宽字体；正文几乎都是 13px 常规。',
+  a: '方案 A：英文和数字换成 Inter（界面常用的无衬线体，要随软件带一个约 100KB 的字体文件），中文用系统黑体；数字不再等宽，只有算法名 slug 这类代码保留等宽；标题、选中项、关键数值加粗加大，文字分三档灰。',
+  b: '方案 B：全部用操作系统自带字体（Windows 上是 Segoe UI + 微软雅黑 UI），不需要下载任何字体；层级规则和方案 A 相同。Linux 服务器上打开时会退到 Noto Sans 等字体。',
+};
+const chart = (axisCls) => {
+  const pts = [[-4,-.32],[-3,-.22],[-2,-.12],[-1,-.01],[0,.08],[1,.18],[2,.27],[3,.37],[4,.47],[5,.56],[6,.66],[7,.75],[8,.85],[9,.94],[10,1.04],[11,1.13],[12,1.22],[13,1.29],[14,1.31],[15,1.22],[16,1.06],[17,.99],[18,.95],[19,.93],[20,.92]];
+  const X = (a) => 50 + (a + 4) / 24 * 450, Y = (c) => 218 - (c + .4) / 2 * 192;
+  const path = pts.map(([a, c], i) => `${i ? 'L' : 'M'}${X(a).toFixed(1)},${Y(c).toFixed(1)}`).join('');
+  const yt = [-.4, .1, .6, 1.1, 1.6].map((v) => `<text class="${axisCls}" x="42" y="${Y(v) + 3}" text-anchor="end">${v}</text><line x1="50" x2="500" y1="${Y(v)}" y2="${Y(v)}" stroke="#eceef1"/>`).join('');
+  const xt = [-4, 0, 4, 8, 12, 16, 20].map((v) => `<text class="${axisCls}" x="${X(v)}" y="234" text-anchor="middle">${v}</text>`).join('');
+  return `<svg viewBox="0 0 520 250">${yt}${xt}<line x1="${X(14)}" x2="${X(14)}" y1="26" y2="218" stroke="#c0392b" stroke-dasharray="3 3"/>
+    <text class="${axisCls}" x="${X(14) + 6}" y="36" fill="#c0392b" style="fill:#c0392b">失速 14°</text>
+    <path d="${path}" fill="none" stroke="#2b4c6f" stroke-width="2"/>${pts.map(([a, c]) => `<circle cx="${X(a)}" cy="${Y(c)}" r="2.6" fill="#2b4c6f"/>`).join('')}</svg>`;
+};
+function render(v) {
+  document.getElementById('root').innerHTML = `
+  <div class="app v-${v}">
+    <aside class="side">
+      <div class="brand"><div class="logo">AI</div><div><b>RLab Cortex</b><br><span class="ver">v1.0.1</span></div></div>
+      <div class="new">＋ 新建分析<kbd>Ctrl K</kbd></div>
+      <nav class="nav"><a>数据<span class="c num">12</span></a><a>流程<span class="c num">4</span></a></nav>
+      <div class="grp">工具库</div>
+      <nav class="nav"><a>算法</a><a>技能</a><a>反馈收件箱</a></nav>
+      <div class="grp">最近</div>
+      <nav class="nav"><a class="on">两次吹风的结果一致吗？</a><a>取 α ≤ 10° 为线性段…</a><a>振动信号的主峰频率…</a></nav>
+    </aside>
+    <main class="main"><div class="grid">
+      <div>
+        <h1>试验数据处理与分析</h1>
+        <p class="lead">导入天平、传感器或采集系统导出的数据文件，用中文描述要做的处理，例如平滑、坐标转换、系数计算、频谱分析、曲线拟合。系统从算法库中选择方法执行，并在结果中记录输入文件、算法版本和参数。</p>
+        <div class="btns"><span class="btn p">▷ 打开风洞示例数据</span><span class="btn s">⇪ 导入数据</span></div>
+        <p class="hint">ⓘ 可直接导入表格文件、Tecplot 导出文件、CGNS / VTK 等仿真结果，以及表格截图。</p>
+        <div class="tabsrow"><b>示例问题</b><div class="tabs"><button class="on">风洞试验</button><button>电池充放电</button><button>振动 / NVH</button><button>工艺参数 / DOE</button></div></div>
+        <div class="list">
+          <div class="q on"><span>取 α ≤ 10° 为线性段，求升力线斜率、失速攻角和最大升阻比</span><span class="need">需要：一组攻角扫描数据（攻角、CL、CD）</span>
+            <div class="acts"><span class="btn p">▷ 用示例数据提问</span><span class="btn s">用我的数据</span></div></div>
+          <div class="q"><span>两次吹风的结果一致吗？偏差集中在哪个攻角段？</span><span class="ar">›</span></div>
+          <div class="q"><span>对天平信号做平滑，再按 q∞=612 Pa、S=0.12 m² 计算升力系数</span><span class="ar">›</span></div>
+          <div class="q"><span>脉动压力信号的主频是多少？按 D=0.1 m、U=30 m/s 算 Strouhal 数</span><span class="ar">›</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ch"><b>翼型攻角扫描 · 升力特性</b><span class="tag">示例结果</span></div>
+        <div style="padding:0 10px">${chart('axis')}</div>
+        <div class="kpis">
+          <div class="kpi"><div class="kl">升力线斜率</div><div class="kv num">0.095<span class="ku"> /°</span></div><div class="kn num">R² = 0.9998</div></div>
+          <div class="kpi"><div class="kl">失速攻角</div><div class="kv num">14<span class="ku"> °</span></div><div class="kn num">CLmax = 1.38</div></div>
+          <div class="kpi"><div class="kl">最大升阻比</div><div class="kv num">18.6</div><div class="kn num">α = 5°</div></div>
+        </div>
+        <div class="chain">CL/CD 计算<i>›</i>α≤10° 取线性段<i>›</i>线性回归 <span class="code">linear_regression</span><i>›</i>取最大值</div>
+      </div>
+    </div></main>
+  </div>`;
+  document.getElementById('note').textContent = NOTES[v];
+  document.querySelectorAll('#sw button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+}
+document.querySelectorAll('#sw button').forEach((b) => (b.onclick = () => render(b.dataset.v)));
+window.show = render;
+render('a');
+</script>
+</body>
+</html>
